@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="Linux-g++-8"
+	BuildStamp="20201111-2136-Experimental"
+	Name="dani-Inspiron-7586"
+	Generator="ctest-3.10.2"
+	CompilerName="/usr/bin/g++-8"
+	CompilerVersion="8.4.0"
+	OSName="Linux"
+	Hostname="dani-Inspiron-7586"
+	OSRelease="5.4.0-52-generic"
+	OSVersion="#57~18.04.1-Ubuntu SMP Thu Oct 15 14:04:49 UTC 2020"
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="GenuineIntel"
+	VendorID="Intel Corporation"
+	FamilyID="6"
+	ModelID="142"
+	ProcessorCacheSize="8192"
+	NumberOfLogicalCPU="8"
+	NumberOfPhysicalCPU="4"
+	TotalVirtualMemory="2047"
+	TotalPhysicalMemory="7644"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="1840.22"
+	>
+	<Testing>
+		<StartDateTime>Nov 11 16:36 EST</StartDateTime>
+		<StartTestTime>1605130610</StartTestTime>
+		<TestList/>
+		<EndDateTime>Nov 11 16:36 EST</EndDateTime>
+		<EndTestTime>1605130610</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

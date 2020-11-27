@@ -1,0 +1,1 @@
+/usr/bin/g++-8  -g  -rdynamic CMakeFiles/paper_manipulator.dir/src/paper_dynamics.cpp.o  -o paper_manipulator -lBulletDynamics -lBulletCollision -lLinearMath 
