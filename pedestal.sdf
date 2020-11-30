@@ -28,7 +28,7 @@
         <pose>0.0 0.0 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.274999 0.1999 0.0999</size>
+            <size>0.225 0.3 0.1</size>
           </box>
         </geometry>
       </collision>
