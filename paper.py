@@ -61,16 +61,6 @@ class Paper:
                     str(link_num), pydrake.multibody.plant.CoulombFriction(
                         self.mu, self.mu)
                 )
-#                 i=0
-#                 for x in [-self.link_width/2.0, self.link_width/2.0]:
-#                     for y in [-self.width/2.0, self.width/2.0]:
-#                         for z in [-self.height/2.0, self.height/2.0]:
-#                             self.plant.RegisterCollisionGeometry(
-#                                 paper_body,
-#                                 RigidTransform([x, y, z]),
-#                                 pydrake.geometry.Sphere(radius=1e-7), f"contact_sphere{i}_{link_num}",
-#                                 pydrake.multibody.plant.CoulombFriction(self.mu, self.mu))
-#                             i += 1
                 self.plant.RegisterVisualGeometry(
                     paper_body,
                     RigidTransform(),
