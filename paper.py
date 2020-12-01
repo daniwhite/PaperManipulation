@@ -101,7 +101,7 @@ class Paper:
                     [0, 1, 0]))
 
                 joint.set_default_angle(self.default_joint_angle)
-                ja = self.plant.AddJointActuator("joint actuator", joint)
+                self.plant.AddJointActuator("joint actuator", joint)
 
             self.paper_instances.append(paper_instance)
 
