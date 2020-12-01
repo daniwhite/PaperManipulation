@@ -1,7 +1,0 @@
-[
-{
-  "directory": "/home/dani/Documents/mit/6.881/project/PaperManipulation/build",
-  "command": "/usr/bin/g++-8   -I/src  -g   -o CMakeFiles/paper_manipulator.dir/src/paper_dynamics.cpp.o -c /home/dani/Documents/mit/6.881/project/PaperManipulation/src/paper_dynamics.cpp",
-  "file": "/home/dani/Documents/mit/6.881/project/PaperManipulation/src/paper_dynamics.cpp"
-}
-]
