@@ -2,6 +2,7 @@ import numpy as np
 import constants
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix, PidController
+from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 
 class Paper:
@@ -16,7 +17,7 @@ class Paper:
 
     # Source:
     # https://www.jampaper.com/paper-weight-chart.asp
-    # height = 0.004*constants.IN_TO_M
+    true_height = 0.004*constants.IN_TO_M
     density = 80/1000
 
     # Source:
@@ -27,7 +28,7 @@ class Paper:
         # Initialize parameters
         self.plant = plant
         self.num_links = num_links
-        self.mu = mu
+        self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
 
         self.link_width = self.width/self.num_links
@@ -47,12 +48,16 @@ class Paper:
             paper_body = self.plant.AddRigidBody(
                 self.name + "_body" + str(link_num),
                 paper_instance,
-                pydrake.multibody.tree.SpatialInertia(mass=self.link_mass, p_PScm_E=np.array([0., 0., 0.]),
-                                                      G_SP_E=pydrake.multibody.tree.UnitInertia.SolidBox(self.link_width, self.width, self.height))
+                SpatialInertia(mass=self.link_mass,
+                               # CoM at origin of body frame
+                               p_PScm_E=np.array([0., 0., 0.]),
+                               # Deault moment of inertia for a solid box
+                               G_SP_E=UnitInertia.SolidBox(
+                                   self.link_width, self.width, self.true_height))
             )
 
-            # Set up collision
             if self.plant.geometry_source_is_registered():
+                # Set up collision geometery
                 self.plant.RegisterCollisionGeometry(
                     paper_body,
                     RigidTransform(),
@@ -62,13 +67,15 @@ class Paper:
                     str(link_num), pydrake.multibody.plant.CoulombFriction(
                         self.mu, self.mu)
                 )
+
+                # Set up visual geometry
                 self.plant.RegisterVisualGeometry(
                     paper_body,
                     RigidTransform(),
                     pydrake.geometry.Box(
                         self.link_width, self.width, self.height),
                     self.name + "_body" + str(link_num),
-                    [0.9, 0.9, 0.9, 1.0])
+                    [0.9, 0.9, 0.9, 1.0])  # RBGA color
 
             # Set up joint actuators
             if link_num > 0:
