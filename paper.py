@@ -5,10 +5,14 @@ from pydrake.all import RigidTransform, RotationMatrix, PidController
 
 
 class Paper:
+    # Tuned to look physical
+    stiffness = 1e-3
+    damping = 1e-5
+
     name = "paper"
     width = 11*constants.IN_TO_M
     depth = 8.5*constants.IN_TO_M
-    height = 0.007
+    height = 0.0005
 
     # Source:
     # https://www.jampaper.com/paper-weight-chart.asp
@@ -18,9 +22,6 @@ class Paper:
     # Source:
     # https://smartech.gatech.edu/bitstream/handle/1853/5562/jones_ar.pdf
     youngs_modulus = 10*1e9  # Convert to n/m^2
-
-    stiffness = 0.00001
-    damping = 0.00001
 
     def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60):
         # Initialize parameters
