@@ -11,8 +11,8 @@ def AddFinger(plant, init_x, init_z):
     finger = plant.AddModelInstance("finger")
 
     # Add false body at the origin that the finger
-    false_body = plant.AddRigidBody("false_body", finger,
-                                    SpatialInertia(0, [0, 0, 0], UnitInertia(0, 0, 0)))
+    plant.AddRigidBody("false_body", finger, SpatialInertia(
+        0, [0, 0, 0], UnitInertia(0, 0, 0)))
 
     # Initialize finger body
     finger_body = plant.AddRigidBody("body", finger,
@@ -47,10 +47,10 @@ def AddFinger(plant, init_x, init_z):
     return finger
 
 
-class PDFinger(pydrake.systems.framework.LeafSystem):
-    """Set up PD controller for finger."""
+class FingerController(pydrake.systems.framework.LeafSystem):
+    """Base class for implementing a controller at the finger."""
 
-    def __init__(self, plant, pts, finger_idx, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
+    def __init__(self, plant, finger_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self._plant = plant
 
@@ -61,6 +61,27 @@ class PDFinger(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorOutputPort(
             "finger_actuation", pydrake.systems.framework.BasicVector(2),
             self.CalcOutput)
+
+        self.finger_idx = finger_idx
+
+    def GetForces(self, poses, vels):
+        raise NotImplementedError()
+
+    def CalcOutput(self, context, output):
+        # Get inputs
+        g = self._plant.gravity_field().gravity_vector()[[0, 2]]
+        poses = self.get_input_port(0).Eval(context)
+        vels = self.get_input_port(1).Eval(context)
+
+        fx, fz = self.GetForces(poses, vels)
+        output.SetFromVector(-constants.FINGER_MASS*g + [fx, fz])
+
+
+class PDFinger(FingerController):
+    """Set up PD controller for finger."""
+
+    def __init__(self, plant, finger_idx, pts, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
+        super().__init__(plant, finger_idx)
 
         # Generate trajectory
         self.xs = []
@@ -90,14 +111,7 @@ class PDFinger(pydrake.systems.framework.LeafSystem):
         # For keeping track of place in trajectory
         self.idx = 0
 
-        self.finger_idx = finger_idx
-
-    def CalcOutput(self, context, output):
-        # Get inputs
-        g = self._plant.gravity_field().gravity_vector()[[0, 2]]
-        poses = self.get_input_port(0).Eval(context)
-        vels = self.get_input_port(1).Eval(context)
-
+    def GetForces(self, poses, vels):
         # Unpack values
         x = poses[self.finger_idx].translation()[0]
         z = poses[self.finger_idx].translation()[2]
@@ -112,5 +126,6 @@ class PDFinger(pydrake.systems.framework.LeafSystem):
         else:
             fx = self.kx*(self.xs[-1] - x) + self.dx*(-xdot)
             fz = self.kz*(self.zs[-1] - z) + self.dz*(- zdot)
-        output.SetFromVector(-constants.FINGER_MASS*g + [fx, fz])
         self.idx += 1
+
+        return fx, fz
