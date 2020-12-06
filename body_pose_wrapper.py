@@ -6,14 +6,14 @@ import numpy as np
 
 
 class BodyPoseWrapper(pydrake.systems.framework.LeafSystem):
-    def __init__(self, size, inp_port_type):
+    def __init__(self, num_bodies):
         pydrake.systems.framework.LeafSystem.__init__(self)
-        self._size = size
+        self._size = num_bodies*6
 
         self.DeclareAbstractInputPort(
-            "inp", pydrake.common.value.AbstractValue.Make(inp_port_type))
+            "inp", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
         self.DeclareVectorOutputPort(
-            "out", pydrake.systems.framework.BasicVector(size),
+            "out", pydrake.systems.framework.BasicVector(num_bodies*6),
             self.CalcOutput)
 
     def CalcOutput(self, context, output):

@@ -1,6 +1,6 @@
 import constants
 import pydrake
-from pydrake.all import RigidTransform, RotationMatrix
+from pydrake.all import RigidTransform, RotationMatrix, SpatialVelocity
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 import numpy as np
 
@@ -50,12 +50,14 @@ def AddFinger(plant, init_x, init_z):
 class PDFinger(pydrake.systems.framework.LeafSystem):
     """Set up PD controller for finger."""
 
-    def __init__(self, plant, pts, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
+    def __init__(self, plant, pts, finger_idx, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self._plant = plant
 
-        self.DeclareVectorInputPort(
-            "finger_state", pydrake.systems.framework.BasicVector(4))
+        self.DeclareAbstractInputPort(
+            "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
+        self.DeclareAbstractInputPort(
+            "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
         self.DeclareVectorOutputPort(
             "finger_actuation", pydrake.systems.framework.BasicVector(2),
             self.CalcOutput)
@@ -88,9 +90,20 @@ class PDFinger(pydrake.systems.framework.LeafSystem):
         # For keeping track of place in trajectory
         self.idx = 0
 
+        self.finger_idx = finger_idx
+
     def CalcOutput(self, context, output):
+        # Get inputs
         g = self._plant.gravity_field().gravity_vector()[[0, 2]]
-        x, z, xdot, zdot = self.get_input_port(0).Eval(context)
+        poses = self.get_input_port(0).Eval(context)
+        vels = self.get_input_port(1).Eval(context)
+
+        # Unpack values
+        x = poses[self.finger_idx].translation()[0]
+        z = poses[self.finger_idx].translation()[2]
+        xdot = vels[self.finger_idx].translational()[0]
+        zdot = vels[self.finger_idx].translational()[2]
+
         if self.idx < len(self.xs):
             fx = self.kx*(self.xs[self.idx] - x) + \
                 self.dx*(self.xdots[self.idx] - xdot)
