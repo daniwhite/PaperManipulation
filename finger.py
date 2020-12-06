@@ -50,7 +50,7 @@ def AddFinger(plant, init_x, init_z):
 class PDFinger(pydrake.systems.framework.LeafSystem):
     """Set up PD controller for finger."""
 
-    def __init__(self, plant, traj):
+    def __init__(self, plant, pts, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self._plant = plant
 
@@ -60,11 +60,32 @@ class PDFinger(pydrake.systems.framework.LeafSystem):
             "finger_actuation", pydrake.systems.framework.BasicVector(2),
             self.CalcOutput)
 
-        self.xs, self.zs, self.xdots, self.zdots = traj
-        self.kx = 5
-        self.kz = 5
-        self.dx = 0.01
-        self.dz = 0.01
+        # Generate trajectory
+        self.xs = []
+        self.zs = []
+        self.xdots = [0]
+        self.zdots = [0]
+
+        for segment_i in range(len(pts)-1):
+            start_pt = pts[segment_i]
+            end_pt = pts[segment_i+1]
+            for prog_frac in np.arange(0, tspan_per_segment, constants.DT)/tspan_per_segment:
+                new_x = start_pt[0] + (end_pt[0] - start_pt[0])*prog_frac
+                self.xs.append(new_x)
+                new_z = start_pt[1] + (end_pt[1] - start_pt[1])*prog_frac
+                self.zs.append(new_z)
+
+        for i in range(len(self.xs)-1):
+            self.xdots.append((self.xs[i+1]-self.xs[i])/constants.DT)
+            self.zdots.append((self.zs[i+1]-self.zs[i])/constants.DT)
+
+        # Set gains
+        self.kx = kx
+        self.kz = kz
+        self.dx = dx
+        self.dz = dz
+
+        # For keeping track of place in trajectory
         self.idx = 0
 
     def CalcOutput(self, context, output):
