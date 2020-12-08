@@ -16,5 +16,5 @@ INIT_X = PEDESTAL_WIDTH*0.6
 INIT_Z = 0
 
 # Time constants
-DT = 1e-4
-TSPAN = 20
+DT = 1e-4  # 1e-5
+TSPAN = 5

@@ -6,10 +6,6 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 
 class Paper:
-    # Tuned to look physical
-    stiffness = 1e-3
-    damping = 1e-5
-
     name = "paper"
     width = 11*constants.IN_TO_M
     depth = 8.5*constants.IN_TO_M
@@ -17,30 +13,36 @@ class Paper:
 
     # Source:
     # https://www.jampaper.com/paper-weight-chart.asp
-    true_height = 0.004*constants.IN_TO_M
+    true_height = 0.0097e-3
     density = 80/1000
 
     # Source:
     # https://smartech.gatech.edu/bitstream/handle/1853/5562/jones_ar.pdf
-    youngs_modulus = 10*1e9  # Convert to n/m^2
+    # http://www.mate.tue.nl/mate/pdfs/10509.pdf
+    youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60):
+    def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5, stiffness=1e-3):
         # Initialize parameters
         self.plant = plant
         self.num_links = num_links
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
+        self.damping = damping
+        self.stiffness = stiffness
 
         self.link_width = self.width/self.num_links
         self.link_mass = self.density*self.width*self.width/self.num_links
 
         L = self.width/num_links
-        I = self.depth*self.height**3/12
+        I = self.depth*self.true_height**3/12
         # Stiffness = 3*(youngs modulus)*I/(Length)
         physical_stiffness_N_p_m = 3*self.youngs_modulus*I/L**3
         physical_N_p_rad = physical_stiffness_N_p_m*L**2
 
-        self.paper_instances = []
+        # Use this stiffness only if simulating with a shorter DT
+        # self.stiffness = physical_N_p_rad
+
+        self.link_instances = []
         for link_num in range(self.num_links):
             # Initalize bodies and instances
             paper_instance = self.plant.AddModelInstance(
@@ -82,7 +84,7 @@ class Paper:
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     self.plant.GetBodyByName("paper_body{}".format(
-                        link_num-1), self.paper_instances[-1]),
+                        link_num-1), self.link_instances[-1]),
                     RigidTransform(RotationMatrix(), [self.link_width/2+constants.EPSILON/2, 0, 0.5*self.height]))
                 self.plant.AddFrame(paper1_hinge_frame)
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
@@ -98,15 +100,19 @@ class Paper:
                     paper2_hinge_frame,
                     [0, 1, 0]))
 
-                joint.set_default_angle(self.default_joint_angle)
+                if type(default_joint_angle) is list:
+                    print(self.default_joint_angle[link_num])
+                    joint.set_default_angle(self.default_joint_angle[link_num])
+                else:
+                    joint.set_default_angle(self.default_joint_angle)
                 self.plant.AddJointActuator("joint actuator", joint)
 
-            self.paper_instances.append(paper_instance)
+            self.link_instances.append(paper_instance)
 
     def init_ctrlrs(self, builder):
         """Initialize controllers for paper joints"""
         self.paper_ctrlrs = []
-        for paper_instance in self.paper_instances[1:]:
+        for paper_instance in self.link_instances[1:]:
             # In an ideal world, this would be done with a custom force element.
             # But since this is in Python, we can't implement the C++ class.
             paper_ctrlr = PidController(kp=[[self.stiffness]], ki=[
@@ -126,12 +132,16 @@ class Paper:
             paper_ctrlr.get_input_port_desired_state().FixValue(
                 paper_ctrlr_context, [0, 0])
 
+    def get_free_edge_instance(self):
+        # return self.plant.GetModelInstanceByName(self.name + str(self.num_links-1))
+        return self.link_instances[-2]
+
     def weld_paper_edge(self, pedestal_width, pedestal_height):
         # Fix paper to object
         self.plant.WeldFrames(
             self.plant.world_frame(),
             self.plant.GetBodyByName(
-                "paper_body0", self.paper_instances[0]).body_frame(),
+                "paper_body0", self.link_instances[0]).body_frame(),
             RigidTransform(RotationMatrix(
             ), [-(pedestal_width/2-self.width/4), 0, pedestal_height+self.height/2])
         )

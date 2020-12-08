@@ -1,6 +1,6 @@
 import constants
 import pydrake
-from pydrake.all import RigidTransform, RotationMatrix, SpatialVelocity
+from pydrake.all import RigidTransform, RotationMatrix, SpatialVelocity, RollPitchYaw
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 import numpy as np
 
@@ -129,3 +129,47 @@ class PDFinger(FingerController):
         self.idx += 1
 
         return fx, fz
+
+
+class EdgeController(FingerController):
+
+    def __init__(self, plant, finger_idx, ll_idx, K, D, F_Nd, d_d):
+        super().__init__(plant, finger_idx)
+
+        self.ll_idx = ll_idx
+        self.K = K
+        self.D = D
+        self.F_Nd = F_Nd
+        self.d_d = d_d
+
+    def GetForces(self, poses, vels):
+        # Unpack values
+        x_m = poses[self.finger_idx].translation()[0]
+        z_m = poses[self.finger_idx].translation()[2]
+        xdot_m = vels[self.finger_idx].translational()[0]
+        zdot_m = vels[self.finger_idx].translational()[2]
+        x_l = poses[self.ll_idx].translation()[0]
+        z_l = poses[self.ll_idx].translation()[2]
+        xdot_l = vels[self.ll_idx].translational()[0]
+        zdot_l = vels[self.ll_idx].translational()[2]
+        minus_theta_y = RollPitchYaw(poses[self.ll_idx].rotation()).vector()[1]
+        minus_omega_y = vels[self.ll_idx].rotational()[1]
+
+        # TODO: paper edge position, not body center
+        # Right now should just cause an offset
+        # Fix angle convention
+        theta_y = -minus_theta_y
+        omega_y = -minus_omega_y
+
+        d = np.sin(theta_y)*(z_m-z_l) + np.cos(theta_y)*(x_m-x_l)
+        ddot = np.sin(theta_y)*((zdot_m-zdot_l)-omega_y*(x_m-x_l)) \
+            + np.cos(theta_y)*((xdot_m-xdot_l)-omega_y*(z_m-z_l))
+
+        # Calculate intermediate forces
+        F_Pd = self.K*(self.d_d-d) - self.D*ddot
+        F_Nd = self.F_Nd
+
+        Fx = -np.cos(theta_y)*F_Pd + np.sin(theta_y)*F_Nd
+        Fz = np.sin(theta_y)*F_Pd + np.cos(theta_y)*F_Nd
+
+        return Fx, Fz
