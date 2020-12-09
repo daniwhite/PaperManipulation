@@ -142,10 +142,12 @@ class EdgeController(FingerController):
         self.F_Nd = F_Nd
         self.d_d = d_d
         self.last_d = 0
+        self.last_theta_sign = None
 
         self.w_l = w_l
         self.h_l = h_l
         self.r = constants.FINGER_RADIUS
+        self.theta_crossed_thresh = False
 
         self.debug = {}
         self.debug['Fx'] = []
@@ -156,6 +158,9 @@ class EdgeController(FingerController):
         self.debug['d'] = []
         self.debug['delta_d'] = []
         self.debug['ddot'] = []
+        self.debug['impulse'] = []
+        self.debug['dp'] = []
+        self.debug['dn'] = []
 
     def GetForces(self, poses, vels):
         # Unpack values
@@ -167,7 +172,9 @@ class EdgeController(FingerController):
         z_l = poses[self.ll_idx].translation()[2]
         xdot_l = vels[self.ll_idx].translational()[0]
         zdot_l = vels[self.ll_idx].translational()[2]
-        minus_theta_y = RollPitchYaw(poses[self.ll_idx].rotation()).vector()[1]
+        minus_theta_y = poses[self.ll_idx].rotation().ToAngleAxis().angle()
+        if sum(poses[self.ll_idx].rotation().ToAngleAxis().axis()) < 0:
+            minus_theta_y *= -1
         minus_omega_y = vels[self.ll_idx].rotational()[1]
 
         # Fix angle convention
@@ -182,17 +189,50 @@ class EdgeController(FingerController):
         d = np.sqrt((x_edge - x_contact)**2 + (z_edge - z_contact)
                     ** 2)
 
+        # (x_p, z_p) = projected position of manipulator onto link
+        x_p = np.cos(theta_y)*(np.cos(theta_y)*(x_m-x_edge) +
+                               np.sin(theta_y)*(z_m-z_edge))+x_edge
+        z_p = np.sin(theta_y)*(np.cos(theta_y)*(x_m-x_m) +
+                               np.sin(theta_y)*(z_m-z_edge))+z_edge
+
+        # dp = parallel distance
+        dp = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
+            constants.FINGER_RADIUS
+        self.debug['dp'].append(dp)
+        dn = np.sqrt((x_m - x_p)**2 + (z_m - z_p) ** 2) - \
+            constants.FINGER_RADIUS
+        self.debug['dn'].append(dn)
+        d = dp
+
         ddot = (d-self.last_d)/constants.DT
         self.last_d = d
         #  np.sin(theta_y)*((zdot_m-zdot_l)-omega_y*(x_m-x_l)) \
         #     + np.cos(theta_y)*((xdot_m-xdot_l)-omega_y*(z_m-z_l))
 
+        # d_n =
+
         # Calculate intermediate forces
         F_Pd = -(self.K*(self.d_d-d) - self.D*ddot)  # F_P = towards edge
-        F_Nd = self.F_Nd
+        F_Nd = self.F_Nd if (d-self.d_d) < 0.01 else 0.01
 
         Fx = np.cos(theta_y)*F_Pd - np.sin(theta_y)*F_Nd
         Fz = np.sin(theta_y)*F_Pd + np.cos(theta_y)*F_Nd
+
+        theta_sign = np.sign(np.cos(theta_y))
+        if theta_y > 0:
+            self.theta_crossed_thresh = 0
+        # if self.theta_crossed_thresh and np.abs(theta_y - np.pi/2) < constants.EPSILON:
+        if self.last_theta_sign is not None and theta_sign != self.last_theta_sign:
+            z_impulse = -constants.FINGER_MASS*zdot_m
+            z_impulse /= constants.DT
+            Fz += z_impulse
+            x_impulse = -constants.FINGER_MASS*xdot_m
+            x_impulse /= constants.DT
+            Fx += x_impulse
+            self.debug['impulse'].append(x_impulse + z_impulse)
+        else:
+            self.debug['impulse'].append(0)
+        self.last_theta_sign = theta_sign
 
         # Update debug traces
         self.debug['Fx'].append(Fx)

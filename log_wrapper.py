@@ -24,7 +24,13 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         vels = self.get_input_port(1).Eval(context)
         for pose, vel in zip(poses, vels):
             out += list(pose.translation())
-            out += list(RollPitchYaw(pose.rotation()).vector())
+            rot_vec = RollPitchYaw(pose.rotation()).vector()
+            # _deg*np.pi/180
+            rot_vec[1] = pose.rotation().ToAngleAxis().angle()
+            if sum(pose.rotation().ToAngleAxis().axis()) < 0:
+                rot_vec[1] *= -1
+            # print(pose.rotation().ToAngleAxis().axis())
+            out += list(rot_vec)
             out += list(vel.translational())
             out += list(vel.rotational())
         output.SetFromVector(out)
