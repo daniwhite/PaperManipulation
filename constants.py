@@ -12,7 +12,7 @@ FINGER_MASS = FINGER_VOLUME*1e3  # Assume finger is made of water
 
 
 # Initial manipulator position
-INIT_X = PEDESTAL_WIDTH*0.6
+INIT_X = PEDESTAL_WIDTH/2 + FINGER_RADIUS + EPSILON
 INIT_Z = 0
 
 # Time constants

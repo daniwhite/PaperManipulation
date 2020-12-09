@@ -133,7 +133,7 @@ class PDFinger(FingerController):
 
 class EdgeController(FingerController):
 
-    def __init__(self, plant, finger_idx, ll_idx, K, D, F_Nd, d_d):
+    def __init__(self, plant, finger_idx, ll_idx, K=None, D=None, F_Nd=None, d_d=None, w_l=None, h_l=None):
         super().__init__(plant, finger_idx)
 
         self.ll_idx = ll_idx
@@ -141,6 +141,21 @@ class EdgeController(FingerController):
         self.D = D
         self.F_Nd = F_Nd
         self.d_d = d_d
+        self.last_d = 0
+
+        self.w_l = w_l
+        self.h_l = h_l
+        self.r = constants.FINGER_RADIUS
+
+        self.debug = {}
+        self.debug['Fx'] = []
+        self.debug['Fz'] = []
+        self.debug['theta_y'] = []
+        self.debug['FN'] = []
+        self.debug['FP'] = []
+        self.debug['d'] = []
+        self.debug['delta_d'] = []
+        self.debug['ddot'] = []
 
     def GetForces(self, poses, vels):
         # Unpack values
@@ -155,21 +170,38 @@ class EdgeController(FingerController):
         minus_theta_y = RollPitchYaw(poses[self.ll_idx].rotation()).vector()[1]
         minus_omega_y = vels[self.ll_idx].rotational()[1]
 
-        # TODO: paper edge position, not body center
-        # Right now should just cause an offset
         # Fix angle convention
         theta_y = -minus_theta_y
         omega_y = -minus_omega_y
 
-        d = np.sin(theta_y)*(z_m-z_l) + np.cos(theta_y)*(x_m-x_l)
-        ddot = np.sin(theta_y)*((zdot_m-zdot_l)-omega_y*(x_m-x_l)) \
-            + np.cos(theta_y)*((xdot_m-xdot_l)-omega_y*(z_m-z_l))
+        # d = np.sin(theta_y)*(z_m-z_l) + np.cos(theta_y)*(x_m-x_l)
+        x_edge = x_l+(self.w_l/2)*np.cos(theta_y)+(self.h_l/2)*np.sin(theta_y)
+        z_edge = z_l+(self.w_l/2)*np.sin(theta_y)-(self.h_l/2)*np.cos(theta_y)
+        x_contact = x_m + self.r*np.sin(theta_y)
+        z_contact = z_m + self.r*np.cos(theta_y)
+        d = np.sqrt((x_edge - x_contact)**2 + (z_edge - z_contact)
+                    ** 2)
+
+        ddot = (d-self.last_d)/constants.DT
+        self.last_d = d
+        #  np.sin(theta_y)*((zdot_m-zdot_l)-omega_y*(x_m-x_l)) \
+        #     + np.cos(theta_y)*((xdot_m-xdot_l)-omega_y*(z_m-z_l))
 
         # Calculate intermediate forces
-        F_Pd = self.K*(self.d_d-d) - self.D*ddot
+        F_Pd = -(self.K*(self.d_d-d) - self.D*ddot)  # F_P = towards edge
         F_Nd = self.F_Nd
 
-        Fx = -np.cos(theta_y)*F_Pd + np.sin(theta_y)*F_Nd
+        Fx = np.cos(theta_y)*F_Pd - np.sin(theta_y)*F_Nd
         Fz = np.sin(theta_y)*F_Pd + np.cos(theta_y)*F_Nd
+
+        # Update debug traces
+        self.debug['Fx'].append(Fx)
+        self.debug['Fz'].append(Fz)
+        self.debug['theta_y'].append(theta_y)
+        self.debug['FN'].append(F_Nd)
+        self.debug['FP'].append(F_Pd)
+        self.debug['d'].append(d)
+        self.debug['delta_d'].append(self.d_d-d)
+        self.debug['ddot'].append(ddot)
 
         return Fx, Fz
