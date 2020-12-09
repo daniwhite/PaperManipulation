@@ -1,3 +1,5 @@
+"""Parameters and functions related with the pedestal."""
+
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix
 

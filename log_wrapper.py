@@ -1,11 +1,20 @@
-import constants
-import pydrake
-from pydrake.all import RigidTransform, RotationMatrix, PoseBundle, RollPitchYaw, SpatialVelocity
-from pydrake.multibody.tree import SpatialInertia, UnitInertia
+# Standard imports
 import numpy as np
+
+# Drake imports
+import pydrake
+from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity
+
+# Imports of other project files
+import constants
 
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):
+    """
+    Wrapper system that converts RigidTransform and SpatialVelocity inputs into vector output so it
+    can be used easily with a logger.
+    """
+
     def __init__(self, num_bodies):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self._size = num_bodies*12
@@ -25,11 +34,12 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         for pose, vel in zip(poses, vels):
             out += list(pose.translation())
             rot_vec = RollPitchYaw(pose.rotation()).vector()
-            # _deg*np.pi/180
+
+            # AngleAxis is more convenient becasue of where it wrapps around
             rot_vec[1] = pose.rotation().ToAngleAxis().angle()
             if sum(pose.rotation().ToAngleAxis().axis()) < 0:
                 rot_vec[1] *= -1
-            # print(pose.rotation().ToAngleAxis().axis())
+
             out += list(rot_vec)
             out += list(vel.translational())
             out += list(vel.rotational())

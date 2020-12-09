@@ -1,11 +1,17 @@
+# Standard imports
 import numpy as np
-import constants
+
+# Drake imports
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix, PidController
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
+# Imports of other project files
+import constants
+
 
 class Paper:
+    """Model of paper dynamics."""
     name = "paper"
     width = 11*constants.IN_TO_M
     depth = 8.5*constants.IN_TO_M
@@ -21,7 +27,8 @@ class Paper:
     # http://www.mate.tue.nl/mate/pdfs/10509.pdf
     youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5, stiffness=1e-3):
+    def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5,
+                 stiffness=1e-3):
         # Initialize parameters
         self.plant = plant
         self.num_links = num_links
@@ -53,7 +60,7 @@ class Paper:
                 SpatialInertia(mass=self.link_mass,
                                # CoM at origin of body frame
                                p_PScm_E=np.array([0., 0., 0.]),
-                               # Deault moment of inertia for a solid box
+                               # Default moment of inertia for a solid box
                                G_SP_E=UnitInertia.SolidBox(
                                    self.link_width, self.width, self.true_height))
             )
@@ -85,13 +92,17 @@ class Paper:
                     "paper_hinge_frame",
                     self.plant.GetBodyByName("paper_body{}".format(
                         link_num-1), self.link_instances[-1]),
-                    RigidTransform(RotationMatrix(), [self.link_width/2+constants.EPSILON/2, 0, 0.5*self.height]))
+                    RigidTransform(RotationMatrix(), [self.link_width/2+constants.EPSILON/2,
+                                                      0,
+                                                      0.5*self.height]))
                 self.plant.AddFrame(paper1_hinge_frame)
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     self.plant.GetBodyByName(
                         "paper_body{}".format(link_num), paper_instance),
-                    RigidTransform(RotationMatrix(), [(-self.link_width/2+constants.EPSILON/2), 0, 0.5*self.height]))
+                    RigidTransform(RotationMatrix(), [(-self.link_width/2+constants.EPSILON/2),
+                                                      0,
+                                                      0.5*self.height]))
                 self.plant.AddFrame(paper2_hinge_frame)
 
                 joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
@@ -101,7 +112,6 @@ class Paper:
                     [0, 1, 0]))
 
                 if type(default_joint_angle) is list:
-                    print(self.default_joint_angle[link_num])
                     joint.set_default_angle(self.default_joint_angle[link_num])
                 else:
                     joint.set_default_angle(self.default_joint_angle)
@@ -133,7 +143,6 @@ class Paper:
                 paper_ctrlr_context, [0, 0])
 
     def get_free_edge_instance(self):
-        # return self.plant.GetModelInstanceByName(self.name + str(self.num_links-1))
         return self.link_instances[-2]
 
     def weld_paper_edge(self, pedestal_width, pedestal_height):

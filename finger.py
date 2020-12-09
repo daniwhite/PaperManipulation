@@ -1,8 +1,15 @@
-import constants
-import pydrake
-from pydrake.all import RigidTransform, RotationMatrix, SpatialVelocity, RollPitchYaw
-from pydrake.multibody.tree import SpatialInertia, UnitInertia
+"""Functions for creating and controlling the finger manipulator."""
+
+# Standard imports
 import numpy as np
+
+# Drake imports
+import pydrake
+from pydrake.all import RigidTransform, SpatialVelocity
+from pydrake.multibody.tree import SpatialInertia, UnitInertia
+
+# Imports of other project files
+import constants
 
 
 def AddFinger(plant, init_x, init_z):
@@ -132,62 +139,62 @@ class PDFinger(FingerController):
 
 
 class EdgeController(FingerController):
+    """Fold paper with feedback on positino of the past link"""
 
-    def __init__(self, plant, finger_idx, ll_idx, K=None, D=None, F_Nd=None, d_d=None, w_l=None, h_l=None):
+    # Making these parameters keywords means that
+    def __init__(self, plant, finger_idx, ll_idx, K, D, F_Nd, d_d, w_l, h_l, debug=False):
         super().__init__(plant, finger_idx)
 
-        self.ll_idx = ll_idx
+        # Control parameters
         self.K = K
-        self.D = D
         self.F_Nd = F_Nd
         self.d_d = d_d
-        self.last_d = 0
-        self.last_theta_sign = None
 
+        # Paper parameters
         self.w_l = w_l
         self.h_l = h_l
-        self.r = constants.FINGER_RADIUS
-        self.theta_crossed_thresh = False
+        self.ll_idx = ll_idx  # Last link index
 
-        self.debug = {}
-        self.debug['Fx'] = []
-        self.debug['Fz'] = []
-        self.debug['theta_y'] = []
-        self.debug['FN'] = []
-        self.debug['FP'] = []
-        self.debug['d'] = []
-        self.debug['delta_d'] = []
-        self.debug['ddot'] = []
-        self.debug['impulse'] = []
-        self.debug['dp'] = []
-        self.debug['dn'] = []
+        # Initialize state variables
+        self.last_theta_cos_sign = None
+
+        # Initialize debug dict if necessary
+        if debug:
+            self.debug = {}
+            self.debug['Fx'] = []
+            self.debug['Fz'] = []
+            self.debug['theta_y'] = []
+            self.debug['FN'] = []
+            self.debug['FP'] = []
+            self.debug['d'] = []
+            self.debug['delta_d'] = []
+            self.debug['ddot'] = []
+            self.debug['impulse'] = []
+            self.debug['dp'] = []
+            self.debug['dn'] = []
+        else:
+            self.debug = None
 
     def GetForces(self, poses, vels):
-        # Unpack values
+        # Unpack translational val
         x_m = poses[self.finger_idx].translation()[0]
         z_m = poses[self.finger_idx].translation()[2]
         xdot_m = vels[self.finger_idx].translational()[0]
         zdot_m = vels[self.finger_idx].translational()[2]
         x_l = poses[self.ll_idx].translation()[0]
         z_l = poses[self.ll_idx].translation()[2]
-        xdot_l = vels[self.ll_idx].translational()[0]
-        zdot_l = vels[self.ll_idx].translational()[2]
+
+        # Unpack rotation
+        # AngleAxis is more convenient becasue of where it wrapps around
         minus_theta_y = poses[self.ll_idx].rotation().ToAngleAxis().angle()
         if sum(poses[self.ll_idx].rotation().ToAngleAxis().axis()) < 0:
             minus_theta_y *= -1
-        minus_omega_y = vels[self.ll_idx].rotational()[1]
-
         # Fix angle convention
         theta_y = -minus_theta_y
-        omega_y = -minus_omega_y
 
-        # d = np.sin(theta_y)*(z_m-z_l) + np.cos(theta_y)*(x_m-x_l)
+        # (x_edge, z_edge) = position of the edge of the last link
         x_edge = x_l+(self.w_l/2)*np.cos(theta_y)+(self.h_l/2)*np.sin(theta_y)
         z_edge = z_l+(self.w_l/2)*np.sin(theta_y)-(self.h_l/2)*np.cos(theta_y)
-        x_contact = x_m + self.r*np.sin(theta_y)
-        z_contact = z_m + self.r*np.cos(theta_y)
-        d = np.sqrt((x_edge - x_contact)**2 + (z_edge - z_contact)
-                    ** 2)
 
         # (x_p, z_p) = projected position of manipulator onto link
         x_p = np.cos(theta_y)*(np.cos(theta_y)*(x_m-x_edge) +
@@ -195,53 +202,43 @@ class EdgeController(FingerController):
         z_p = np.sin(theta_y)*(np.cos(theta_y)*(x_m-x_m) +
                                np.sin(theta_y)*(z_m-z_edge))+z_edge
 
-        # dp = parallel distance
-        dp = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
+        # Parallel distance between projected point and manipulator posision
+        # (Subtract finger radius because we want distance from surface, not distance from center)
+        d = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
             constants.FINGER_RADIUS
-        self.debug['dp'].append(dp)
-        dn = np.sqrt((x_m - x_p)**2 + (z_m - z_p) ** 2) - \
-            constants.FINGER_RADIUS
-        self.debug['dn'].append(dn)
-        d = dp
 
-        ddot = (d-self.last_d)/constants.DT
-        self.last_d = d
-        #  np.sin(theta_y)*((zdot_m-zdot_l)-omega_y*(x_m-x_l)) \
-        #     + np.cos(theta_y)*((xdot_m-xdot_l)-omega_y*(z_m-z_l))
+        # F_P goes towards edge, so it needs to be negative to control dp properly
+        F_P = -1*self.K*(self.d_d-d)
+        # Only apply normal force if we are sufficiently close to the distance point
+        F_N = self.F_Nd if (d-self.d_d) < 0.01 else 0.01
 
-        # d_n =
+        Fx = np.cos(theta_y)*F_P - np.sin(theta_y)*F_N
+        Fz = np.sin(theta_y)*F_P + np.cos(theta_y)*F_N
 
-        # Calculate intermediate forces
-        F_Pd = -(self.K*(self.d_d-d) - self.D*ddot)  # F_P = towards edge
-        F_Nd = self.F_Nd if (d-self.d_d) < 0.01 else 0.01
-
-        Fx = np.cos(theta_y)*F_Pd - np.sin(theta_y)*F_Nd
-        Fz = np.sin(theta_y)*F_Pd + np.cos(theta_y)*F_Nd
-
-        theta_sign = np.sign(np.cos(theta_y))
-        if theta_y > 0:
-            self.theta_crossed_thresh = 0
-        # if self.theta_crossed_thresh and np.abs(theta_y - np.pi/2) < constants.EPSILON:
-        if self.last_theta_sign is not None and theta_sign != self.last_theta_sign:
+        # If theta passes pi/2, we need to apply an impulse to deal with the fact that the paper's
+        # friction force is suddenly no longer holding the manipulator in place
+        theta_cos_sign = np.sign(np.cos(theta_y))
+        if self.last_theta_cos_sign is not None and theta_cos_sign != self.last_theta_cos_sign:
             z_impulse = -constants.FINGER_MASS*zdot_m
             z_impulse /= constants.DT
             Fz += z_impulse
             x_impulse = -constants.FINGER_MASS*xdot_m
             x_impulse /= constants.DT
             Fx += x_impulse
-            self.debug['impulse'].append(x_impulse + z_impulse)
+            impulse = x_impulse + z_impulse
         else:
-            self.debug['impulse'].append(0)
-        self.last_theta_sign = theta_sign
+            impulse = 0
+        self.last_theta_cos_sign = theta_cos_sign
 
         # Update debug traces
-        self.debug['Fx'].append(Fx)
-        self.debug['Fz'].append(Fz)
-        self.debug['theta_y'].append(theta_y)
-        self.debug['FN'].append(F_Nd)
-        self.debug['FP'].append(F_Pd)
-        self.debug['d'].append(d)
-        self.debug['delta_d'].append(self.d_d-d)
-        self.debug['ddot'].append(ddot)
+        if self.debug is not None:
+            self.debug['Fx'].append(Fx)
+            self.debug['Fz'].append(Fz)
+            self.debug['theta_y'].append(theta_y)
+            self.debug['FN'].append(F_N)
+            self.debug['FP'].append(F_P)
+            self.debug['d'].append(d)
+            self.debug['delta_d'].append(self.d_d-d)
+            self.debug['impulse'].append(impulse)
 
         return Fx, Fz
