@@ -22,4 +22,4 @@ INIT_Z = 0
 
 # Time constants
 DT = 1e-4  # 1e-5
-TSPAN = 1
+TSPAN = 2
