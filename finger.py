@@ -10,6 +10,7 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 # Imports of other project files
 import constants
+import paper
 import pedestal
 
 
@@ -143,20 +144,18 @@ class EdgeController(FingerController):
     """Fold paper with feedback on positino of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, finger_idx, ll_idx, Kp, Kn, F_Nd, d_d, w_l, h_l, paper_thickness, debug=False):
+    def __init__(self, plant, finger_idx, ll_idx, K, F_Nd, d_d, w_l,  debug=False):
         super().__init__(plant, finger_idx)
 
         # Control parameters
-        self.Kp = Kp
-        self.Kn = Kn
+        self.K = K
         self.F_Nd = F_Nd
         self.d_d = d_d
 
         # Paper parameters
         self.w_l = w_l
-        self.h_l = h_l
+        self.h_l = paper.PAPER_HEIGHT
         self.ll_idx = ll_idx  # Last link index
-        self.paper_thickness = paper_thickness
 
         # Initialize state variables
         self.last_theta_cos_sign = None
@@ -171,15 +170,16 @@ class EdgeController(FingerController):
             self.debug['FP'] = []
             self.debug['d'] = []
             self.debug['delta_d'] = []
-            self.debug['ddot'] = []
             self.debug['impulse'] = []
-            self.debug['dp'] = []
-            self.debug['dn'] = []
         else:
             self.debug = None
 
     def in_end_zone(self, x_m, z_m, theta_y):
-        z_ped_dist = abs(z_m - pedestal.PEDESTAL_HEIGHT - self.paper_thickness)
+        """
+        Check whether or not the manipulator (and presumably the paper) have gotten clsoe enough to
+        the pedestal.
+        """
+        z_ped_dist = abs(z_m - pedestal.PEDESTAL_HEIGHT - paper.PAPER_HEIGHT)
         if abs(x_m) > pedestal.PEDESTAL_DEPTH/2:
             return False
         if z_ped_dist > 0.01:
@@ -215,16 +215,12 @@ class EdgeController(FingerController):
 
         # Parallel distance between projected point and manipulator posision
         # (Subtract finger radius because we want distance from surface, not distance from center)
-        dp = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
-            constants.FINGER_RADIUS
-        dn = np.sqrt((x_m - x_p)**2 + (z_m - z_p) ** 2) - \
+        d = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
             constants.FINGER_RADIUS
 
-        # F_P goes towards edge, so it needs to be negative to control dp properly
-        F_P = -1*self.Kp*(self.d_d-dp)
-        # Only apply normal force if we are sufficiently close to the distance point
-        # F_N = max(-1*self.Kn*(-dn), self.F_Nd)
-        F_N = self.F_Nd if (dp-self.d_d) < 0.01 else 0.01
+        # F_P goes towards edge, so it needs to be negative to control d properly
+        F_P = -1*self.K*(self.d_d-d)
+        F_N = self.F_Nd if (d-self.d_d) < 0.01 else 0.01
         if self.in_end_zone(x_m, z_m, theta_y):
             F_N = 100
 
@@ -251,10 +247,9 @@ class EdgeController(FingerController):
             self.debug['Fx'].append(Fx)
             self.debug['Fz'].append(Fz)
             self.debug['theta_y'].append(theta_y)
-            self.debug['FN'].append(-1*self.Kn*(-dn))
+            self.debug['FN'].append(F_N)
             self.debug['FP'].append(F_P)
-            self.debug['d'].append(dn)
-            self.debug['delta_d'].append(self.d_d-dp)
+            self.debug['delta_d'].append(self.d_d-d)
             self.debug['impulse'].append(impulse)
 
         return Fx, Fz

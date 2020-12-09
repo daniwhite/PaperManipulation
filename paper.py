@@ -9,13 +9,17 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 # Imports of other project files
 import constants
 
+PAPER_WIDTH = 11*constants.IN_TO_M
+PAPER_DEPTH = 8.5*constants.IN_TO_M
+PAPER_HEIGHT = 0.0005
+
 
 class Paper:
     """Model of paper dynamics."""
     name = "paper"
-    width = 11*constants.IN_TO_M
-    depth = 8.5*constants.IN_TO_M
-    height = 0.0005
+    width = PAPER_WIDTH
+    depth = PAPER_DEPTH
+    height = PAPER_HEIGHT
 
     # Source:
     # https://www.jampaper.com/paper-weight-chart.asp
