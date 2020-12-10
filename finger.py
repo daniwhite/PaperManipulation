@@ -5,7 +5,7 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, SpatialVelocity
+from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 # Imports of other project files
@@ -24,7 +24,7 @@ def AddFinger(plant, init_x, init_z):
         0, [0, 0, 0], UnitInertia(0, 0, 0)))
 
     # Initialize finger body
-    finger_body = plant.AddRigidBody("body", finger,
+    finger_body = plant.AddRigidBody("finger_body", finger,
                                      pydrake.multibody.tree.SpatialInertia(
                                          mass=constants.FINGER_MASS,
                                          p_PScm_E=np.array([0., 0., 0.]),
@@ -34,10 +34,10 @@ def AddFinger(plant, init_x, init_z):
     shape = pydrake.geometry.Sphere(radius)
     if plant.geometry_source_is_registered():
         plant.RegisterCollisionGeometry(
-            finger_body, RigidTransform(), shape, "body", pydrake.multibody.plant.CoulombFriction(
+            finger_body, RigidTransform(), shape, "finger_body", pydrake.multibody.plant.CoulombFriction(
                 constants.FRICTION, constants.FRICTION))
         plant.RegisterVisualGeometry(
-            finger_body, RigidTransform(), shape, "body", [.9, .5, .5, 1.0])
+            finger_body, RigidTransform(), shape, "finger_body", [.9, .5, .5, 1.0])
 
     # Add control joins for x and z movement
     finger_x = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
@@ -49,7 +49,7 @@ def AddFinger(plant, init_x, init_z):
     finger_z = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
         "finger_z",
         plant.GetFrameByName("false_body"),
-        plant.GetFrameByName("body"), [0, 0, 1], -1, 1))
+        plant.GetFrameByName("finger_body"), [0, 0, 1], -1, 1))
     finger_z.set_default_translation(init_z)
     plant.AddJointActuator("finger_z", finger_z)
 
@@ -253,3 +253,49 @@ class EdgeController(FingerController):
             self.debug['impulse'].append(impulse)
 
         return Fx, Fz
+
+
+class OptimizationController(FingerController):
+    """Fold paper with feedback on positino of the past link"""
+
+    # Making these parameters keywords means that
+    def __init__(self, plant, paper, finger_idx):
+        super().__init__(plant, finger_idx)
+
+        self.N = int(constants.TSPAN/constants.DT)
+        self.plant = plant
+        self.finger_idx = finger_idx
+        self.paper = paper
+
+    def optimize(self, diagram_context):
+        context = self.plant.GetMyContextFromRoot(diagram_context)
+        # dircol =
+        # ik = pydrake.multibody.inverse_kinematics.InverseKinematics(
+        #     self.plant, context)
+
+        # ll_instance = self.paper.get_free_edge_instance()
+        # # Fix
+        # ik.AddPositionConstraint(
+        #     self.plant.GetFrameByName("paper_body",
+        #                               ll_instance),
+        #     [0, 0, -paper.PAPER_HEIGHT/2],
+        #     self.plant.world_frame(),
+        #     [
+        #         -pedestal.PEDESTAL_DEPTH/2,
+        #         -pedestal.PEDESTAL_WIDTH/2,
+        #         pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT
+        #     ],
+        #     [
+        #         pedestal.PEDESTAL_DEPTH/2,
+        #         pedestal.PEDESTAL_WIDTH/2,
+        #         pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT
+        #     ],
+        # )
+
+        result = pydrake.solvers.mathematicalprogram.Solve(ik.prog())
+        return result
+
+    def GetForces(self, poses, vels):
+
+        # return Fx, Fz
+        return [0, 0]

@@ -59,7 +59,7 @@ class Paper:
             paper_instance = self.plant.AddModelInstance(
                 self.name + str(link_num))
             paper_body = self.plant.AddRigidBody(
-                self.name + "_body" + str(link_num),
+                self.name + "_body",
                 paper_instance,
                 SpatialInertia(mass=self.link_mass,
                                # CoM at origin of body frame
@@ -76,8 +76,7 @@ class Paper:
                     RigidTransform(),
                     pydrake.geometry.Box(
                         self.link_width, self.width, self.height),
-                    self.name + "_body" +
-                    str(link_num), pydrake.multibody.plant.CoulombFriction(
+                    self.name + "_body", pydrake.multibody.plant.CoulombFriction(
                         self.mu, self.mu)
                 )
 
@@ -87,15 +86,15 @@ class Paper:
                     RigidTransform(),
                     pydrake.geometry.Box(
                         self.link_width, self.width, self.height),
-                    self.name + "_body" + str(link_num),
+                    self.name + "_body",
                     [0.9, 0.9, 0.9, 1.0])  # RBGA color
 
             # Set up joint actuators
             if link_num > 0:
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
-                    self.plant.GetBodyByName("paper_body{}".format(
-                        link_num-1), self.link_instances[-1]),
+                    self.plant.GetBodyByName(
+                        "paper_body", self.link_instances[-1]),
                     RigidTransform(RotationMatrix(), [self.link_width/2+constants.EPSILON/2,
                                                       0,
                                                       0.5*self.height]))
@@ -103,7 +102,7 @@ class Paper:
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     self.plant.GetBodyByName(
-                        "paper_body{}".format(link_num), paper_instance),
+                        "paper_body", paper_instance),
                     RigidTransform(RotationMatrix(), [(-self.link_width/2+constants.EPSILON/2),
                                                       0,
                                                       0.5*self.height]))
@@ -154,7 +153,7 @@ class Paper:
         self.plant.WeldFrames(
             self.plant.world_frame(),
             self.plant.GetBodyByName(
-                "paper_body0", self.link_instances[0]).body_frame(),
+                "paper_body", self.link_instances[0]).body_frame(),
             RigidTransform(RotationMatrix(
             ), [-(pedestal_width/2-self.width/4), 0, pedestal_height+self.height/2])
         )
