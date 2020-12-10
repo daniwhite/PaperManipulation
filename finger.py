@@ -5,8 +5,8 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation
-from pydrake.multibody.tree import SpatialInertia, UnitInertia
+from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation, MathematicalProgram, eq, SnoptSolver
+from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 
 # Imports of other project files
 import constants
@@ -262,40 +262,113 @@ class OptimizationController(FingerController):
     def __init__(self, plant, paper, finger_idx):
         super().__init__(plant, finger_idx)
 
-        self.N = int(constants.TSPAN/constants.DT)
-        self.plant = plant
         self.finger_idx = finger_idx
         self.paper = paper
 
-    def optimize(self, diagram_context):
-        context = self.plant.GetMyContextFromRoot(diagram_context)
-        # dircol =
-        # ik = pydrake.multibody.inverse_kinematics.InverseKinematics(
-        #     self.plant, context)
+        self.plant = plant
 
-        # ll_instance = self.paper.get_free_edge_instance()
-        # # Fix
-        # ik.AddPositionConstraint(
-        #     self.plant.GetFrameByName("paper_body",
-        #                               ll_instance),
-        #     [0, 0, -paper.PAPER_HEIGHT/2],
-        #     self.plant.world_frame(),
-        #     [
-        #         -pedestal.PEDESTAL_DEPTH/2,
-        #         -pedestal.PEDESTAL_WIDTH/2,
-        #         pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT
-        #     ],
-        #     [
-        #         pedestal.PEDESTAL_DEPTH/2,
-        #         pedestal.PEDESTAL_WIDTH/2,
-        #         pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT
-        #     ],
-        # )
+        self.forces = [0, 0]
+        self.idx = 0
 
-        result = pydrake.solvers.mathematicalprogram.Solve(ik.prog())
-        return result
+    def get_jacobian(self, context):
+        # get reference frames for the given leg and the ground
+        finger_frame = self.plant.GetBodyByName("finger_body").body_frame()
+        wolrd_frame = self.plant.world_frame()
+
+        # compute Jacobian matrix
+        J = self.plant.CalcJacobianTranslationalVelocity(
+            context,
+            JacobianWrtVariable(0),
+            finger_frame,
+            [0, 0, 0],
+            wolrd_frame,
+            wolrd_frame
+        )
+
+        # discard y components since we are in 2D
+        return J[[0, 2]]
+
+    def manipulator_equations(self, vars):
+        # configuration, velocity, acceleration, force
+        assert vars.size == 3 * self.nq + self.nf
+        split_at = [self.nq, 2 * self.nq, 3 * self.nq]
+        q, qd, qdd, f = np.split(vars, split_at)
+
+        # set state
+        context = self.plant.CreateDefaultContext()
+        self.plant.SetPositions(context, q)
+        self.plant.SetVelocities(context, qd)
+
+        # matrices for the manipulator equations
+        M = self.plant.CalcMassMatrixViaInverseDynamics(context)
+        Cv = self.plant.CalcBiasTerm(context)
+        tauG = self.plant.CalcGravityGeneralizedForces(context)
+
+        # Jacobian of the stance foot
+        J = self.get_jacobian(context)
+
+        # return violation of the manipulator equations
+        return M.dot(qdd) + Cv - tauG - J.T.dot(f)
+
+    def optimize(self):
+        self.plant = self.plant.ToAutoDiffXd()
+        self.nq = self.plant.num_positions()
+        self.nf = 2
+
+        # time steps in the trajectory optimization
+        self.opt_dt = 1000*constants.DT
+        self.T = int(constants.TSPAN/(self.opt_dt))
+
+        # minimum and maximum time interval is seconds
+        h_min = self.opt_dt*(1 - 1e-9)
+        h_max = self.opt_dt*(1 + 1e-9)
+
+        # initialize program
+        prog = MathematicalProgram()
+
+        # vector of the time intervals
+        # (distances between the T + 1 break points)
+        h = prog.NewContinuousVariables(self.T, name='h')
+
+        # system configuration, generalized velocities, and accelerations
+        q = prog.NewContinuousVariables(rows=self.T+1, cols=self.nq, name='q')
+        qd = prog.NewContinuousVariables(
+            rows=self.T+1, cols=self.nq, name='qd')
+        qdd = prog.NewContinuousVariables(
+            rows=self.T, cols=self.nq, name='qdd')
+
+        # stance-foot force
+        f = prog.NewContinuousVariables(rows=self.T, cols=2, name='f')
+
+        # lower and upper bound on the time steps for all t
+        prog.AddBoundingBoxConstraint([h_min] * self.T, [h_max] * self.T, h)
+
+        # link the configurations, velocities, and accelerations
+        # uses implicit Euler method, https://en.wikipedia.org/wiki/Backward_Euler_method
+        for t in range(self.T):
+            prog.AddConstraint(eq(q[t+1], q[t] + h[t] * qd[t+1]))
+            prog.AddConstraint(eq(qd[t+1], qd[t] + h[t] * qdd[t]))
+
+        # manipulator equations for all t (implicit Euler)
+        for t in range(self.T):
+            vars = np.concatenate((q[t+1], qd[t+1], qdd[t], f[t]))
+            prog.AddConstraint(self.manipulator_equations, lb=[
+                               0]*self.nq, ub=[0]*self.nq, vars=vars)
+
+        solver = SnoptSolver()
+        self.result = solver.Solve(prog)
+
+        if not self.result.is_success():
+            raise RuntimeError("Optimization failed!")
+
+        self.forces = self.result.GetSolution(f)
 
     def GetForces(self, poses, vels):
+        idx = int(self.idx*constants.DT/self.opt_dt)
+        if idx < self.T:
+            Fx, Fz = self.forces[idx, :]
+        else:
+            Fx, Fz = [0, 0]
 
-        # return Fx, Fz
-        return [0, 0]
+        self.idx += 1
+        return Fx, Fz
