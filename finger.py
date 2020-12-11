@@ -5,7 +5,7 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation, MathematicalProgram, eq, SnoptSolver
+from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation, MathematicalProgram, eq, SnoptSolver, RollPitchYaw, AutoDiffXd
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 
 # Imports of other project files
@@ -220,7 +220,7 @@ class EdgeController(FingerController):
 
         # F_P goes towards edge, so it needs to be negative to control d properly
         F_P = -1*self.K*(self.d_d-d)
-        F_N = self.F_Nd if (d-self.d_d) < 0.01 else 0.01
+        F_N = self.F_Nd if abs(d-self.d_d) < 0.01 else 0.01
         if self.in_end_zone(x_m, z_m, theta_y):
             F_N = 100
 
@@ -259,10 +259,11 @@ class OptimizationController(FingerController):
     """Fold paper with feedback on positino of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper, finger_idx):
+    def __init__(self, plant, paper, finger_idx, ll_idx):
         super().__init__(plant, finger_idx)
 
         self.finger_idx = finger_idx
+        self.ll_idx = ll_idx
         self.paper = paper
 
         self.plant = plant
@@ -288,6 +289,25 @@ class OptimizationController(FingerController):
         # discard y components since we are in 2D
         return J[[0, 2]]
 
+    def constrain_end_effector(self, vars):
+        # configuration, velocity, acceleration, force
+        assert vars.size == 3 * self.nq + self.nf
+        split_at = [self.nq, 2 * self.nq, 3 * self.nq]
+        q, qd, qdd, f = np.split(vars, split_at)
+
+        context = self.plant.CreateDefaultContext()
+        self.plant.SetPositions(context, q)
+        self.plant.SetVelocities(context, qd)
+
+        pose = self.plant.EvalBodyPoseInWorld(
+            context, self.plant.GetBodyByName("paper_body", self.ll_idx))
+        x_pos = pose.translation()[0]
+        z_pos = pose.translation()[2]
+        y_rot = pydrake.math.RollPitchYaw_[
+            AutoDiffXd](pose.rotation()).vector()[1]
+
+        return [x_pos, z_pos, y_rot]
+
     def manipulator_equations(self, vars):
         # configuration, velocity, acceleration, force
         assert vars.size == 3 * self.nq + self.nf
@@ -310,7 +330,7 @@ class OptimizationController(FingerController):
         # return violation of the manipulator equations
         return M.dot(qdd) + Cv - tauG - J.T.dot(f)
 
-    def optimize(self):
+    def optimize(self, init_positions):
         self.plant = self.plant.ToAutoDiffXd()
         self.nq = self.plant.num_positions()
         self.nf = 2
@@ -354,6 +374,27 @@ class OptimizationController(FingerController):
             vars = np.concatenate((q[t+1], qd[t+1], qdd[t], f[t]))
             prog.AddConstraint(self.manipulator_equations, lb=[
                                0]*self.nq, ub=[0]*self.nq, vars=vars)
+
+        # Constrain to initial position
+        prog.AddConstraint(eq(q[0], init_positions))
+        prog.AddConstraint(eq(qd[0], np.zeros_like(init_positions)))
+
+        # Constrain final position
+        vars = np.concatenate((q[-1], qd[-1], qdd[-1], f[-1]))
+        prog.AddConstraint(self.constrain_end_effector,
+                           lb=[-pedestal.PEDESTAL_DEPTH/2,
+                               pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT/2-constants.EPSILON,
+                               -constants.EPSILON],
+                           ub=[pedestal.PEDESTAL_DEPTH/2,
+                               pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT/2+2*constants.EPSILON,
+                               constants.EPSILON],
+                           vars=vars)
+        prog.AddConstraint(q[-1][0],
+                           -pedestal.PEDESTAL_DEPTH / 2,
+                           pedestal.PEDESTAL_DEPTH/2)
+        prog.AddConstraint(q[-1][2],
+                           pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT/2-constants.EPSILON,
+                           pedestal.PEDESTAL_DEPTH/2)
 
         solver = SnoptSolver()
         self.result = solver.Solve(prog)
