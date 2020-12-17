@@ -220,7 +220,8 @@ class EdgeController(FingerController):
 
         # F_P goes towards edge, so it needs to be negative to control d properly
         F_P = -1*self.K*(self.d_d-d)
-        F_N = self.F_Nd if abs(d-self.d_d) < 0.01 else 0.01
+        # TODO: if this is correctly set to abs, folding fails. Needs to be debugged.
+        F_N = self.F_Nd if d-self.d_d < 0.01 else 0.01
         if self.in_end_zone(x_m, z_m, theta_y):
             F_N = 100
 
