@@ -86,6 +86,17 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(-constants.FINGER_MASS*g + [fy, fz])
 
 
+class BlankController(FingerController):
+    """Fold paper with feedback on positino of the past link"""
+
+    # Making these parameters keywords means that
+    def __init__(self, plant, finger_idx):
+        super().__init__(plant, finger_idx)
+
+    def GetForces(self, poses, vels):
+        return [0, 0]
+
+
 class PDFinger(FingerController):
     """Set up PD controller for finger."""
 
