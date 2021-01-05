@@ -14,7 +14,7 @@ import paper
 import pedestal
 
 
-def AddFinger(plant, init_x, init_z):
+def AddFinger(plant, init_y, init_z):
     """Adds the manipulator."""
     radius = constants.FINGER_RADIUS
     finger = plant.AddModelInstance("finger")
@@ -39,13 +39,13 @@ def AddFinger(plant, init_x, init_z):
         plant.RegisterVisualGeometry(
             finger_body, RigidTransform(), shape, "finger_body", [.9, .5, .5, 1.0])
 
-    # Add control joins for x and z movement
-    finger_x = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
-        "finger_x",
+    # Add control joins for y and z movement
+    finger_y = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
+        "finger_y",
         plant.world_frame(),
-        plant.GetFrameByName("false_body"), [1, 0, 0], -1, 1))
-    plant.AddJointActuator("finger_x", finger_x)
-    finger_x.set_default_translation(init_x)
+        plant.GetFrameByName("false_body"), [0, 1, 0], -1, 1))
+    plant.AddJointActuator("finger_y", finger_y)
+    finger_y.set_default_translation(init_y)
     finger_z = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
         "finger_z",
         plant.GetFrameByName("false_body"),
@@ -82,39 +82,39 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         poses = self.get_input_port(0).Eval(context)
         vels = self.get_input_port(1).Eval(context)
 
-        fx, fz = self.GetForces(poses, vels)
-        output.SetFromVector(-constants.FINGER_MASS*g + [fx, fz])
+        fy, fz = self.GetForces(poses, vels)
+        output.SetFromVector(-constants.FINGER_MASS*g + [fy, fz])
 
 
 class PDFinger(FingerController):
     """Set up PD controller for finger."""
 
-    def __init__(self, plant, finger_idx, pts, tspan_per_segment=5, kx=5, kz=5, dx=0.01, dz=0.01):
+    def __init__(self, plant, finger_idx, pts, tspan_per_segment=5, ky=5, kz=5, dy=0.01, dz=0.01):
         super().__init__(plant, finger_idx)
 
         # Generate trajectory
-        self.xs = []
+        self.ys = []
         self.zs = []
-        self.xdots = [0]
+        self.ydots = [0]
         self.zdots = [0]
 
         for segment_i in range(len(pts)-1):
             start_pt = pts[segment_i]
             end_pt = pts[segment_i+1]
             for prog_frac in np.arange(0, tspan_per_segment, constants.DT)/tspan_per_segment:
-                new_x = start_pt[0] + (end_pt[0] - start_pt[0])*prog_frac
-                self.xs.append(new_x)
+                new_y = start_pt[0] + (end_pt[0] - start_pt[0])*prog_frac
+                self.ys.append(new_y)
                 new_z = start_pt[1] + (end_pt[1] - start_pt[1])*prog_frac
                 self.zs.append(new_z)
 
-        for i in range(len(self.xs)-1):
-            self.xdots.append((self.xs[i+1]-self.xs[i])/constants.DT)
+        for i in range(len(self.ys)-1):
+            self.ydots.append((self.ys[i+1]-self.ys[i])/constants.DT)
             self.zdots.append((self.zs[i+1]-self.zs[i])/constants.DT)
 
         # Set gains
-        self.kx = kx
+        self.ky = ky
         self.kz = kz
-        self.dx = dx
+        self.dy = dy
         self.dz = dz
 
         # For keeping track of place in trajectory
@@ -122,22 +122,22 @@ class PDFinger(FingerController):
 
     def GetForces(self, poses, vels):
         # Unpack values
-        x = poses[self.finger_idx].translation()[0]
+        y = poses[self.finger_idx].translation()[1]
         z = poses[self.finger_idx].translation()[2]
-        xdot = vels[self.finger_idx].translational()[0]
+        ydot = vels[self.finger_idx].translational()[1]
         zdot = vels[self.finger_idx].translational()[2]
 
-        if self.idx < len(self.xs):
-            fx = self.kx*(self.xs[self.idx] - x) + \
-                self.dx*(self.xdots[self.idx] - xdot)
+        if self.idx < len(self.ys):
+            fy = self.ky*(self.ys[self.idx] - y) + \
+                self.dy*(self.ydots[self.idx] - ydot)
             fz = self.kz*(self.zs[self.idx] - z) + \
                 self.dz*(self.zdots[self.idx] - zdot)
         else:
-            fx = self.kx*(self.xs[-1] - x) + self.dx*(-xdot)
+            fy = self.ky*(self.ys[-1] - y) + self.dy*(-ydot)
             fz = self.kz*(self.zs[-1] - z) + self.dz*(- zdot)
         self.idx += 1
 
-        return fx, fz
+        return fy, fz
 
 
 class EdgeController(FingerController):
@@ -163,9 +163,9 @@ class EdgeController(FingerController):
         # Initialize debug dict if necessary
         if debug:
             self.debug = {}
-            self.debug['Fx'] = []
+            self.debug['Fy'] = []
             self.debug['Fz'] = []
-            self.debug['theta_y'] = []
+            self.debug['theta_x'] = []
             self.debug['FN'] = []
             self.debug['FP'] = []
             self.debug['d'] = []
@@ -174,13 +174,13 @@ class EdgeController(FingerController):
         else:
             self.debug = None
 
-    def in_end_zone(self, x_m, z_m, theta_y):
+    def in_end_zone(self, y_m, z_m, theta_x):
         """
         Check whether or not the manipulator (and presumably the paper) have gotten clsoe enough to
         the pedestal.
         """
         z_ped_dist = abs(z_m - pedestal.PEDESTAL_HEIGHT - paper.PAPER_HEIGHT)
-        if abs(x_m) > pedestal.PEDESTAL_DEPTH/2:
+        if abs(y_m) > pedestal.PEDESTAL_DEPTH/2:
             return False
         if z_ped_dist > 0.01:
             return False
@@ -188,72 +188,70 @@ class EdgeController(FingerController):
 
     def GetForces(self, poses, vels):
         # Unpack translational val
-        x_m = poses[self.finger_idx].translation()[0]
+        y_m = poses[self.finger_idx].translation()[1]
         z_m = poses[self.finger_idx].translation()[2]
-        xdot_m = vels[self.finger_idx].translational()[0]
+        ydot_m = vels[self.finger_idx].translational()[1]
         zdot_m = vels[self.finger_idx].translational()[2]
-        x_l = poses[self.ll_idx].translation()[0]
+        y_l = poses[self.ll_idx].translation()[1]
         z_l = poses[self.ll_idx].translation()[2]
 
         # Unpack rotation
         # AngleAxis is more convenient becasue of where it wrapps around
-        minus_theta_y = poses[self.ll_idx].rotation().ToAngleAxis().angle()
+        theta_x = poses[self.ll_idx].rotation().ToAngleAxis().angle()
         if sum(poses[self.ll_idx].rotation().ToAngleAxis().axis()) < 0:
-            minus_theta_y *= -1
-        # Fix angle convention
-        theta_y = -minus_theta_y
+            theta_x *= -1
 
-        # (x_edge, z_edge) = position of the edge of the last link
-        x_edge = x_l+(self.w_l/2)*np.cos(theta_y)+(self.h_l/2)*np.sin(theta_y)
-        z_edge = z_l+(self.w_l/2)*np.sin(theta_y)-(self.h_l/2)*np.cos(theta_y)
+        # (y_edge, z_edge) = position of the edge of the last link
+        y_edge = y_l+(self.w_l/2)*np.cos(theta_x)+(self.h_l/2)*np.sin(theta_x)
+        z_edge = z_l+(self.w_l/2)*np.sin(theta_x)-(self.h_l/2)*np.cos(theta_x)
 
-        # (x_p, z_p) = projected position of manipulator onto link
-        x_p = np.cos(theta_y)*(np.cos(theta_y)*(x_m-x_edge) +
-                               np.sin(theta_y)*(z_m-z_edge))+x_edge
-        z_p = np.sin(theta_y)*(np.cos(theta_y)*(x_m-x_m) +
-                               np.sin(theta_y)*(z_m-z_edge))+z_edge
+        # (y_p, z_p) = projected position of manipulator onto link
+        y_p = np.cos(theta_x)*(np.cos(theta_x)*(y_m-y_edge) +
+                               np.sin(theta_x)*(z_m-z_edge))+y_edge
+        z_p = np.sin(theta_x)*(np.cos(theta_x)*(y_m-y_m) +  # TODO: I think this is a mistake
+                               np.sin(theta_x)*(z_m-z_edge))+z_edge
 
         # Parallel distance between projected point and manipulator posision
         # (Subtract finger radius because we want distance from surface, not distance from center)
-        d = np.sqrt((x_edge - x_p)**2 + (z_edge - z_p) ** 2) - \
+        d = np.sqrt((y_edge - y_p)**2 + (z_edge - z_p) ** 2) - \
             constants.FINGER_RADIUS
 
         # F_P goes towards edge, so it needs to be negative to control d properly
         F_P = -1*self.K*(self.d_d-d)
         # TODO: if this is correctly set to abs, folding fails. Needs to be debugged.
         F_N = self.F_Nd if d-self.d_d < 0.01 else 0.01
-        if self.in_end_zone(x_m, z_m, theta_y):
+        if self.in_end_zone(y_m, z_m, theta_x):
             F_N = 100
 
-        Fx = np.cos(theta_y)*F_P - np.sin(theta_y)*F_N
-        Fz = np.sin(theta_y)*F_P + np.cos(theta_y)*F_N
+        Fy = np.cos(theta_x)*F_P - np.sin(theta_x)*F_N
+        Fz = np.sin(theta_x)*F_P + np.cos(theta_x)*F_N
 
         # If theta passes pi/2, we need to apply an impulse to deal with the fact that the paper's
         # friction force is suddenly no longer holding the manipulator in place
-        theta_cos_sign = np.sign(np.cos(theta_y))
+        theta_cos_sign = np.sign(np.cos(theta_x))
         if self.last_theta_cos_sign is not None and theta_cos_sign != self.last_theta_cos_sign:
             z_impulse = -constants.FINGER_MASS*zdot_m
             z_impulse /= constants.DT
             Fz += z_impulse
-            x_impulse = -constants.FINGER_MASS*xdot_m
-            x_impulse /= constants.DT
-            Fx += x_impulse
-            impulse = x_impulse + z_impulse
+            y_impulse = -constants.FINGER_MASS*ydot_m
+            y_impulse /= constants.DT
+            Fy += y_impulse
+            impulse = y_impulse + z_impulse
         else:
             impulse = 0
         self.last_theta_cos_sign = theta_cos_sign
 
         # Update debug traces
         if self.debug is not None:
-            self.debug['Fx'].append(Fx)
+            self.debug['Fy'].append(Fy)
             self.debug['Fz'].append(Fz)
-            self.debug['theta_y'].append(theta_y)
+            self.debug['theta_x'].append(theta_x)
             self.debug['FN'].append(F_N)
             self.debug['FP'].append(F_P)
             self.debug['delta_d'].append(self.d_d-d)
             self.debug['impulse'].append(impulse)
 
-        return Fx, Fz
+        return Fy, Fz
 
 
 class OptimizationController(FingerController):
