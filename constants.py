@@ -21,5 +21,5 @@ INIT_Y = PEDESTAL_WIDTH/2 + FINGER_RADIUS + EPSILON
 INIT_Z = 0
 
 # Time constants
-DT = 1e-5  # 1e-5
-TSPAN = 1
+DT = 1e-4  # 1e-5
+TSPAN = 5
