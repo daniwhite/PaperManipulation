@@ -31,10 +31,11 @@ class Paper:
     # http://www.mate.tue.nl/mate/pdfs/10509.pdf
     youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5,
+    def __init__(self, plant, scene_graph, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5,
                  stiffness=1e-3):
         # Initialize parameters
         self.plant = plant
+        self.scene_graph = scene_graph
         self.num_links = num_links
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
@@ -76,17 +77,17 @@ class Paper:
             )
 
             if self.plant.geometry_source_is_registered():
-                # Set up collision geometery
+                # Set a box with link dimensions for collision geometry
                 self.plant.RegisterCollisionGeometry(
                     paper_body,
-                    RigidTransform(),
+                    RigidTransform(),  # Pose in body frame
                     pydrake.geometry.Box(
-                        self.width, self.link_width, self.height),
+                        self.width, self.link_width, self.height),  # Actual shape
                     self.name + "_body", pydrake.multibody.plant.CoulombFriction(
-                        self.mu, self.mu)
+                        self.mu, self.mu)  # Friction parameters
                 )
 
-                # Set up visual geometry
+                # Set Set a box with link dimensions for visual geometry
                 self.plant.RegisterVisualGeometry(
                     paper_body,
                     RigidTransform(),
@@ -95,20 +96,25 @@ class Paper:
                     self.name + "_body",
                     [0.9, 0.9, 0.9, 1.0])  # RBGA color
 
-            # Set up joint actuators
+            # Operations between adjacent links
             if link_num > 0:
+                # Get bodies
+                paper1_body = self.plant.GetBodyByName(
+                    "paper_body", self.link_instances[-1])
+                paper2_body = self.plant.GetBodyByName(
+                    "paper_body", paper_instance)
+
+                # Set up joint actuators
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
-                    self.plant.GetBodyByName(
-                        "paper_body", self.link_instances[-1]),
+                    paper1_body,
                     RigidTransform(RotationMatrix(), [0,
                                                       self.link_width/2+constants.EPSILON/2,
                                                       0.5*self.height]))
                 self.plant.AddFrame(paper1_hinge_frame)
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
-                    self.plant.GetBodyByName(
-                        "paper_body", paper_instance),
+                    paper2_body,
                     RigidTransform(RotationMatrix(), [0,
                                                       (-self.link_width/2 +
                                                        constants.EPSILON/2),
@@ -132,6 +138,11 @@ class Paper:
                     self.torque_damping_constants,
                     self.force_stiffness_constants,
                     self.force_damping_constants))
+
+                # Ignore collisions between adjacent links
+                geometries = self.plant.CollectRegisteredGeometries(
+                    [paper1_body, paper2_body])
+                self.scene_graph.ExcludeCollisionsWithin(geometries)
 
             self.link_instances.append(paper_instance)
 
