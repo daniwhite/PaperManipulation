@@ -1,12 +1,7 @@
-# Standard imports
-import numpy as np
-
+"""Defines wrapper class to pack inputs for a logger."""
 # Drake imports
 import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity
-
-# Imports of other project files
-import constants
 
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):

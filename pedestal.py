@@ -9,6 +9,9 @@ PEDESTAL_DEPTH = 0.3
 
 
 def AddPedestal(plant):
+    """
+    Creates the pedestal.
+    """
     # Parse pedestal model
     parser = pydrake.multibody.parsing.Parser(plant)
     pedestal_instance = parser.AddModelFromFile("pedestal.sdf")

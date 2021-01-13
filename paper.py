@@ -1,3 +1,5 @@
+"""Contains paper modeling class as well as paper-related constants."""
+
 # Standard imports
 import numpy as np
 
@@ -31,7 +33,7 @@ class Paper:
     # http://www.mate.tue.nl/mate/pdfs/10509.pdf
     youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, scene_graph, num_links, mu=5.0, default_joint_angle=-np.pi/60, damping=1e-5,
+    def __init__(self, plant, scene_graph, num_links, default_joint_angle=-np.pi/60, damping=1e-5,
                  stiffness=1e-3):
         # Initialize parameters
         self.plant = plant
@@ -51,11 +53,13 @@ class Paper:
         self.link_width = self.width/self.num_links
         self.link_mass = self.density*self.width*self.width/self.num_links
 
-        L = self.width/num_links
-        I = self.depth*self.true_height**3/12
-        # Stiffness = 3*(youngs modulus)*I/(Length)
-        physical_stiffness_N_p_m = 3*self.youngs_modulus*I/L**3
-        physical_N_p_rad = physical_stiffness_N_p_m*L**2
+        # This is hypothetically how we should be able to derive the stiffenss
+        # of the links...but it produces way too large values.
+        # L = self.width/num_links
+        # I = self.depth*self.true_height**3/12
+        # # Stiffness = 3*(youngs modulus)*I/(Length)
+        # physical_stiffness_N_p_m = 3*self.youngs_modulus*I/L**3
+        # physical_N_p_rad = physical_stiffness_N_p_m*L**2
 
         # Use this stiffness only if simulating with a shorter DT
         # self.stiffness = physical_N_p_rad
@@ -127,7 +131,7 @@ class Paper:
                     paper2_hinge_frame,
                     [1, 0, 0]))
 
-                if type(default_joint_angle) is list:
+                if isinstance(default_joint_angle, list):
                     joint.set_default_angle(self.default_joint_angle[link_num])
                 else:
                     joint.set_default_angle(self.default_joint_angle)
@@ -147,9 +151,16 @@ class Paper:
             self.link_instances.append(paper_instance)
 
     def get_free_edge_instance(self):
+        """
+        Returns the model instance corresponding to the edge of the paper which
+        is not affixed to the pedestal.
+        """
         return self.link_instances[-2]
 
     def weld_paper_edge(self, pedestal_width, pedestal_height):
+        """
+        Fixes an edge of the paper to the pedestal
+        """
         # Fix paper to object
         self.plant.WeldFrames(
             self.plant.world_frame(),

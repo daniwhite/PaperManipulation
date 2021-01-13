@@ -5,7 +5,9 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, SpatialVelocity, DirectCollocation, MathematicalProgram, eq, SnoptSolver, RollPitchYaw, AutoDiffXd
+from pydrake.all import \
+    RigidTransform, SpatialVelocity, MathematicalProgram, eq, SnoptSolver, AutoDiffXd
+
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 
 # Imports of other project files
@@ -34,8 +36,10 @@ def AddFinger(plant, init_y, init_z):
     shape = pydrake.geometry.Sphere(radius)
     if plant.geometry_source_is_registered():
         plant.RegisterCollisionGeometry(
-            finger_body, RigidTransform(), shape, "finger_body", pydrake.multibody.plant.CoulombFriction(
-                constants.FRICTION, constants.FRICTION))
+            finger_body, RigidTransform(),
+            shape,
+            "finger_body",
+            pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
         plant.RegisterVisualGeometry(
             finger_body, RigidTransform(), shape, "finger_body", [.9, .5, .5, 1.0])
 
@@ -74,6 +78,10 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         self.finger_idx = finger_idx
 
     def GetForces(self, poses, vels):
+        """
+        Should be overloaded to return [Fy, Fz] to move manipulator (not including gravity
+        compensation.)
+        """
         raise NotImplementedError()
 
     def CalcOutput(self, context, output):
@@ -155,7 +163,7 @@ class EdgeController(FingerController):
     """Fold paper with feedback on positino of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, finger_idx, ll_idx, K, F_Nd, d_d, w_l,  debug=False):
+    def __init__(self, plant, finger_idx, ll_idx, K, F_Nd, d_d, w_l, debug=False):
         super().__init__(plant, finger_idx)
 
         # Control parameters
@@ -185,7 +193,7 @@ class EdgeController(FingerController):
         else:
             self.debug = None
 
-    def in_end_zone(self, y_m, z_m, theta_x):
+    def in_end_zone(self, y_m, z_m):
         """
         Check whether or not the manipulator (and presumably the paper) have gotten clsoe enough to
         the pedestal.
@@ -231,7 +239,7 @@ class EdgeController(FingerController):
         F_P = -1*self.K*(self.d_d-d)
         # TODO: if this is correctly set to abs, folding fails. Needs to be debugged.
         F_N = self.F_Nd if d-self.d_d < 0.01 else 0.01
-        if self.in_end_zone(y_m, z_m, theta_x):
+        if self.in_end_zone(y_m, z_m):
             F_N = 100
 
         Fy = np.cos(theta_x)*F_P - np.sin(theta_x)*F_N
@@ -269,19 +277,30 @@ class OptimizationController(FingerController):
     """Fold paper with feedback on positino of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper, finger_idx, ll_idx):
+    def __init__(self, plant, paper_, finger_idx, ll_idx):  # avoids name collision with module
         super().__init__(plant, finger_idx)
 
         self.finger_idx = finger_idx
         self.ll_idx = ll_idx
-        self.paper = paper
+        self.paper = paper_
 
         self.plant = plant
 
         self.forces = [0, 0]
         self.idx = 0
 
+        # time steps in the trajectory optimization
+        self.opt_dt = 1000*constants.DT
+        self.T = int(constants.TSPAN/(self.opt_dt))
+        self.nf = 2
+        self.nq = None  # TODO: can I set this in init?
+
     def get_jacobian(self, context):
+        """
+        Get Jacobian from actuator torques/forces to end effector forces.
+        Should end up being trivial in this case.
+        """
+
         # get reference frames for the given leg and the ground
         finger_frame = self.plant.GetBodyByName("finger_body").body_frame()
         wolrd_frame = self.plant.world_frame()
@@ -299,11 +318,16 @@ class OptimizationController(FingerController):
         # discard y components since we are in 2D
         return J[[0, 2]]
 
-    def constrain_end_effector(self, vars):
+    def constrain_end_effector(self, variables):
+        """
+        Function used to contrain the "end effector" position in optimization.
+        """
+
         # configuration, velocity, acceleration, force
-        assert vars.size == 3 * self.nq + self.nf
+        assert variables.size == 3 * self.nq + self.nf
         split_at = [self.nq, 2 * self.nq, 3 * self.nq]
-        q, qd, qdd, f = np.split(vars, split_at)
+        q, qd, _, _ = np.split(  # pylint: disable=unbalanced-tuple-unpacking
+            variables, split_at)
 
         context = self.plant.CreateDefaultContext()
         self.plant.SetPositions(context, q)
@@ -318,11 +342,16 @@ class OptimizationController(FingerController):
 
         return [x_pos, z_pos, y_rot]
 
-    def manipulator_equations(self, vars):
+    def manipulator_equations(self, variables):
+        """
+        Evaluate manipulator dynamics to see if everything balances.
+        """
+
         # configuration, velocity, acceleration, force
-        assert vars.size == 3 * self.nq + self.nf
+        assert variables.size == 3 * self.nq + self.nf
         split_at = [self.nq, 2 * self.nq, 3 * self.nq]
-        q, qd, qdd, f = np.split(vars, split_at)
+        q, qd, qdd, f = np.split(  # pylint: disable=unbalanced-tuple-unpacking
+            variables, split_at)
 
         # set state
         context = self.plant.CreateDefaultContext()
@@ -341,13 +370,12 @@ class OptimizationController(FingerController):
         return M.dot(qdd) + Cv - tauG - J.T.dot(f)
 
     def optimize(self, init_positions):
+        """
+        Run optimizer to generate control inputs.
+        """
+
         self.plant = self.plant.ToAutoDiffXd()
         self.nq = self.plant.num_positions()
-        self.nf = 2
-
-        # time steps in the trajectory optimization
-        self.opt_dt = 1000*constants.DT
-        self.T = int(constants.TSPAN/(self.opt_dt))
 
         # minimum and maximum time interval is seconds
         h_min = self.opt_dt*(1 - 1e-9)
@@ -381,16 +409,16 @@ class OptimizationController(FingerController):
 
         # manipulator equations for all t (implicit Euler)
         for t in range(self.T):
-            vars = np.concatenate((q[t+1], qd[t+1], qdd[t], f[t]))
-            prog.AddConstraint(self.manipulator_equations, lb=[
-                               0]*self.nq, ub=[0]*self.nq, vars=vars)
+            variables = np.concatenate((q[t+1], qd[t+1], qdd[t], f[t]))
+            prog.AddConstraint(self.manipulator_equations,
+                               lb=[0]*self.nq, ub=[0]*self.nq, vars=variables)
 
         # Constrain to initial position
         prog.AddConstraint(eq(q[0], init_positions))
         prog.AddConstraint(eq(qd[0], np.zeros_like(init_positions)))
 
         # Constrain final position
-        vars = np.concatenate((q[-1], qd[-1], qdd[-1], f[-1]))
+        variables = np.concatenate((q[-1], qd[-1], qdd[-1], f[-1]))
         prog.AddConstraint(self.constrain_end_effector,
                            lb=[-pedestal.PEDESTAL_DEPTH/2,
                                pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT/2-constants.EPSILON,
@@ -398,7 +426,7 @@ class OptimizationController(FingerController):
                            ub=[pedestal.PEDESTAL_DEPTH/2,
                                pedestal.PEDESTAL_HEIGHT + paper.PAPER_HEIGHT/2+2*constants.EPSILON,
                                constants.EPSILON],
-                           vars=vars)
+                           vars=variables)
         prog.AddConstraint(q[-1][0],
                            -pedestal.PEDESTAL_DEPTH / 2,
                            pedestal.PEDESTAL_DEPTH/2)
@@ -407,7 +435,8 @@ class OptimizationController(FingerController):
                            pedestal.PEDESTAL_DEPTH/2)
 
         solver = SnoptSolver()
-        self.result = solver.Solve(prog)
+        self.result = solver.Solve(  # pylint: disable=attribute-defined-outside-init
+            prog)
 
         if not self.result.is_success():
             raise RuntimeError("Optimization failed!")
