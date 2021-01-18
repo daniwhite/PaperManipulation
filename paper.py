@@ -15,6 +15,8 @@ PAPER_WIDTH = 11*constants.IN_TO_M
 PAPER_DEPTH = 8.5*constants.IN_TO_M
 PAPER_HEIGHT = 0.0005
 
+JOINT_TYPES = {"NATURAL", "FIXED", "DRIVEN"}
+
 
 class Paper:
     """Model of paper dynamics."""
@@ -33,40 +35,45 @@ class Paper:
     # http://www.mate.tue.nl/mate/pdfs/10509.pdf
     youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, scene_graph, num_links, default_joint_angle=-np.pi/60, damping=1e-5,
+    def __init__(self, plant, scene_graph, num_links, joint_type, default_joint_angle=-np.pi/60, damping=1e-5,
                  stiffness=1e-3):
+        if joint_type not in JOINT_TYPES:
+            raise ValueError("joint_type not in {}".format(JOINT_TYPES))
+        else:
+            self.joint_type = joint_type
         # Initialize parameters
         self.plant = plant
         self.scene_graph = scene_graph
         self.num_links = num_links
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
-        self.damping = damping
-        self.stiffness = stiffness
-        self.torque_stiffness_constants = np.zeros([3, 1])
-        self.torque_stiffness_constants[0] = stiffness
-        self.torque_damping_constants = np.zeros([3, 1])
-        self.torque_damping_constants[0] = damping
-        self.force_stiffness_constants = np.zeros([3, 1])
-        self.force_damping_constants = np.zeros([3, 1])
-
         self.link_width = self.width/self.num_links
         self.link_mass = self.density*self.width*self.width/self.num_links
 
-        # This is hypothetically how we should be able to derive the stiffenss
-        # of the links...but it produces way too large values.
-        # L = self.width/num_links
-        # I = self.depth*self.true_height**3/12
-        # # Stiffness = 3*(youngs modulus)*I/(Length)
-        # physical_stiffness_N_p_m = 3*self.youngs_modulus*I/L**3
-        # physical_N_p_rad = physical_stiffness_N_p_m*L**2
+        if self.joint_type == "NATURAL":
+            self.damping = damping
+            self.stiffness = stiffness
+            self.torque_stiffness_constants = np.zeros([3, 1])
+            self.torque_stiffness_constants[0] = stiffness
+            self.torque_damping_constants = np.zeros([3, 1])
+            self.torque_damping_constants[0] = damping
+            self.force_stiffness_constants = np.zeros([3, 1])
+            self.force_damping_constants = np.zeros([3, 1])
 
-        # Use this stiffness only if simulating with a shorter DT
-        # self.stiffness = physical_N_p_rad
+            # This is hypothetically how we should be able to derive the stiffenss
+            # of the links...but it produces way too large values.
+            # L = self.width/num_links
+            # I = self.depth*self.true_height**3/12
+            # # Stiffness = 3*(youngs modulus)*I/(Length)
+            # physical_stiffness_N_p_m = 3*self.youngs_modulus*I/L**3
+            # physical_N_p_rad = physical_stiffness_N_p_m*L**2
+
+            # Use this stiffness only if simulating with a shorter DT
+            # self.stiffness = physical_N_p_rad
 
         self.link_instances = []
         for link_num in range(self.num_links):
-            # Initalize bodies and instances
+            # Initialize bodies and instances
             paper_instance = self.plant.AddModelInstance(
                 self.name + str(link_num))
             paper_body = self.plant.AddRigidBody(
@@ -108,7 +115,7 @@ class Paper:
                 paper2_body = self.plant.GetBodyByName(
                     "paper_body", paper_instance)
 
-                # Set up joint actuators
+                # Set up joints
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     paper1_body,
@@ -125,23 +132,39 @@ class Paper:
                                                       0.5*self.height]))
                 self.plant.AddFrame(paper2_hinge_frame)
 
-                joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
-                    "paper_hinge",
-                    paper1_hinge_frame,
-                    paper2_hinge_frame,
-                    [1, 0, 0]))
+                if self.joint_type == "FIXED":
+                    if isinstance(default_joint_angle, list):
+                        raise NotImplementedError
 
-                if isinstance(default_joint_angle, list):
-                    joint.set_default_angle(self.default_joint_angle[link_num])
+                    RT = RigidTransform()
+                    RT.set_rotation(RotationMatrix.MakeXRotation(
+                        self.default_joint_angle))
+
+                    joint = self.plant.AddJoint(pydrake.multibody.tree.WeldJoint(
+                        "paper_hinge",
+                        paper1_hinge_frame,
+                        paper2_hinge_frame,
+                        RT))
                 else:
-                    joint.set_default_angle(self.default_joint_angle)
+                    joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
+                        "paper_hinge",
+                        paper1_hinge_frame,
+                        paper2_hinge_frame,
+                        [1, 0, 0]))
 
-                self.plant.AddForceElement(LinearBushingRollPitchYaw(
-                    paper1_hinge_frame, paper2_hinge_frame,
-                    self.torque_stiffness_constants,
-                    self.torque_damping_constants,
-                    self.force_stiffness_constants,
-                    self.force_damping_constants))
+                    if isinstance(default_joint_angle, list):
+                        joint.set_default_angle(
+                            self.default_joint_angle[link_num])
+                    else:
+                        joint.set_default_angle(self.default_joint_angle)
+
+                    # Set up joint angle
+                    self.plant.AddForceElement(LinearBushingRollPitchYaw(
+                        paper1_hinge_frame, paper2_hinge_frame,
+                        self.torque_stiffness_constants,
+                        self.torque_damping_constants,
+                        self.force_stiffness_constants,
+                        self.force_damping_constants))
 
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
@@ -149,6 +172,37 @@ class Paper:
                 self.scene_graph.ExcludeCollisionsWithin(geometries)
 
             self.link_instances.append(paper_instance)
+
+    def post_finalize_steps(self, builder):
+        """
+        Any initialization steps that need to be done after `Finalize` is called.
+        Currently, just initializes controllers for paper joints if `joint_type` is `DRIVEN`.
+        """
+        if self.joint_type != "DRIVEN":
+            return
+        raise NotImplementedError
+        # stuff copied over from fab8b02
+        # TODO: implement this
+        # self.paper_ctrlrs = []
+        # for paper_instance in self.link_instances[1:]:
+        #     paper_ctrlr = PidController(kp=[[self.stiffness]], ki=[
+        #                                 [0]], kd=[[self.damping]])
+        #     builder.AddSystem(paper_ctrlr)
+        #     self.paper_ctrlrs.append(paper_ctrlr)
+        #     builder.Connect(paper_ctrlr.get_output_port(),
+        #                     self.plant.get_actuation_input_port(paper_instance))
+        #     builder.Connect(self.plant.get_state_output_port(
+        #         paper_instance), paper_ctrlr.get_input_port_estimated_state())
+
+    def context_dependent_steps(self, diagram, diagram_context):
+        """
+        Any initialization steps require a context.
+        """
+        # for paper_ctrlr in self.paper_ctrlrs:
+        #     paper_ctrlr_context = diagram.GetMutableSubsystemContext(
+        #         paper_ctrlr, diagram_context)
+        #     paper_ctrlr.get_input_port_desired_state().FixValue(
+        #         paper_ctrlr_context, [0, 0])
 
     def get_free_edge_instance(self):
         """
