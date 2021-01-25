@@ -35,8 +35,8 @@ class Paper:
     # http://www.mate.tue.nl/mate/pdfs/10509.pdf
     youngs_modulus = 6*1e9  # Convert to n/m^2
 
-    def __init__(self, plant, scene_graph, num_links, joint_type, default_joint_angle=-np.pi/60, damping=1e-5,
-                 stiffness=1e-3):
+    def __init__(self, plant, scene_graph, num_links, joint_type, default_joint_angle=-np.pi/60,
+                 damping=1e-5, stiffness=1e-3):
         if joint_type not in JOINT_TYPES:
             raise ValueError("joint_type not in {}".format(JOINT_TYPES))
         else:
@@ -60,7 +60,7 @@ class Paper:
             self.force_stiffness_constants = np.zeros([3, 1])
             self.force_damping_constants = np.zeros([3, 1])
 
-            # This is hypothetically how we should be able to derive the stiffenss
+            # This is hypothetically how we should be able to derive the stiffness
             # of the links...but it produces way too large values.
             # L = self.width/num_links
             # I = self.depth*self.true_height**3/12
@@ -105,7 +105,7 @@ class Paper:
                     pydrake.geometry.Box(
                         self.width, self.link_width, self.height),
                     self.name + "_body",
-                    [0.9, 0.9, 0.9, 1.0])  # RBGA color
+                    [0.9, 0.9, 0.9, 1.0])  # RGBA color
 
             # Operations between adjacent links
             if link_num > 0:

@@ -95,7 +95,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
 
 
 class BlankController(FingerController):
-    """Fold paper with feedback on positino of the past link"""
+    """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
     def __init__(self, plant, finger_idx):
@@ -160,7 +160,7 @@ class PDFinger(FingerController):
 
 
 class EdgeController(FingerController):
-    """Fold paper with feedback on positino of the past link"""
+    """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
     def __init__(self, plant, finger_idx, ll_idx, K, F_Nd, d_d, w_l, debug=False):
@@ -195,7 +195,7 @@ class EdgeController(FingerController):
 
     def in_end_zone(self, y_m, z_m):
         """
-        Check whether or not the manipulator (and presumably the paper) have gotten clsoe enough to
+        Check whether or not the manipulator (and presumably the paper) have gotten close enough to
         the pedestal.
         """
         z_ped_dist = abs(z_m - pedestal.PEDESTAL_HEIGHT - paper.PAPER_HEIGHT)
@@ -215,7 +215,7 @@ class EdgeController(FingerController):
         z_l = poses[self.ll_idx].translation()[2]
 
         # Unpack rotation
-        # AngleAxis is more convenient becasue of where it wrapps around
+        # AngleAxis is more convenient because of where it wraps around
         theta_x = poses[self.ll_idx].rotation().ToAngleAxis().angle()
         if sum(poses[self.ll_idx].rotation().ToAngleAxis().axis()) < 0:
             theta_x *= -1
@@ -230,7 +230,7 @@ class EdgeController(FingerController):
         z_p = np.sin(theta_x)*(np.cos(theta_x)*(y_m-y_m) +  # FIXME: I think this is a mistake
                                np.sin(theta_x)*(z_m-z_edge))+z_edge
 
-        # Parallel distance between projected point and manipulator posision
+        # Parallel distance between projected point and manipulator position
         # (Subtract finger radius because we want distance from surface, not distance from center)
         d = np.sqrt((y_edge - y_p)**2 + (z_edge - z_p) ** 2) - \
             constants.FINGER_RADIUS
@@ -274,7 +274,7 @@ class EdgeController(FingerController):
 
 
 class OptimizationController(FingerController):
-    """Fold paper with feedback on positino of the past link"""
+    """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
     def __init__(self, plant, paper_, finger_idx, ll_idx):  # avoids name collision with module
@@ -303,7 +303,7 @@ class OptimizationController(FingerController):
 
         # get reference frames for the given leg and the ground
         finger_frame = self.plant.GetBodyByName("finger_body").body_frame()
-        wolrd_frame = self.plant.world_frame()
+        world_frame = self.plant.world_frame()
 
         # compute Jacobian matrix
         J = self.plant.CalcJacobianTranslationalVelocity(
@@ -311,8 +311,8 @@ class OptimizationController(FingerController):
             JacobianWrtVariable(0),
             finger_frame,
             [0, 0, 0],
-            wolrd_frame,
-            wolrd_frame
+            world_frame,
+            world_frame
         )
 
         # discard y components since we are in 2D

@@ -30,7 +30,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += list(pose.translation())
             rot_vec = RollPitchYaw(pose.rotation()).vector()
 
-            # AngleAxis is more convenient becasue of where it wrapps around
+            # AngleAxis is more convenient because of where it wraps around
             rot_vec[1] = pose.rotation().ToAngleAxis().angle()
             if sum(pose.rotation().ToAngleAxis().axis()) < 0:
                 rot_vec[1] *= -1
