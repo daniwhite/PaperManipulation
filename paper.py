@@ -182,7 +182,7 @@ class Paper:
             return
         raise NotImplementedError
         # stuff copied over from fab8b02
-        # TODO: implement this
+        # PROGRAMMING: Implement speed controllers at joints
         # self.paper_ctrlrs = []
         # for paper_instance in self.link_instances[1:]:
         #     paper_ctrlr = PidController(kp=[[self.stiffness]], ki=[

@@ -227,7 +227,7 @@ class EdgeController(FingerController):
         # (y_p, z_p) = projected position of manipulator onto link
         y_p = np.cos(theta_x)*(np.cos(theta_x)*(y_m-y_edge) +
                                np.sin(theta_x)*(z_m-z_edge))+y_edge
-        z_p = np.sin(theta_x)*(np.cos(theta_x)*(y_m-y_m) +  # TODO: I think this is a mistake
+        z_p = np.sin(theta_x)*(np.cos(theta_x)*(y_m-y_m) +  # FIXME: I think this is a mistake
                                np.sin(theta_x)*(z_m-z_edge))+z_edge
 
         # Parallel distance between projected point and manipulator posision
@@ -237,7 +237,7 @@ class EdgeController(FingerController):
 
         # F_P goes towards edge, so it needs to be negative to control d properly
         F_P = -1*self.K*(self.d_d-d)
-        # TODO: if this is correctly set to abs, folding fails. Needs to be debugged.
+        # FIXME If this is correctly set to abs, folding fails. Needs to be debugged.
         F_N = self.F_Nd if d-self.d_d < 0.01 else 0.01
         if self.in_end_zone(y_m, z_m):
             F_N = 100
@@ -293,7 +293,7 @@ class OptimizationController(FingerController):
         self.opt_dt = 1000*constants.DT
         self.T = int(constants.TSPAN/(self.opt_dt))
         self.nf = 2
-        self.nq = None  # TODO: can I set this in init?
+        self.nq = None  # PROGRAMMING: Can I set nq in finger init?
 
     def get_jacobian(self, context):
         """
