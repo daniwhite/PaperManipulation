@@ -163,114 +163,79 @@ class EdgeController(FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, finger_idx, ll_idx, K, F_Nd, d_d, w_l, debug=False):
+    def __init__(self, plant, paper, finger_idx, F_Nd, debug=False):
         super().__init__(plant, finger_idx)
+        self.paper = paper
 
         # Control parameters
-        self.K = K
+        # self.K = K
         self.F_Nd = F_Nd
-        self.d_d = d_d
+        # self.d_d = d_d
 
-        # Paper parameters
-        self.w_l = w_l
-        self.h_l = paper.PAPER_HEIGHT
-        self.ll_idx = ll_idx  # Last link index
-
-        # Initialize state variables
-        self.last_theta_cos_sign = None
+        # PROGRAMMING: Reintroduce paper parameters
 
         # Initialize debug dict if necessary
         if debug:
             self.debug = {}
-            self.debug['Fy'] = []
-            self.debug['Fz'] = []
-            self.debug['theta_x'] = []
-            self.debug['FN'] = []
-            self.debug['FP'] = []
-            self.debug['d'] = []
-            self.debug['delta_d'] = []
-            self.debug['impulse'] = []
         else:
             self.debug = None
 
-    def in_end_zone(self, y_m, z_m):
-        """
-        Check whether or not the manipulator (and presumably the paper) have gotten close enough to
-        the pedestal.
-        """
-        z_ped_dist = abs(z_m - pedestal.PEDESTAL_HEIGHT - paper.PAPER_HEIGHT)
-        if abs(y_m) > pedestal.PEDESTAL_DEPTH/2:
-            return False
-        if z_ped_dist > 0.01:
-            return False
-        return True
-
     def GetForces(self, poses, vels):
-        # Unpack translational val
-        y_m = poses[self.finger_idx].translation()[1]
-        z_m = poses[self.finger_idx].translation()[2]
-        ydot_m = vels[self.finger_idx].translational()[1]
-        zdot_m = vels[self.finger_idx].translational()[2]
-        y_l = poses[self.ll_idx].translation()[1]
-        z_l = poses[self.ll_idx].translation()[2]
+        ll_idx = int(self.paper.get_free_edge_instance())
 
         # Unpack rotation
         # AngleAxis is more convenient because of where it wraps around
-        theta_x = poses[self.ll_idx].rotation().ToAngleAxis().angle()
-        if sum(poses[self.ll_idx].rotation().ToAngleAxis().axis()) < 0:
+        theta_x = poses[ll_idx].rotation().ToAngleAxis().angle()
+        if sum(poses[ll_idx].rotation().ToAngleAxis().axis()) < 0:
             theta_x *= -1
+        omega_x = vels[ll_idx].rotational()[0]
 
-        # (y_edge, z_edge) = position of the edge of the last link
-        y_edge = y_l+(self.w_l/2)*np.cos(theta_x)+(self.h_l/2)*np.sin(theta_x)
-        z_edge = z_l+(self.w_l/2)*np.sin(theta_x)-(self.h_l/2)*np.cos(theta_x)
+        # Rotation matrix, for convenience
+        R = poses[ll_idx].rotation()
 
-        # (y_p, z_p) = projected position of manipulator onto link
-        y_p = np.cos(theta_x)*(np.cos(theta_x)*(y_m-y_edge) +
-                               np.sin(theta_x)*(z_m-z_edge))+y_edge
-        z_p = np.sin(theta_x)*(np.cos(theta_x)*(y_m-y_m) +  # FIXME: I think this is a mistake
-                               np.sin(theta_x)*(z_m-z_edge))+z_edge
+        y_hat = np.array([[0, 1, 0]]).T
+        z_hat = np.array([[0, 0, 1]]).T
+        T_hat = R@y_hat
+        N_hat = R@z_hat
 
-        # Parallel distance between projected point and manipulator position
-        # (Subtract finger radius because we want distance from surface, not distance from center)
-        d = np.sqrt((y_edge - y_p)**2 + (z_edge - z_p) ** 2) - \
-            constants.FINGER_RADIUS
+        T_proj_mat = T_hat@(T_hat.T)
+        N_proj_mat = N_hat@(N_hat.T)
 
-        # F_P goes towards edge, so it needs to be negative to control d properly
-        F_P = -1*self.K*(self.d_d-d)
-        # FIXME If this is correctly set to abs, folding fails. Needs to be debugged.
-        F_N = self.F_Nd if d-self.d_d < 0.01 else 0.01
-        if self.in_end_zone(y_m, z_m):
-            F_N = 100
+        g = self._plant.gravity_field().gravity_vector()
 
-        Fy = np.cos(theta_x)*F_P - np.sin(theta_x)*F_N
-        Fz = np.sin(theta_x)*F_P + np.cos(theta_x)*F_N
+        # Calculate forces
+        F_G = self.paper.link_mass*g
+        F_O = -(self.paper.stiffness*theta_x +
+                self.paper.damping*omega_x)*N_hat
 
-        # If theta passes pi/2, we need to apply an impulse to deal with the fact that the paper's
-        # friction force is suddenly no longer holding the manipulator in place
-        theta_cos_sign = np.sign(np.cos(theta_x))
-        if self.last_theta_cos_sign is not None and theta_cos_sign != self.last_theta_cos_sign:
-            z_impulse = -constants.FINGER_MASS*zdot_m
-            z_impulse /= constants.DT
-            Fz += z_impulse
-            y_impulse = -constants.FINGER_MASS*ydot_m
-            y_impulse /= constants.DT
-            Fy += y_impulse
-            impulse = y_impulse + z_impulse
-        else:
-            impulse = 0
-        self.last_theta_cos_sign = theta_cos_sign
+        # Calculate relevant components
+        F_GT = np.linalg.norm(T_proj_mat@F_G)
+        F_GN = np.linalg.norm(N_proj_mat@F_G)
 
-        # Update debug traces
-        if self.debug is not None:
-            self.debug['Fy'].append(Fy)
-            self.debug['Fz'].append(Fz)
-            self.debug['theta_x'].append(theta_x)
-            self.debug['FN'].append(F_N)
-            self.debug['FP'].append(F_P)
-            self.debug['delta_d'].append(self.d_d-d)
-            self.debug['impulse'].append(impulse)
+        F_OT = np.linalg.norm(T_proj_mat@F_O)
+        F_ON = np.linalg.norm(N_proj_mat@F_O)
 
-        return Fy, Fz
+        # Calculate control forces
+        m_M = constants.FINGER_MASS
+        m_L = self.paper.link_mass
+        F_CN = (m_L + m_M)*self.F_Nd
+        F_CN += m_M*(F_ON + F_GN)
+        F_CN /= m_L
+
+        F_CT_min = -2*constants.FRICTION*self.F_Nd
+        F_CT_min += F_OT
+        F_CT_min += F_GT
+        F_CT_max = -2*constants.FRICTION*self.F_Nd
+        F_CT_max += F_OT
+        F_CT_max += F_GT
+
+        F_CT = (F_CT_min + F_CT_max)/2  # Average to be robust
+
+        # Convert to manipulator frame
+        F_C = np.array([[0, F_CT, F_CT]]).T
+        F_M = R@F_C
+
+        return F_M.flatten()[1:]
 
 
 class OptimizationController(FingerController):
