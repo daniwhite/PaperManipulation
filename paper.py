@@ -13,7 +13,7 @@ import constants
 
 PAPER_WIDTH = 11*constants.IN_TO_M
 PAPER_DEPTH = 8.5*constants.IN_TO_M
-PAPER_HEIGHT = 0.0005
+PAPER_HEIGHT = 0.01
 
 JOINT_TYPES = {"NATURAL", "FIXED", "DRIVEN"}
 
@@ -27,7 +27,7 @@ class Paper:
 
     # Source:
     # https://www.jampaper.com/paper-weight-chart.asp
-    true_height = 0.0097e-3
+    true_height = height  # 0.0097e-3
     density = 80/1000
 
     # Source:
@@ -48,7 +48,7 @@ class Paper:
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
         self.link_width = self.width/self.num_links
-        self.link_mass = self.density*self.width*self.width/self.num_links
+        self.link_mass = 0.1  # self.density*self.width*self.width/self.num_links
 
         if self.joint_type == "NATURAL":
             self.damping = damping
@@ -107,7 +107,7 @@ class Paper:
                     pydrake.geometry.Box(
                         self.width, self.link_width, self.height),
                     self.name + "_body",
-                    [0.9, 0.9, 0.9, 1.0])  # RGBA color
+                    [0, 1, 0, 1])  # 0.9, 0.9, 0.9, 1.0])  # RGBA color
 
             # Operations between adjacent links
             if link_num > 0:

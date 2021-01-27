@@ -163,9 +163,9 @@ class EdgeController(FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper, finger_idx, F_Nd, debug=False):
+    def __init__(self, plant, paper_, finger_idx, F_Nd, debug=False):
         super().__init__(plant, finger_idx)
-        self.paper = paper
+        self.paper = paper_
 
         # Control parameters
         # self.K = K
@@ -177,6 +177,20 @@ class EdgeController(FingerController):
         # Initialize debug dict if necessary
         if debug:
             self.debug = {}
+            self.debug['N_hats'] = []
+            self.debug['T_hats'] = []
+            self.debug['theta_xs'] = []
+            self.debug['omega_xs'] = []
+            self.debug['F_Gs'] = []
+            self.debug['F_GTs'] = []
+            self.debug['F_GNs'] = []
+            self.debug['F_Os'] = []
+            self.debug['F_OTs'] = []
+            self.debug['F_ONs'] = []
+            self.debug['F_CNs'] = []
+            self.debug['F_CTs'] = []
+            self.debug['F_Ms'] = []
+            self.debug['d_Ns'] = []
         else:
             self.debug = None
 
@@ -203,10 +217,20 @@ class EdgeController(FingerController):
 
         g = self._plant.gravity_field().gravity_vector()
 
+        # Calculate distances
+        manipulator_p = np.array([poses[self.finger_idx].translation()[0:3]]).T
+        link_p = np.array([poses[ll_idx].translation()[0:3]]).T
+        d = link_p - manipulator_p
+        d_N = np.linalg.norm(N_proj_mat@d)
+        d_T = np.linalg.norm(T_proj_mat@d)
+
         # Calculate forces
         F_G = self.paper.link_mass*g
-        F_O = -(self.paper.stiffness*theta_x +
-                self.paper.damping*omega_x)*N_hat
+        tau_O = -(self.paper.stiffness*theta_x +
+                  self.paper.damping*omega_x)
+        lever_arm = self.paper.link_width - np.abs(d_T)
+        F_O = tau_O/lever_arm
+        F_O *= N_hat
 
         # Calculate relevant components
         F_GT = np.linalg.norm(T_proj_mat@F_G)
@@ -230,10 +254,30 @@ class EdgeController(FingerController):
         F_CT_max += F_GT
 
         F_CT = (F_CT_min + F_CT_max)/2  # Average to be robust
+        # If we are not in contact, apply no tangential force.
+        if d_N > constants.FINGER_RADIUS + paper.PAPER_HEIGHT/2 + constants.EPSILON:
+            F_CT = 0
+            # F_CN = self.F_Nd
 
         # Convert to manipulator frame
-        F_C = np.array([[0, F_CT, F_CT]]).T
+        F_C = np.array([[0, F_CT, F_CN]]).T
         F_M = R@F_C
+
+        if self.debug is not None:
+            self.debug['N_hats'].append(N_hat)
+            self.debug['T_hats'].append(T_hat)
+            self.debug['theta_xs'].append(theta_x)
+            self.debug['omega_xs'].append(omega_x)
+            self.debug['F_Gs'].append(F_G)
+            self.debug['F_GTs'].append(F_GT)
+            self.debug['F_GNs'].append(F_GN)
+            self.debug['F_Os'].append(F_O)
+            self.debug['F_OTs'].append(F_OT)
+            self.debug['F_ONs'].append(F_ON)
+            self.debug['F_CNs'].append(F_CN)
+            self.debug['F_CTs'].append(F_CT)
+            self.debug['F_Ms'].append(F_M)
+            self.debug['d_Ns'].append(d_N)
 
         return F_M.flatten()[1:]
 
