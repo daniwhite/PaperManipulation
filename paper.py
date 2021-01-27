@@ -6,7 +6,7 @@ import numpy as np
 # Drake imports
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix, LinearBushingRollPitchYaw
-from pydrake.multibody.tree import SpatialInertia, UnitInertia
+from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia
 
 # Imports of other project files
 import constants
@@ -71,7 +71,9 @@ class Paper:
             # Use this stiffness only if simulating with a shorter DT
             # self.stiffness = physical_N_p_rad
 
-        self.link_instances = []
+        # Body indices of each link. Used to index into log outputs, or use BodyIndex to get the
+        # body with plant.get_body
+        self.link_idxs = []
         for link_num in range(self.num_links):
             # Initialize bodies and instances
             paper_instance = self.plant.AddModelInstance(
@@ -110,8 +112,8 @@ class Paper:
             # Operations between adjacent links
             if link_num > 0:
                 # Get bodies
-                paper1_body = self.plant.GetBodyByName(
-                    "paper_body", self.link_instances[-1])
+                paper1_body = self.plant.get_body(
+                    BodyIndex(self.link_idxs[-1]))
                 paper2_body = self.plant.GetBodyByName(
                     "paper_body", paper_instance)
 
@@ -171,7 +173,7 @@ class Paper:
                     [paper1_body, paper2_body])
                 self.scene_graph.ExcludeCollisionsWithin(geometries)
 
-            self.link_instances.append(paper_instance)
+            self.link_idxs.append(int(paper_body.index()))
 
     def post_finalize_steps(self, builder):
         """
@@ -204,12 +206,12 @@ class Paper:
         #     paper_ctrlr.get_input_port_desired_state().FixValue(
         #         paper_ctrlr_context, [0, 0])
 
-    def get_free_edge_instance(self):
+    def get_free_edge_idx(self):
         """
         Returns the model instance corresponding to the edge of the paper which
         is not affixed to the pedestal.
         """
-        return self.link_instances[-2]
+        return self.link_idxs[-1]
 
     def weld_paper_edge(self, pedestal_width, pedestal_height):
         """
@@ -218,8 +220,7 @@ class Paper:
         # Fix paper to object
         self.plant.WeldFrames(
             self.plant.world_frame(),
-            self.plant.GetBodyByName(
-                "paper_body", self.link_instances[0]).body_frame(),
+            self.plant.get_body(BodyIndex(self.link_idxs[0])).body_frame(),
             RigidTransform(RotationMatrix(
             ), [0, -(pedestal_width/2-self.width/4), pedestal_height+self.height/2])
         )

@@ -181,7 +181,7 @@ class EdgeController(FingerController):
             self.debug = None
 
     def GetForces(self, poses, vels):
-        ll_idx = int(self.paper.get_free_edge_instance())
+        ll_idx = self.paper.get_free_edge_idx()
 
         # Unpack rotation
         # AngleAxis is more convenient because of where it wraps around
