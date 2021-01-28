@@ -246,6 +246,9 @@ class EdgeController(FingerController):
             np.sign(np.dot(T_hat.flatten(), F_O.flatten()))
         F_ON = np.linalg.norm(N_proj_mat@F_O) * \
             np.sign(np.dot(N_hat.flatten(), F_O.flatten()))
+        # Centripetal force
+        F_OT -= self.paper.link_mass * \
+            (self.paper.link_width/2)*(omega_x/(2*np.pi))**2
 
         # Calculate controller N hat force
         m_M = constants.FINGER_MASS
