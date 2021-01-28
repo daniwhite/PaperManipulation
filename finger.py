@@ -207,6 +207,7 @@ class EdgeController(FingerController):
 
         # Rotation matrix, for convenience
         R = poses[ll_idx].rotation()
+        R_inv = R.inverse()
 
         y_hat = np.array([[0, 1, 0]]).T
         z_hat = np.array([[0, 0, 1]]).T
@@ -221,31 +222,23 @@ class EdgeController(FingerController):
         # Calculate distances
         manipulator_p = np.array([poses[self.finger_idx].translation()[0:3]]).T
         link_p = np.array([poses[ll_idx].translation()[0:3]]).T
-        d = link_p - manipulator_p
-        # PROGRAMMING: Figure out if there is more concise way to get projections
-        d_N = np.linalg.norm(N_proj_mat@d) * \
-            np.sign(np.dot(N_hat.flatten(), d.flatten()))
-        d_T = np.linalg.norm(T_proj_mat@d) * \
-            np.sign(np.dot(T_hat.flatten(), d.flatten()))
+        M_d = link_p - manipulator_p
+        C_d = R_inv@M_d
+        _, d_T, d_N = C_d.flatten()  # Flatten required to make sure these are scalars
 
         # Calculate forces
-        F_G = self.paper.link_mass*g
+        M_F_G = self.paper.link_mass*g
         tau_O = -(self.paper.stiffness*theta_x +
                   self.paper.damping*omega_x)
         lever_arm = self.paper.link_width - np.abs(d_T)
-        F_O = tau_O/lever_arm
-        F_O *= N_hat
+        M_F_O = tau_O/lever_arm
+        M_F_O *= N_hat
 
-        # Calculate relevant components
-        F_GT = np.linalg.norm(T_proj_mat@F_G) * \
-            np.sign(np.dot(T_hat.flatten(), F_G.flatten()))
-        F_GN = np.linalg.norm(N_proj_mat@F_G) * \
-            np.sign(np.dot(N_hat.flatten(), F_G.flatten()))
-
-        F_OT = np.linalg.norm(T_proj_mat@F_O) * \
-            np.sign(np.dot(T_hat.flatten(), F_O.flatten()))
-        F_ON = np.linalg.norm(N_proj_mat@F_O) * \
-            np.sign(np.dot(N_hat.flatten(), F_O.flatten()))
+        # Change frames
+        C_F_G = R_inv@M_F_G
+        _, F_GT, F_GN = C_F_G.flatten()
+        C_F_O = R_inv@M_F_O
+        _, F_OT, F_ON = C_F_O.flatten()
         # Centripetal force
         F_OT -= self.paper.link_mass * \
             (self.paper.link_width/2)*(omega_x/(2*np.pi))**2
@@ -282,10 +275,10 @@ class EdgeController(FingerController):
             self.debug['T_hats'].append(T_hat)
             self.debug['theta_xs'].append(theta_x)
             self.debug['omega_xs'].append(omega_x)
-            self.debug['F_Gs'].append(F_G)
+            self.debug['F_Gs'].append(M_F_G)
             self.debug['F_GTs'].append(F_GT)
             self.debug['F_GNs'].append(F_GN)
-            self.debug['F_Os'].append(F_O)
+            self.debug['F_Os'].append(M_F_O)
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['F_CNs'].append(F_CN)
