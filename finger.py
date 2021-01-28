@@ -191,6 +191,7 @@ class EdgeController(FingerController):
             self.debug['F_CTs'] = []
             self.debug['F_Ms'] = []
             self.debug['d_Ns'] = []
+            self.debug['F_Ns'] = []
         else:
             self.debug = None
 
@@ -221,8 +222,11 @@ class EdgeController(FingerController):
         manipulator_p = np.array([poses[self.finger_idx].translation()[0:3]]).T
         link_p = np.array([poses[ll_idx].translation()[0:3]]).T
         d = link_p - manipulator_p
-        d_N = np.linalg.norm(N_proj_mat@d)
-        d_T = np.linalg.norm(T_proj_mat@d)
+        # PROGRAMMING: Figure out if there is more concise way to get projections
+        d_N = np.linalg.norm(N_proj_mat@d) * \
+            np.sign(np.dot(N_hat.flatten(), d.flatten()))
+        d_T = np.linalg.norm(T_proj_mat@d) * \
+            np.sign(np.dot(T_hat.flatten(), d.flatten()))
 
         # Calculate forces
         F_G = self.paper.link_mass*g
@@ -233,25 +237,32 @@ class EdgeController(FingerController):
         F_O *= N_hat
 
         # Calculate relevant components
-        F_GT = np.linalg.norm(T_proj_mat@F_G)
-        F_GN = np.linalg.norm(N_proj_mat@F_G)
+        F_GT = np.linalg.norm(T_proj_mat@F_G) * \
+            np.sign(np.dot(T_hat.flatten(), F_G.flatten()))
+        F_GN = np.linalg.norm(N_proj_mat@F_G) * \
+            np.sign(np.dot(N_hat.flatten(), F_G.flatten()))
 
-        F_OT = np.linalg.norm(T_proj_mat@F_O)
-        F_ON = np.linalg.norm(N_proj_mat@F_O)
+        F_OT = np.linalg.norm(T_proj_mat@F_O) * \
+            np.sign(np.dot(T_hat.flatten(), F_O.flatten()))
+        F_ON = np.linalg.norm(N_proj_mat@F_O) * \
+            np.sign(np.dot(N_hat.flatten(), F_O.flatten()))
 
-        # Calculate control forces
+        # Calculate controller N hat force
         m_M = constants.FINGER_MASS
         m_L = self.paper.link_mass
-        F_CN = (m_L + m_M)*self.F_Nd
-        F_CN += m_M*(F_ON + F_GN)
-        F_CN /= m_L
+        F_CN = self.F_Nd*(m_L+m_M)/m_L - F_ON - F_GN
 
-        F_CT_min = -2*constants.FRICTION*self.F_Nd
+        # Calculate resulting normal force
+        F_N = (m_L*F_CN-m_M*(F_ON+F_GN))/(m_L+m_M)
+
+        F_CT_min = -2*constants.FRICTION*F_N
         F_CT_min += F_OT
         F_CT_min += F_GT
-        F_CT_max = -2*constants.FRICTION*self.F_Nd
+        F_CT_max = 2*constants.FRICTION*F_N
         F_CT_max += F_OT
         F_CT_max += F_GT
+
+        # PROGRAMMING: Eventually, we should max sure we apply some minimum F_N, even if it exceeds the force control target
 
         F_CT = (F_CT_min + F_CT_max)/2  # Average to be robust
         # If we are not in contact, apply no tangential force.
@@ -278,6 +289,7 @@ class EdgeController(FingerController):
             self.debug['F_CTs'].append(F_CT)
             self.debug['F_Ms'].append(F_M)
             self.debug['d_Ns'].append(d_N)
+            self.debug['F_Ns'].append(F_N)
 
         return F_M.flatten()[1:]
 
