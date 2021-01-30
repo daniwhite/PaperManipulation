@@ -57,7 +57,7 @@ def AddFinger(plant, init_y, init_z):
     finger_z.set_default_translation(init_z)
     plant.AddJointActuator("finger_z", finger_z)
 
-    return finger
+    return finger, finger_body
 
 
 class FingerController(pydrake.systems.framework.LeafSystem):
@@ -191,6 +191,7 @@ class EdgeController(FingerController):
             self.debug['F_CTs'] = []
             self.debug['F_Ms'] = []
             self.debug['d_Ns'] = []
+            self.debug['d_Ts'] = []
             self.debug['F_Ns'] = []
         else:
             self.debug = None
@@ -222,7 +223,10 @@ class EdgeController(FingerController):
         # Calculate distances
         manipulator_p = np.array([poses[self.finger_idx].translation()[0:3]]).T
         link_p = np.array([poses[ll_idx].translation()[0:3]]).T
-        M_d = link_p - manipulator_p
+        # Origin is at end of link, on near side
+        link_p -= self.paper.height/2 * N_hat
+        link_p += self.paper.link_width/2 * T_hat
+        M_d = manipulator_p - link_p
         C_d = R_inv@M_d
         _, d_T, d_N = C_d.flatten()  # Flatten required to make sure these are scalars
 
@@ -260,6 +264,7 @@ class EdgeController(FingerController):
 
         # PROGRAMMING: Eventually, we should max sure we apply some minimum F_N, even if it exceeds the force control target
 
+        # F_CT = -F_OT-F_GT
         F_CT = (F_CT_min + F_CT_max)/2  # Average to be robust
         # If we are not in contact, apply no tangential force.
         if d_N > constants.FINGER_RADIUS + paper.PAPER_HEIGHT/2 + constants.EPSILON:
@@ -285,6 +290,7 @@ class EdgeController(FingerController):
             self.debug['F_CTs'].append(F_CT)
             self.debug['F_Ms'].append(F_M)
             self.debug['d_Ns'].append(d_N)
+            self.debug['d_Ts'].append(d_T)
             self.debug['F_Ns'].append(F_N)
 
         return F_M.flatten()[1:]
