@@ -193,6 +193,10 @@ class EdgeController(FingerController):
             self.debug['d_Ns'] = []
             self.debug['d_Ts'] = []
             self.debug['F_Ns'] = []
+            self.debug['d_com_Ts'] = []
+            self.debug['d_com_Ns'] = []
+            self.debug['d_coms'] = []
+            self.debug['d'] = []
         else:
             self.debug = None
 
@@ -220,15 +224,26 @@ class EdgeController(FingerController):
 
         g = self._plant.gravity_field().gravity_vector()
 
-        # Calculate distances
-        manipulator_p = np.array([poses[self.finger_idx].translation()[0:3]]).T
-        link_p = np.array([poses[ll_idx].translation()[0:3]]).T
-        # Origin is at end of link, on near side
-        link_p -= self.paper.height/2 * N_hat
-        link_p += self.paper.link_width/2 * T_hat
-        M_d = manipulator_p - link_p
-        C_d = R_inv@M_d
-        _, d_T, d_N = C_d.flatten()  # Flatten required to make sure these are scalars
+        ## Calculate distances
+        # Position of CoM of manipulator
+        p_manipulator = np.array([poses[self.finger_idx].translation()[0:3]]).T
+        # Position of CoM of link
+        p_link_com = np.array([poses[ll_idx].translation()[0:3]]).T
+        # Position of edge of link that's nearest to the manipulator
+        p_link_edge = p_link_com +self.paper.height/2 * N_hat + self.paper.link_width/2 * T_hat
+        # Vector from link edge to manipulator CoM, in manipulator basis (y, z)
+        M_d_edge = p_manipulator - p_link_edge
+        # Vector from link edge to manipulator CoM, in compliance basis (T, N)
+        C_d_edge = R_inv@M_d_edge
+        _, d_T, d_N = C_d_edge.flatten()  # Flatten required to make sure these are scalars
+        d = np.linalg.norm(M_d_edge)
+
+        # Vector from link CoM to manipulator CoM, in manipulator basis (y, z)
+        M_d_com = p_manipulator - p_link_com
+        # Vector from link CoM to manipulator CoM, in compliance basis (T, N)
+        C_d_com = R_inv@M_d_com
+        _, d_com_T, d_com_N = C_d_com.flatten()
+        d_com = np.linalg.norm(M_d_com)
 
         # Calculate forces
         M_F_G = self.paper.link_mass*g
@@ -292,6 +307,10 @@ class EdgeController(FingerController):
             self.debug['d_Ns'].append(d_N)
             self.debug['d_Ts'].append(d_T)
             self.debug['F_Ns'].append(F_N)
+            self.debug['d_com_Ts'].append(d_com_T)
+            self.debug['d_com_Ns'].append(d_com_N)
+            self.debug['d_coms'].append(d_com)
+            self.debug['d'].append(d)
 
         return F_M.flatten()[1:]
 
