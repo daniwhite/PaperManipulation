@@ -2,6 +2,7 @@
 # Drake imports
 import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults
+import numpy as np
 
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):
@@ -13,7 +14,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     def __init__(self, num_bodies, finger_idx, ll_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
-        self._size = num_bodies*self.entries_per_body + 5
+        self.contact_entries = 8
+        self._size = num_bodies*self.entries_per_body + self.contact_entries
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -60,13 +62,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                     and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
                 out += list(-point_pair_contact_info.contact_force())
                 out += [point_pair_contact_info.separation_speed(), point_pair_contact_info.slip_speed()]
+                out += list(point_pair_contact_info.contact_point())
                 force_found = True
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.finger_idx:
                 out += list(point_pair_contact_info.contact_force())
                 out += [point_pair_contact_info.separation_speed(), point_pair_contact_info.slip_speed()]
+                out += list(point_pair_contact_info.contact_point())
                 force_found = True
         if not force_found:
-            out += [0, 0, 0, 0, 0]
+            out += [np.nan]*self.contact_entries
             
         output.SetFromVector(out)
