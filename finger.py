@@ -76,6 +76,8 @@ class FingerController(pydrake.systems.framework.LeafSystem):
             self.CalcOutput)
 
         self.finger_idx = finger_idx
+        self.debug = {}
+        self.debug['times'] = []
 
     def GetForces(self, poses, vels):
         """
@@ -89,6 +91,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         g = self._plant.gravity_field().gravity_vector()[[0, 2]]
         poses = self.get_input_port(0).Eval(context)
         vels = self.get_input_port(1).Eval(context)
+        self.debug['times'].append(context.get_time())
 
         fy, fz = self.GetForces(poses, vels)
         output.SetFromVector(-constants.FINGER_MASS*g + [fy, fz])
@@ -176,7 +179,6 @@ class EdgeController(FingerController):
 
         # Initialize debug dict if necessary
         if debug:
-            self.debug = {}
             self.debug['N_hats'] = []
             self.debug['T_hats'] = []
             self.debug['theta_xs'] = []
@@ -197,8 +199,6 @@ class EdgeController(FingerController):
             self.debug['d_com_Ns'] = []
             self.debug['d_coms'] = []
             self.debug['d'] = []
-        else:
-            self.debug = None
 
     def GetForces(self, poses, vels):
         ll_idx = self.paper.get_free_edge_idx()

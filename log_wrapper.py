@@ -14,7 +14,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     def __init__(self, num_bodies, finger_idx, ll_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
-        self.contact_entries = 8
+        self.contact_entries = 11
         self._size = num_bodies*self.entries_per_body + self.contact_entries
 
         self.DeclareAbstractInputPort(
@@ -58,18 +58,24 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
+
+            use_this_contact = False
             if int(point_pair_contact_info.bodyA_index()) == self.finger_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
                 out += list(-point_pair_contact_info.contact_force())
-                out += [point_pair_contact_info.separation_speed(), point_pair_contact_info.slip_speed()]
-                out += list(point_pair_contact_info.contact_point())
+                # PROGRAMMING: Move sparation speed back into this section with correct signs
+                use_this_contact = True
                 force_found = True
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.finger_idx:
                 out += list(point_pair_contact_info.contact_force())
+                use_this_contact = True
+                force_found = True
+            if use_this_contact:
                 out += [point_pair_contact_info.separation_speed(), point_pair_contact_info.slip_speed()]
                 out += list(point_pair_contact_info.contact_point())
-                force_found = True
+                pen_point_pair = point_pair_contact_info.point_pair()
+                out += list(pen_point_pair.nhat_BA_W)
         if not force_found:
             out += [np.nan]*self.contact_entries
             
