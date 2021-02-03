@@ -1,7 +1,7 @@
 """Defines wrapper class to pack inputs for a logger."""
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults
+from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce
 import numpy as np
 
 
@@ -11,11 +11,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, finger_idx, ll_idx):
+    def __init__(self, num_bodies, finger_idx, ll_idx, joint_idxs):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
         self.contact_entries = 11
-        self._size = num_bodies*self.entries_per_body + self.contact_entries
+        self.joint_idxs = joint_idxs
+        self.joint_entries = len(joint_idxs)*6
+        self.contact_entry_start_idx = num_bodies*self.entries_per_body
+        self.joint_entry_start_idx =  num_bodies*self.entries_per_body + self.contact_entries
+        self._size = num_bodies*self.entries_per_body + self.contact_entries + self.joint_entries
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -26,6 +30,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.DeclareAbstractInputPort(
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
+        self.DeclareAbstractInputPort(
+            "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -40,6 +46,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         vels = self.get_input_port(1).Eval(context)
         accs = self.get_input_port(2).Eval(context)
         contact_results = self.get_input_port(3).Eval(context)
+        joint_forces = self.get_input_port(4).Eval(context)
         for pose, vel, acc in zip(poses, vels, accs):
             out += list(pose.translation())
             rot_vec = RollPitchYaw(pose.rotation()).vector()
@@ -78,5 +85,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 out += list(pen_point_pair.nhat_BA_W)
         if not force_found:
             out += [np.nan]*self.contact_entries
-            
+        for jf_idx in self.joint_idxs:
+            jf = joint_forces[jf_idx]
+            out += list(jf.translational())
+            out += list(jf.rotational())
         output.SetFromVector(out)

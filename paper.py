@@ -49,6 +49,7 @@ class Paper:
         self.default_joint_angle = default_joint_angle
         self.link_width = self.width/self.num_links
         self.link_mass = 0.1  # self.density*self.width*self.width/self.num_links
+        self.joint_idxs = []
 
         if self.joint_type == "NATURAL":
             self.damping = damping
@@ -167,6 +168,7 @@ class Paper:
                         self.torque_damping_constants,
                         self.force_stiffness_constants,
                         self.force_damping_constants))
+                self.joint_idxs.append(int(joint.index()))
 
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
