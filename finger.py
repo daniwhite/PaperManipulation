@@ -199,6 +199,9 @@ class EdgeController(FingerController):
             self.debug['d_com_Ns'] = []
             self.debug['d_coms'] = []
             self.debug['d'] = []
+            self.debug['F_centripetal'] = []
+            self.debug['F_CYs'] = []
+            self.debug['F_CZs'] = []
 
     def GetForces(self, poses, vels):
         ll_idx = self.paper.get_free_edge_idx()
@@ -206,8 +209,8 @@ class EdgeController(FingerController):
         # Unpack rotation
         # AngleAxis is more convenient because of where it wraps around
         theta_x = poses[ll_idx].rotation().ToAngleAxis().angle()
-        if sum(poses[ll_idx].rotation().ToAngleAxis().axis()) < 0:
-            theta_x *= -1
+        # if sum(poses[ll_idx].rotation().ToAngleAxis().axis()) < 0:
+        #     theta_x *= -1
         omega_x = vels[ll_idx].rotational()[0]
 
         # Rotation matrix, for convenience
@@ -259,8 +262,9 @@ class EdgeController(FingerController):
         C_F_O = R_inv@M_F_O
         _, F_OT, F_ON = C_F_O.flatten()
         # Centripetal force
-        F_OT -= self.paper.link_mass * \
+        F_centripetal = self.paper.link_mass * \
             (self.paper.link_width/2)*(omega_x/(2*np.pi))**2
+        F_OT -= F_centripetal
 
         # Calculate controller N hat force
         m_M = constants.FINGER_MASS
@@ -303,6 +307,8 @@ class EdgeController(FingerController):
             self.debug['F_ONs'].append(F_ON)
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
+            self.debug['F_CYs'].append(F_M.flatten()[1])
+            self.debug['F_CZs'].append(F_M.flatten()[2])
             self.debug['F_Ms'].append(F_M)
             self.debug['d_Ns'].append(d_N)
             self.debug['d_Ts'].append(d_T)
@@ -311,6 +317,7 @@ class EdgeController(FingerController):
             self.debug['d_com_Ns'].append(d_com_N)
             self.debug['d_coms'].append(d_com)
             self.debug['d'].append(d)
+            self.debug['F_centripetal'].append(F_centripetal)
 
         return F_M.flatten()[1:]
 

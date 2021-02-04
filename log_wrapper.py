@@ -67,6 +67,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 contact_results.point_pair_contact_info(i)
 
             use_this_contact = False
+            # Always take contact forces on manipulator
             if int(point_pair_contact_info.bodyA_index()) == self.finger_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
                 out += list(-point_pair_contact_info.contact_force())
