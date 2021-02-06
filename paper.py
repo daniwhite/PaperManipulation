@@ -6,7 +6,7 @@ import numpy as np
 # Drake imports
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix, LinearBushingRollPitchYaw
-from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia
+from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, RevoluteSpring
 
 # Imports of other project files
 import constants
@@ -167,12 +167,10 @@ class Paper:
                         joint.set_default_angle(self.default_joint_angle)
 
                     # Set up joint angle
-                    self.plant.AddForceElement(LinearBushingRollPitchYaw(
-                        paper1_hinge_frame, paper2_hinge_frame,
-                        self.torque_stiffness_constants,
-                        self.torque_damping_constants,
-                        self.force_stiffness_constants,
-                        self.force_damping_constants))
+                    # self.plant.AddForceElement(RevoluteSpring(
+                    #     joint,
+                    #     0,
+                    #     self.stiffness))
                     self.joints.append(joint)
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
