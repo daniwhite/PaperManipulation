@@ -1,7 +1,7 @@
 """Defines wrapper class to pack inputs for a logger."""
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce
+from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BodyIndex
 import numpy as np
 
 
@@ -11,15 +11,16 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, finger_idx, ll_idx, joint_idxs):
+    # PROGRAMMING: Clean up passed around references
+    def __init__(self, num_bodies, finger_idx, paper):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
         self.contact_entries = 11
-        self.joint_idxs = joint_idxs
-        self.joint_entries = len(joint_idxs)*6
+        self.joint_entries = len(paper.joints)*6
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
         self.joint_entry_start_idx =  num_bodies*self.entries_per_body + self.contact_entries
         self._size = num_bodies*self.entries_per_body + self.contact_entries + self.joint_entries
+        self.paper = paper
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -38,7 +39,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             self.CalcOutput)
         
         self.finger_idx = finger_idx
-        self.ll_idx = ll_idx
+        self.ll_idx = paper.get_free_edge_idx()
 
     def CalcOutput(self, context, output):
         out = []
@@ -86,8 +87,23 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 out += list(pen_point_pair.nhat_BA_W)
         if not force_found:
             out += [np.nan]*self.contact_entries
-        for jf_idx in self.joint_idxs:
-            jf = joint_forces[jf_idx]
-            out += list(jf.translational())
-            out += list(jf.rotational())
+        for j in self.paper.joints:
+            # jc = j.frame_on_child()
+            # child_body = self.paper.plant.get_body(BodyIndex(l_idx))
+            # child_body.EvalSpatialAccelerationInWorld(context)
+            # fj.CalcPoseInBodyFrame(context)
+            # print(type(jc))
+            # jc_pose = jc.CalcPoseInWorld(context)
+            # jc_accel = jc.CalcSpatialAccelerationInWorld(context)
+            
+            # force_in_frame = joint_forces[jf.index()].translational()
+            # force_in_world_with_fic_forces = jf_pose.rotation().inverse()@force_in_frame
+            # force_in_world = force_in_world_with_fic_forces - self.link_mass*jf_accel
+
+            # PROGRAMMING: also translate torques
+            out += list(joint_forces[int(j.index())].translational())
+            out += list(joint_forces[int(j.index())].rotational())
+            # out += [0] * 6
+            # out += list(jc_pose.translational())
+            # out += list(jf_accel.translational())
         output.SetFromVector(out)

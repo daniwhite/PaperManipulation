@@ -21,5 +21,5 @@ INIT_Y = PEDESTAL_WIDTH/2 + FINGER_RADIUS + EPSILON
 INIT_Z = 0
 
 # Time constants
-DT = 0 # 1e-4  # 0  # Means continuous time
+DT = 0  # Means continuous time
 TSPAN = 0.2
