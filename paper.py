@@ -41,15 +41,21 @@ class Paper:
             raise ValueError("joint_type not in {}".format(JOINT_TYPES))
         else:
             self.joint_type = joint_type
-        # Initialize parameters
+        # Drake objects
         self.plant = plant
         self.scene_graph = scene_graph
+
+        # Geometric and physical quantities
         self.num_links = num_links
+        # PROGRAMMING: Refactor constants.FRICTION to be constants.mu
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
         self.link_width = self.width/self.num_links
         self.link_mass = 0.1  # self.density*self.width*self.width/self.num_links
-        self.joint_idxs = []
+
+        # Lists of internal Drake objects
+        self.link_idxs = []
+        self.joints = []
 
         if self.joint_type == "NATURAL":
             self.damping = damping
@@ -72,9 +78,7 @@ class Paper:
             # Use this stiffness only if simulating with a shorter DT
             # self.stiffness = physical_N_p_rad
 
-        # Body indices of each link. Used to index into log outputs, or use BodyIndex to get the
-        # body with plant.get_body
-        self.link_idxs = []
+
         for link_num in range(self.num_links):
             # Initialize bodies and instances
             paper_instance = self.plant.AddModelInstance(
@@ -148,6 +152,7 @@ class Paper:
                         paper1_hinge_frame,
                         paper2_hinge_frame,
                         RT))
+                    self.joints.append(joint)
                 else:
                     joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
                         "paper_hinge",
@@ -168,13 +173,11 @@ class Paper:
                         self.torque_damping_constants,
                         self.force_stiffness_constants,
                         self.force_damping_constants))
-                self.joint_idxs.append(int(joint.index()))
-
+                    self.joints.append(joint)
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
                     [paper1_body, paper2_body])
                 self.scene_graph.ExcludeCollisionsWithin(geometries)
-
             self.link_idxs.append(int(paper_body.index()))
 
     def post_finalize_steps(self, builder):

@@ -1,7 +1,7 @@
 """Defines wrapper class to pack inputs for a logger."""
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BodyIndex
+from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce
 import numpy as np
 
 
@@ -88,22 +88,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         if not force_found:
             out += [np.nan]*self.contact_entries
         for j in self.paper.joints:
-            # jc = j.frame_on_child()
-            # child_body = self.paper.plant.get_body(BodyIndex(l_idx))
-            # child_body.EvalSpatialAccelerationInWorld(context)
-            # fj.CalcPoseInBodyFrame(context)
-            # print(type(jc))
-            # jc_pose = jc.CalcPoseInWorld(context)
-            # jc_accel = jc.CalcSpatialAccelerationInWorld(context)
-            
-            # force_in_frame = joint_forces[jf.index()].translational()
-            # force_in_world_with_fic_forces = jf_pose.rotation().inverse()@force_in_frame
-            # force_in_world = force_in_world_with_fic_forces - self.link_mass*jf_accel
-
-            # PROGRAMMING: also translate torques
             out += list(joint_forces[int(j.index())].translational())
             out += list(joint_forces[int(j.index())].rotational())
-            # out += [0] * 6
-            # out += list(jc_pose.translational())
-            # out += list(jf_accel.translational())
         output.SetFromVector(out)
