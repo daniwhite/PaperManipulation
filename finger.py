@@ -294,9 +294,11 @@ class EdgeController(FingerController):
         I_L = self.paper.plant.get_body(BodyIndex(self.paper.get_free_edge_idx())).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
         w_L = self.paper.link_width
         r_T = self.paper.link_width + d_T - self.paper.link_width/2
-        F_CN = -(F_GN*w_L**2 + 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
+        # F_CN = -(F_GN*w_L**2 + 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
+        F_CN = -(F_GN*w_L**2 - 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
         d_theta_sqr = (omega_x)**2
-        F_CT = -d_theta_sqr*m_M*w_L/2
+        # F_CT = -d_theta_sqr*m_M*w_L/2
+        F_CT = --d_theta_sqr*m_M*w_L/2
 
         # Convert to manipulator frame
         F_C = np.array([[0, F_CT, F_CN]]).T

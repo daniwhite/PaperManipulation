@@ -128,7 +128,7 @@ class Paper:
                     paper1_body,
                     RigidTransform(RotationMatrix(), [0,
                                                       self.link_width/2+constants.EPSILON/2,
-                                                      0.5*self.height]))
+                                                      0]))#0.5*self.height]))
                 self.plant.AddFrame(paper1_hinge_frame)
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
@@ -136,7 +136,7 @@ class Paper:
                     RigidTransform(RotationMatrix(), [0,
                                                       (-self.link_width/2 +
                                                        constants.EPSILON/2),
-                                                      0.5*self.height]))
+                                                      0]))#0.5*self.height]))
                 self.plant.AddFrame(paper2_hinge_frame)
 
                 if self.joint_type == "FIXED":
