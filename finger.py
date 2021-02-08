@@ -233,7 +233,7 @@ class EdgeController(FingerController):
         # Position of CoM of link
         p_link_com = np.array([poses[ll_idx].translation()[0:3]]).T
         # Position of edge of link that's nearest to the manipulator
-        p_link_edge = p_link_com +self.paper.height/2 * N_hat + self.paper.link_width/2 * T_hat
+        p_link_edge = p_link_com - self.paper.height/2 * N_hat + self.paper.link_width/2 * T_hat
         # Vector from link edge to manipulator CoM, in manipulator basis (y, z)
         M_d_edge = p_manipulator - p_link_edge
         # Vector from link edge to manipulator CoM, in compliance basis (T, N)
