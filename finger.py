@@ -6,7 +6,7 @@ import numpy as np
 # Drake imports
 import pydrake
 from pydrake.all import \
-    RigidTransform, SpatialVelocity, MathematicalProgram, eq, SnoptSolver, AutoDiffXd, BodyIndex
+    RigidTransform, SpatialVelocity, MathematicalProgram, eq, SnoptSolver, AutoDiffXd, BodyIndex, ProximityProperties
 
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 
@@ -35,11 +35,16 @@ def AddFinger(plant, init_y, init_z):
     # Register geometry
     shape = pydrake.geometry.Sphere(radius)
     if plant.geometry_source_is_registered():
-        plant.RegisterCollisionGeometry(
+        proximity_props = ProximityProperties()
+        proximity_props.AddProperty(
+            "material",
+            "coulomb_friction",
+            pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
+        col_geom = plant.RegisterCollisionGeometry(
             finger_body, RigidTransform(),
             shape,
             "finger_body",
-            pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
+            proximity_props)
         plant.RegisterVisualGeometry(
             finger_body, RigidTransform(), shape, "finger_body", [.9, .5, .5, 1.0])
 
@@ -57,7 +62,7 @@ def AddFinger(plant, init_y, init_z):
     finger_z.set_default_translation(init_z)
     plant.AddJointActuator("finger_z", finger_z)
 
-    return finger, finger_body
+    return finger, finger_body, col_geom
 
 
 class FingerController(pydrake.systems.framework.LeafSystem):
@@ -227,13 +232,14 @@ class EdgeController(FingerController):
 
         g = self._plant.gravity_field().gravity_vector()
 
-        ## Calculate distances
+        # Calculate distances
         # Position of CoM of manipulator
         p_manipulator = np.array([poses[self.finger_idx].translation()[0:3]]).T
         # Position of CoM of link
         p_link_com = np.array([poses[ll_idx].translation()[0:3]]).T
         # Position of edge of link that's nearest to the manipulator
-        p_link_edge = p_link_com - self.paper.height/2 * N_hat + self.paper.link_width/2 * T_hat
+        p_link_edge = p_link_com - self.paper.height / \
+            2 * N_hat + self.paper.link_width/2 * T_hat
         # Vector from link edge to manipulator CoM, in manipulator basis (y, z)
         M_d_edge = p_manipulator - p_link_edge
         # Vector from link edge to manipulator CoM, in compliance basis (T, N)
@@ -291,15 +297,16 @@ class EdgeController(FingerController):
             # F_CN = self.F_Nd
 
         a_Nd = self.F_Nd/self.paper.link_mass
-        I_L = self.paper.plant.get_body(BodyIndex(self.paper.get_free_edge_idx())).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
+        I_L = self.paper.plant.get_body(BodyIndex(self.paper.get_free_edge_idx(
+        ))).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
         w_L = self.paper.link_width
         r_T = self.paper.link_width + d_T - self.paper.link_width/2
         # F_CN = -(F_GN*w_L**2 + 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
         # F_CT = -d_theta_sqr*m_M*w_L/2
-        
-        
+
         d_theta_sqr = (omega_x)**2
-        F_CN = -(F_GN*w_L**2 - 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
+        F_CN = -(F_GN*w_L**2 - 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2 *
+                 a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
         F_CT = -d_theta_sqr*m_M*w_L/2
 
         # Convert to manipulator frame

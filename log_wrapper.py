@@ -15,11 +15,13 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     def __init__(self, num_bodies, finger_idx, paper):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
-        self.contact_entries = 11
+        self.contact_entries = 18
         self.joint_entries = len(paper.joints)*6
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
-        self.joint_entry_start_idx =  num_bodies*self.entries_per_body + self.contact_entries
-        self._size = num_bodies*self.entries_per_body + self.contact_entries + self.joint_entries
+        self.joint_entry_start_idx = num_bodies * \
+            self.entries_per_body + self.contact_entries
+        self._size = num_bodies*self.entries_per_body + \
+            self.contact_entries + self.joint_entries + 3
         self.paper = paper
 
         self.DeclareAbstractInputPort(
@@ -37,7 +39,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
             self.CalcOutput)
-        
+
         self.finger_idx = finger_idx
         self.ll_idx = paper.get_free_edge_idx()
 
@@ -75,19 +77,31 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 # PROGRAMMING: Move sparation speed back into this section with correct signs
                 use_this_contact = True
                 force_found = True
+                out += list(point_pair_contact_info.point_pair().p_WCa)
+                out += list(point_pair_contact_info.point_pair().p_WCb)
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.finger_idx:
                 out += list(point_pair_contact_info.contact_force())
                 use_this_contact = True
                 force_found = True
+                out += list(point_pair_contact_info.point_pair().p_WCb)
+                out += list(point_pair_contact_info.point_pair().p_WCa)
             if use_this_contact:
-                out += [point_pair_contact_info.separation_speed(), point_pair_contact_info.slip_speed()]
+                out += [point_pair_contact_info.separation_speed(),
+                        point_pair_contact_info.slip_speed()]
                 out += list(point_pair_contact_info.contact_point())
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(pen_point_pair.nhat_BA_W)
+                out += [pen_point_pair.depth]
         if not force_found:
             out += [np.nan]*self.contact_entries
         for j in self.paper.joints:
             out += list(joint_forces[int(j.index())].translational())
             out += list(joint_forces[int(j.index())].rotational())
+
+        # Tag on manipulator orientation from the fram of last link
+        X_WL = poses[self.ll_idx]
+        X_WM = poses[self.finger_idx]
+        X_LM = X_WL.inverse().multiply(X_WM)
+        out += list(X_LM.translation())
         output.SetFromVector(out)

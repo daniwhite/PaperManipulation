@@ -78,7 +78,6 @@ class Paper:
             # Use this stiffness only if simulating with a shorter DT
             # self.stiffness = physical_N_p_rad
 
-
         for link_num in range(self.num_links):
             # Initialize bodies and instances
             paper_instance = self.plant.AddModelInstance(
@@ -127,16 +126,16 @@ class Paper:
                     "paper_hinge_frame",
                     paper1_body,
                     RigidTransform(RotationMatrix(), [0,
-                                                      self.link_width/2+constants.EPSILON/2,
-                                                      0]))#0.5*self.height]))
+                                                      self.link_width/2,
+                                                      0]))  # 0.5*self.height]))
                 self.plant.AddFrame(paper1_hinge_frame)
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     paper2_body,
                     RigidTransform(RotationMatrix(), [0,
                                                       (-self.link_width/2 +
-                                                       constants.EPSILON/2),
-                                                      0]))#0.5*self.height]))
+                                                       0),
+                                                      0]))  # 0.5*self.height]))
                 self.plant.AddFrame(paper2_hinge_frame)
 
                 if self.joint_type == "FIXED":
