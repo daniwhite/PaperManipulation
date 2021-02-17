@@ -1,19 +1,19 @@
 """Functions for creating and controlling the finger manipulator."""
 
 # Standard imports
+import pedestal
+import paper
+import constants
+from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 import numpy as np
 
 # Drake imports
 import pydrake
 from pydrake.all import \
-    RigidTransform, SpatialVelocity, MathematicalProgram, eq, SnoptSolver, AutoDiffXd, BodyIndex, ProximityProperties
+    RigidTransform, SpatialVelocity, MathematicalProgram, eq, SnoptSolver, AutoDiffXd, BodyIndex, ProximityProperties, ContactResults
 
-from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 
 # Imports of other project files
-import constants
-import paper
-import pedestal
 
 
 def AddFinger(plant, init_y, init_z):
@@ -68,7 +68,7 @@ def AddFinger(plant, init_y, init_z):
 class FingerController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller at the finger."""
 
-    def __init__(self, plant, finger_idx):
+    def __init__(self, plant, finger_idx, ll_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self._plant = plant
 
@@ -76,15 +76,19 @@ class FingerController(pydrake.systems.framework.LeafSystem):
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
         self.DeclareAbstractInputPort(
             "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
+        self.DeclareAbstractInputPort(
+            "contact_results",
+            pydrake.common.value.AbstractValue.Make(ContactResults()))
         self.DeclareVectorOutputPort(
             "finger_actuation", pydrake.systems.framework.BasicVector(2),
             self.CalcOutput)
 
         self.finger_idx = finger_idx
+        self.ll_idx = ll_idx
         self.debug = {}
         self.debug['times'] = []
 
-    def GetForces(self, poses, vels):
+    def GetForces(self, poses, vels, contact_point):
         """
         Should be overloaded to return [Fy, Fz] to move manipulator (not including gravity
         compensation.)
@@ -96,9 +100,24 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         g = self._plant.gravity_field().gravity_vector()[[0, 2]]
         poses = self.get_input_port(0).Eval(context)
         vels = self.get_input_port(1).Eval(context)
+
+        contact_results = self.get_input_port(2).Eval(context)
+        contact_point = None
+        for i in range(contact_results.num_point_pair_contacts()):
+            point_pair_contact_info = \
+                contact_results.point_pair_contact_info(i)
+
+            a_idx = int(point_pair_contact_info.bodyA_index())
+            b_idx = int(point_pair_contact_info.bodyB_index())
+
+            if ((a_idx == self.ll_idx) and (b_idx == self.finger_idx) or
+                    (a_idx == self.finger_idx) and (b_idx == self.ll_idx)):
+                contact_point = point_pair_contact_info.contact_point()
+                break
+
         self.debug['times'].append(context.get_time())
 
-        fy, fz = self.GetForces(poses, vels)
+        fy, fz = self.GetForces(poses, vels, contact_point)
         output.SetFromVector(-constants.FINGER_MASS*g + [fy, fz])
 
 
@@ -109,7 +128,7 @@ class BlankController(FingerController):
     def __init__(self, plant, finger_idx):
         super().__init__(plant, finger_idx)
 
-    def GetForces(self, poses, vels):
+    def GetForces(self, poses, vels, contact_point):
         return [0, 0]
 
 
@@ -147,7 +166,7 @@ class PDFinger(FingerController):
         # For keeping track of place in trajectory
         self.idx = 0
 
-    def GetForces(self, poses, vels):
+    def GetForces(self, poses, vels, contact_point):
         # Unpack values
         y = poses[self.finger_idx].translation()[1]
         z = poses[self.finger_idx].translation()[2]
@@ -171,8 +190,8 @@ class EdgeController(FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper_, finger_idx, F_Nd, debug=False):
-        super().__init__(plant, finger_idx)
+    def __init__(self, plant, paper_, finger_idx, ll_idx, F_Nd, debug=False):
+        super().__init__(plant, finger_idx, ll_idx)
         self.paper = paper_
 
         # Control parameters
@@ -211,7 +230,7 @@ class EdgeController(FingerController):
             self.debug['F_CZs'] = []
             self.debug['r_Ts'] = []
 
-    def GetForces(self, poses, vels):
+    def GetForces(self, poses, vels, contact_point):
         ll_idx = self.paper.get_free_edge_idx()
 
         # Unpack rotation
@@ -233,6 +252,13 @@ class EdgeController(FingerController):
         T_proj_mat = T_hat@(T_hat.T)
         N_proj_mat = N_hat@(N_hat.T)
 
+        def get_T_proj(vec):
+            T_vec = np.matmul(T_proj_mat, vec)
+            T_mag = np.linalg.norm(T_vec, axis=1)
+            T_sgn = np.sign(np.matmul(np.transpose(T_hat, [0, 2, 1]), T_vec))
+            T = T_mag.flatten()*T_sgn.flatten()
+            return T
+
         g = self._plant.gravity_field().gravity_vector()
 
         # Calculate distances
@@ -250,6 +276,11 @@ class EdgeController(FingerController):
         C_d_edge = R_inv@M_d_edge
         _, d_T, d_N = C_d_edge.flatten()  # Flatten required to make sure these are scalars
         d = np.linalg.norm(M_d_edge)
+        # if contact_point is not None:
+        #     d = contact_point - p_link_edge
+        # else:
+        #     d = np.array([[np.nan, np.nan, np.nan]]).T
+        # d_T = get_T_proj(d)
 
         # Vector from link CoM to manipulator CoM, in manipulator basis (y, z)
         M_d_com = p_manipulator - p_link_com
@@ -559,7 +590,7 @@ class OptimizationController(FingerController):
 
         self.forces = self.result.GetSolution(f)
 
-    def GetForces(self, poses, vels):
+    def GetForces(self, poses, vels, contact_point):
         idx = int(self.idx*constants.DT/self.opt_dt)
         if idx < self.T:
             Fx, Fz = self.forces[idx, :]
