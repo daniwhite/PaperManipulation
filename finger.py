@@ -180,6 +180,8 @@ class EdgeController(FingerController):
         self.F_Nd = F_Nd
         # self.d_d = d_d
 
+        self.bar_d_T = None
+
         # PROGRAMMING: Reintroduce paper parameters
 
         # Initialize debug dict if necessary
@@ -207,6 +209,7 @@ class EdgeController(FingerController):
             self.debug['F_centripetal'] = []
             self.debug['F_CYs'] = []
             self.debug['F_CZs'] = []
+            self.debug['r_Ts'] = []
 
     def GetForces(self, poses, vels):
         ll_idx = self.paper.get_free_edge_idx()
@@ -238,8 +241,9 @@ class EdgeController(FingerController):
         # Position of CoM of link
         p_link_com = np.array([poses[ll_idx].translation()[0:3]]).T
         # Position of edge of link that's nearest to the manipulator
-        p_link_edge = p_link_com - self.paper.height / \
-            2 * N_hat + self.paper.link_width/2 * T_hat
+        p_link_edge = p_link_com
+        p_link_edge -= self.paper.height / 2 * N_hat
+        p_link_edge += self.paper.link_width/2 * T_hat
         # Vector from link edge to manipulator CoM, in manipulator basis (y, z)
         M_d_edge = p_manipulator - p_link_edge
         # Vector from link edge to manipulator CoM, in compliance basis (T, N)
@@ -309,6 +313,47 @@ class EdgeController(FingerController):
                  a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
         F_CT = -d_theta_sqr*m_M*w_L/2
 
+        if self.bar_d_T is None:
+            self.bar_d_T = d_T
+        bar_d_T = d_T  # self.bar_d_T
+        h_L = paper.PAPER_HEIGHT
+        r = constants.FINGER_RADIUS
+        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L -
+        #          d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
+        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L * \
+        #     m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
+        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L -
+        #          d_theta_sqr*m_M*w_L**2 + 0.2*h_L)/(4*r_T + 2*w_L)
+        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L*m_M / \
+        #     2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 + 0.1
+        # g_scal = 9.81
+        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
+        #          m_M*w_L**2 - 2*h_L*(g_scal**2*m_M*w_L/h_L + 0.1))/(4*r_T + 2*w_L)
+        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L*m_M/2 - \
+        #     d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - g_scal**2*m_M*w_L/h_L - 0.1
+
+        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
+        #          m_M*w_L**2 - 2*h_L*(F_GN*w_L/h_L + 0.01))/(4*r_T + 2*w_L)
+        # F_CT = -F_GN*w_L/h_L - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
+        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - 0.01
+        # -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
+        #   m_M*w_L**2 - 2*h_L*(F_GN*w_L/h_L + 0.1))/(4*r_T + 2*w_L)
+        # F_CT = -F_GN*w_L/h_L - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
+        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - 0.1
+        mu = constants.FRICTION
+        fric_floor_1 = F_GN*w_L/h_L
+        fric_floor_2 = F_GN*w_L/(mu*h_L-2*r_T+w_L)
+        bar_F_FM = max(fric_floor_1, fric_floor_2) + 0.01
+
+        F_CN = -(2*F_GN*w_L - 2*bar_F_FM*h_L - 2*d_theta_sqr*m_M *
+                 r_T*w_L - d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
+        F_CT = -bar_F_FM - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
+            h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
+
+        if self.debug['times'][-1] < 0.05:
+            F_CN = 10
+            F_CT = 0
+
         # Convert to manipulator frame
         F_C = np.array([[0, F_CT, F_CN]]).T
         F_M = R@F_C
@@ -339,6 +384,7 @@ class EdgeController(FingerController):
             self.debug['d_coms'].append(d_com)
             self.debug['d'].append(d)
             self.debug['F_centripetal'].append(F_centripetal)
+            self.debug['r_Ts'].append(r_T)
 
         return F_M.flatten()[1:]
 

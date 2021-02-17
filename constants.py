@@ -22,4 +22,4 @@ INIT_Z = 0
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 0.2
+TSPAN = 0.1
