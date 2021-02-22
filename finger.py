@@ -22,7 +22,9 @@ def AddFinger(plant, init_y, init_z):
     finger = plant.AddModelInstance("finger")
 
     # Add false body at the origin that the finger
-    plant.AddRigidBody("false_body", finger, SpatialInertia(
+    plant.AddRigidBody("false_body1", finger, SpatialInertia(
+        0, [0, 0, 0], UnitInertia(0, 0, 0)))
+    plant.AddRigidBody("false_body2", finger, SpatialInertia(
         0, [0, 0, 0], UnitInertia(0, 0, 0)))
 
     # Initialize finger body
@@ -52,15 +54,24 @@ def AddFinger(plant, init_y, init_z):
     finger_y = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
         "finger_y",
         plant.world_frame(),
-        plant.GetFrameByName("false_body"), [0, 1, 0], -1, 1))
+        plant.GetFrameByName("false_body1"), [0, 1, 0], -1, 1))
     plant.AddJointActuator("finger_y", finger_y)
     finger_y.set_default_translation(init_y)
     finger_z = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
         "finger_z",
-        plant.GetFrameByName("false_body"),
-        plant.GetFrameByName("finger_body"), [0, 0, 1], -1, 1))
+        plant.GetFrameByName("false_body1"),
+        plant.GetFrameByName("false_body2"), [0, 0, 1], -1, 1))
     finger_z.set_default_translation(init_z)
     plant.AddJointActuator("finger_z", finger_z)
+    finger_x = plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
+        "finger_x",
+        plant.GetFrameByName("false_body2"),
+        plant.GetFrameByName("finger_body"),
+        [1, 0, 0],
+        damping=0
+    ))
+    finger_x.set_default_angle(0)
+    plant.AddJointActuator("finger_x", finger_x)
 
     return finger, finger_body, col_geom
 
@@ -80,7 +91,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
         self.DeclareVectorOutputPort(
-            "finger_actuation", pydrake.systems.framework.BasicVector(2),
+            "finger_actuation", pydrake.systems.framework.BasicVector(3),
             self.CalcOutput)
 
         self.finger_idx = finger_idx
@@ -118,7 +129,9 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         self.debug['times'].append(context.get_time())
 
         fy, fz = self.GetForces(poses, vels, contact_point)
-        output.SetFromVector(-constants.FINGER_MASS*g + [fy, fz])
+        out = np.concatenate(
+            ([fy, fz] - constants.FINGER_MASS*g, [0]))
+        output.SetFromVector(out)
 
 
 class BlankController(FingerController):
@@ -376,10 +389,16 @@ class EdgeController(FingerController):
         fric_floor_2 = F_GN*w_L/(mu*h_L-2*r_T+w_L)
         bar_F_FM = max(fric_floor_1, fric_floor_2) + 0.01
 
-        F_CN = -(2*F_GN*w_L - 2*bar_F_FM*h_L - 2*d_theta_sqr*m_M *
-                 r_T*w_L - d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
-        F_CT = -bar_F_FM - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
-            h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
+        # F_CN = -(2*F_GN*w_L - 2*bar_F_FM*h_L - 2*d_theta_sqr*m_M *
+        #          r_T*w_L - d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
+        # F_CT = -bar_F_FM - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
+        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
+
+        d_theta_L = omega_x
+        F_CN = -(2*F_GN*w_L**2 - 8*I_L*a_Nd - 8*bar_d_T*a_Nd*m_M*r_T - 4*bar_d_T*a_Nd*m_M*w_L - 2 *
+                 d_theta_L**2*m_M*r_T*w_L**2 - d_theta_L**2*m_M*w_L**3 - 2*a_Nd*m_L*w_L**2)/(4*r_T*w_L + 2*w_L**2)
+        F_CT = -(2*bar_d_T*d_theta_L**2*m_M*w_L + d_theta_L**2*h_L*m_M*w_L + 2*d_theta_L **
+                 2*m_M*r*w_L + d_theta_L**2*m_M*w_L**2 - 2*a_Nd*h_L*m_M - 4*a_Nd*m_M*r)/(2*w_L)
 
         if self.debug['times'][-1] < 0.05:
             F_CN = 10
