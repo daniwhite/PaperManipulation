@@ -114,6 +114,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
 
         contact_results = self.get_input_port(2).Eval(context)
         contact_point = None
+        slip_speed = None
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -124,13 +125,16 @@ class FingerController(pydrake.systems.framework.LeafSystem):
             if ((a_idx == self.ll_idx) and (b_idx == self.finger_idx) or
                     (a_idx == self.finger_idx) and (b_idx == self.ll_idx)):
                 contact_point = point_pair_contact_info.contact_point()
-                break
+                slip_speed = point_pair_contact_info.slip_speed()
 
         self.debug['times'].append(context.get_time())
 
-        fy, fz = self.GetForces(poses, vels, contact_point)
+        [fy, fz, tau] = self.GetForces(poses, vels, contact_point, slip_speed)
+        #
+        # fy, fz = self.GetForces(poses, vels, contact_point)
+        # tau = 0
         out = np.concatenate(
-            ([fy, fz] - constants.FINGER_MASS*g, [0]))
+            ([fy, fz] - constants.FINGER_MASS*g, [tau]))
         output.SetFromVector(out)
 
 
@@ -213,6 +217,8 @@ class EdgeController(FingerController):
         # self.d_d = d_d
 
         self.bar_d_T = None
+        self.last_d_T = 0
+        self.last_d_N = 0
 
         # PROGRAMMING: Reintroduce paper parameters
 
@@ -220,43 +226,17 @@ class EdgeController(FingerController):
         if debug:
             self.debug['N_hats'] = []
             self.debug['T_hats'] = []
-            self.debug['theta_xs'] = []
-            self.debug['omega_xs'] = []
-            self.debug['F_Gs'] = []
             self.debug['F_GTs'] = []
             self.debug['F_GNs'] = []
-            self.debug['F_Os'] = []
-            self.debug['F_OTs'] = []
-            self.debug['F_ONs'] = []
             self.debug['F_CNs'] = []
             self.debug['F_CTs'] = []
-            self.debug['F_Ms'] = []
-            self.debug['d_Ns'] = []
+            self.debug['taus'] = []
             self.debug['d_Ts'] = []
-            self.debug['F_Ns'] = []
-            self.debug['d_com_Ts'] = []
-            self.debug['d_com_Ns'] = []
-            self.debug['d_coms'] = []
-            self.debug['d'] = []
-            self.debug['F_centripetal'] = []
-            self.debug['F_CYs'] = []
-            self.debug['F_CZs'] = []
-            self.debug['r_Ts'] = []
+            self.debug['d_Ns'] = []
 
-    def GetForces(self, poses, vels, contact_point):
-        ll_idx = self.paper.get_free_edge_idx()
-
-        # Unpack rotation
-        # AngleAxis is more convenient because of where it wraps around
-        theta_x = poses[ll_idx].rotation().ToAngleAxis().angle()
-        # if sum(poses[ll_idx].rotation().ToAngleAxis().axis()) < 0:
-        #     theta_x *= -1
-        omega_x = vels[ll_idx].rotational()[0]
-
-        # Rotation matrix, for convenience
-        R = poses[ll_idx].rotation()
-        R_inv = R.inverse()
-
+    def GetForces(self, poses, vels, contact_point, slip_speed):
+        # Directions
+        R = poses[self.ll_idx].rotation()
         y_hat = np.array([[0, 1, 0]]).T
         z_hat = np.array([[0, 0, 1]]).T
         T_hat = R@y_hat
@@ -265,185 +245,155 @@ class EdgeController(FingerController):
         T_proj_mat = T_hat@(T_hat.T)
         N_proj_mat = N_hat@(N_hat.T)
 
+        # Helper functions
         def get_T_proj(vec):
             T_vec = np.matmul(T_proj_mat, vec)
             T_mag = np.linalg.norm(T_vec, axis=1)
-            T_sgn = np.sign(np.matmul(np.transpose(T_hat, [0, 2, 1]), T_vec))
+            T_sgn = np.sign(
+                np.matmul(np.transpose(T_hat, [0, 2, 1]), T_vec))
             T = T_mag.flatten()*T_sgn.flatten()
             return T
 
-        g = self._plant.gravity_field().gravity_vector()
+        def get_N_proj(vec):
+            N_vec = np.matmul(N_proj_mat, vec)
+            N_mag = np.linalg.norm(N_vec, axis=1)
+            N_sgn = np.sign(
+                np.matmul(np.transpose(N_hat, [0, 2, 1]), N_vec))
+            N = N_mag.flatten()*N_sgn.flatten()
+            return N
 
-        # Calculate distances
-        # Position of CoM of manipulator
-        p_manipulator = np.array([poses[self.finger_idx].translation()[0:3]]).T
-        # Position of CoM of link
-        p_link_com = np.array([poses[ll_idx].translation()[0:3]]).T
-        # Position of edge of link that's nearest to the manipulator
-        p_link_edge = p_link_com
-        p_link_edge -= self.paper.height / 2 * N_hat
-        p_link_edge += self.paper.link_width/2 * T_hat
-        # Vector from link edge to manipulator CoM, in manipulator basis (y, z)
-        M_d_edge = p_manipulator - p_link_edge
-        # Vector from link edge to manipulator CoM, in compliance basis (T, N)
-        C_d_edge = R_inv@M_d_edge
-        _, d_T, d_N = C_d_edge.flatten()  # Flatten required to make sure these are scalars
-        d = np.linalg.norm(M_d_edge)
-        # if contact_point is not None:
-        #     d = contact_point - p_link_edge
-        # else:
-        #     d = np.array([[np.nan, np.nan, np.nan]]).T
-        # d_T = get_T_proj(d)
+        def step5(x):
+            '''Python version of MultibodyPlant::StribeckModel::step5 method'''
+            x3 = x * x * x
+            return x3 * (10 + x * (6 * x - 15))
 
-        # Vector from link CoM to manipulator CoM, in manipulator basis (y, z)
-        M_d_com = p_manipulator - p_link_com
-        # Vector from link CoM to manipulator CoM, in compliance basis (T, N)
-        C_d_com = R_inv@M_d_com
-        _, d_com_T, d_com_N = C_d_com.flatten()
-        d_com = np.linalg.norm(M_d_com)
+        def stribeck(us, uk, v):
+            '''
+            Python version of MultibodyPlant::StribeckModel::ComputeFrictionCoefficient
 
-        # Calculate forces
-        M_F_G = self.paper.link_mass*g
-        tau_O = -(self.paper.stiffness*theta_x +
-                  self.paper.damping*omega_x)
-        lever_arm = self.paper.link_width - np.abs(d_T)
-        M_F_O = tau_O/lever_arm
-        M_F_O *= N_hat
+            From
+            https://github.com/RobotLocomotion/drake/blob/b09e40db4b1c01232b22f7705fb98aa99ef91f87/multibody/plant/images/stiction.py
+            '''
+            u = np.zeros_like(v) + uk
+            u[v < 1] = us * step5(v[v < 1])
+            mask = (v >= 1) & (v < 3)
+            u[mask] = us - (us - uk) * step5((v[mask] - 1) / 2)
+            return u
 
-        # Change frames
-        C_F_G = R_inv@M_F_G
-        _, F_GT, F_GN = C_F_G.flatten()
-        C_F_O = R_inv@M_F_O
-        _, F_OT, F_ON = C_F_O.flatten()
-        # Centripetal force
-        F_centripetal = self.paper.link_mass * \
-            (self.paper.link_width/2)*(omega_x/(2*np.pi))**2
-        # F_OT -= F_centripetal
-
-        # Calculate controller N hat force
-        m_M = constants.FINGER_MASS
-        m_L = self.paper.link_mass
-        F_CN = self.F_Nd*(m_L+m_M)/m_L - F_ON - F_GN
-
-        # Calculate resulting normal force
-        F_N = (m_L*F_CN-m_M*(F_ON+F_GN))/(m_L+m_M)
-
-        F_CT_min = -2*constants.FRICTION*F_N
-        F_CT_min += F_OT
-        F_CT_min += F_GT
-        F_CT_max = 2*constants.FRICTION*F_N
-        F_CT_max += F_OT
-        F_CT_max += F_GT
-
-        # PROGRAMMING: Eventually, we should max sure we apply some minimum F_N, even if it exceeds the force control target
-
-        # F_CT = -F_OT-F_GT
-        F_CT = (F_CT_min + F_CT_max)/2  # Average to be robust
-        # If we are not in contact, apply no tangential force.
-        if d_N > constants.FINGER_RADIUS + paper.PAPER_HEIGHT/2 + constants.EPSILON:
-            F_CT = 0
-            # F_CN = self.F_Nd
-
-        a_Nd = self.F_Nd/self.paper.link_mass
-        I_L = self.paper.plant.get_body(BodyIndex(self.paper.get_free_edge_idx(
-        ))).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
-        w_L = self.paper.link_width
-        r_T = self.paper.link_width + d_T - self.paper.link_width/2
-        # F_CN = -(F_GN*w_L**2 + 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2*a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
-        # F_CT = -d_theta_sqr*m_M*w_L/2
-
-        d_theta_sqr = (omega_x)**2
-        F_CN = -(F_GN*w_L**2 - 4*I_L*a_Nd - a_Nd*m_L*w_L**2 - 2 *
-                 a_Nd*m_M*r_T*w_L - a_Nd*m_M*w_L**2)/(2*r_T*w_L + w_L**2)
-        F_CT = -d_theta_sqr*m_M*w_L/2
-
-        if self.bar_d_T is None:
-            self.bar_d_T = d_T
-        bar_d_T = d_T  # self.bar_d_T
-        h_L = paper.PAPER_HEIGHT
-        r = constants.FINGER_RADIUS
-        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L -
-        #          d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
-        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L * \
-        #     m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
-        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L -
-        #          d_theta_sqr*m_M*w_L**2 + 0.2*h_L)/(4*r_T + 2*w_L)
-        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L*m_M / \
-        #     2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 + 0.1
-        # g_scal = 9.81
-        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
-        #          m_M*w_L**2 - 2*h_L*(g_scal**2*m_M*w_L/h_L + 0.1))/(4*r_T + 2*w_L)
-        # F_CT = -bar_d_T*d_theta_sqr*m_M - d_theta_sqr*h_L*m_M/2 - \
-        #     d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - g_scal**2*m_M*w_L/h_L - 0.1
-
-        # F_CN = -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
-        #          m_M*w_L**2 - 2*h_L*(F_GN*w_L/h_L + 0.01))/(4*r_T + 2*w_L)
-        # F_CT = -F_GN*w_L/h_L - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
-        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - 0.01
-        # -(2*F_GN*w_L - 2*d_theta_sqr*m_M*r_T*w_L - d_theta_sqr *
-        #   m_M*w_L**2 - 2*h_L*(F_GN*w_L/h_L + 0.1))/(4*r_T + 2*w_L)
-        # F_CT = -F_GN*w_L/h_L - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
-        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2 - 0.1
-        mu = constants.FRICTION
-        fric_floor_1 = F_GN*w_L/h_L
-        fric_floor_2 = F_GN*w_L/(mu*h_L-2*r_T+w_L)
-        bar_F_FM = max(fric_floor_1, fric_floor_2) + 0.01
-
-        # F_CN = -(2*F_GN*w_L - 2*bar_F_FM*h_L - 2*d_theta_sqr*m_M *
-        #          r_T*w_L - d_theta_sqr*m_M*w_L**2)/(4*r_T + 2*w_L)
-        # F_CT = -bar_F_FM - bar_d_T*d_theta_sqr*m_M - d_theta_sqr * \
-        #     h_L*m_M/2 - d_theta_sqr*m_M*r - d_theta_sqr*m_M*w_L/2
-
-        d_theta_L = omega_x
-        F_CN = -(2*F_GN*w_L**2 - 8*I_L*a_Nd - 8*bar_d_T*a_Nd*m_M*r_T - 4*bar_d_T*a_Nd*m_M*w_L - 2 *
-                 d_theta_L**2*m_M*r_T*w_L**2 - d_theta_L**2*m_M*w_L**3 - 2*a_Nd*m_L*w_L**2)/(4*r_T*w_L + 2*w_L**2)
-        F_CT = -(2*bar_d_T*d_theta_L**2*m_M*w_L + d_theta_L**2*h_L*m_M*w_L + 2*d_theta_L **
-                 2*m_M*r*w_L + d_theta_L**2*m_M*w_L**2 - 2*a_Nd*h_L*m_M - 4*a_Nd*m_M*r)/(2*w_L)
-
-        if self.debug['times'][-1] < 0.05:
+        if contact_point is None:
             F_CN = 10
             F_CT = 0
+            tau_M = 0
 
-        # Convert to manipulator frame
-        F_C = np.array([[0, F_CT, F_CN]]).T
-        F_M = R@F_C
+            F_GT = np.nan
+            F_GN = np.nan
+            d_T = np.nan
+            d_N = np.nan
+        else:
+            # Constants
+            w_L = self.paper.link_width
+            I_L = self.paper.plant.get_body(
+                BodyIndex(self.paper.get_free_edge_idx())).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
+            I_M = self.paper.plant.get_body(BodyIndex(
+                self.finger_idx)).default_rotational_inertia().CalcPrincipalMomentsOfInertia()[0]
+            h_L = paper.PAPER_HEIGHT
+            r = constants.FINGER_RADIUS
+            mu = constants.FRICTION
+            m_M = constants.FINGER_MASS
+            m_L = self.paper.link_mass
+
+            # Positions
+            p_C = contact_point
+            p_CT = get_T_proj(p_C)
+            # p_CN = get_N_proj(p_C)
+            p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
+            p_LT = get_T_proj(p_L)
+            # p_LN = get_N_proj(p_L)
+            # p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
+            p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
+            d = p_C - p_LLE  # TODO: this should be defined differently
+            d_T = get_T_proj(d)
+            d_N = get_T_proj(d)
+            # p_MConM = p_C - p_M
+            # p_MConMN = get_N_proj(p_MConM)
+            # p_LConL = p_C - p_L
+            # p_LConLN = get_N_proj(p_LConL)
+            # r_T = get_T_proj(p_C - p_L)
+
+            # Velocities
+            d_theta_L = vels[self.ll_idx].rotational()[0]
+            d_theta_M = vels[self.finger_idx].rotational()[0]
+            # omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
+            d_d_N = (d_N - self.last_d_N) / \
+                (self.debug['times'][-1]-self.debug['times'][-2])
+            d_d_T = (d_T - self.last_d_T) / \
+                (self.debug['times'][-1]-self.debug['times'][-2])
+
+            v_L = np.array([vels[self.ll_idx].translation()[0:3]]).T
+            v_LN = get_N_proj(v_L)
+            v_LT = get_T_proj(v_L)
+            v_M = np.array([vels[self.finger_idx].translation()[0:3]]).T
+            v_MN = get_N_proj(v_M)
+            v_MT = get_T_proj(v_M)
+            # v_MN = get_N_proj(v_M)
+            # v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
+            # v_WConMN = get_N_proj(v_WConM)
+            d_d_T = -d_theta_L*h_L/2-d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
+            d_d_N = -d_theta_L*w_L/2-v_LN-v_MN-d_theta_L*d_T
+
+            # Targets
+            dd_d_Nd = 0
+            dd_d_Td = 0
+            a_LNd = self.F_Nd/self.paper.link_mass
+            dd_theta_Md = 0
+
+            # Forces
+            # F_N = np.abs((F_FL*h_L*w_L + F_{GN}*w_L**2 - 4*I_L*a_{LNd} - a_{LNd}*m_L*w_L**2)/(2*p_{CT}*w_L - 2*p_{LT}*w_L + w_L**2))
+            stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
+            mu_SM = stribeck_mu * np.sign(d_d_T)
+            mu_SL = -stribeck_mu * np.sign(d_d_T)
+
+            # Gravity
+            g = 9.80665
+            F_G = np.array([[0, 0, -self.paper.link_mass*g]]).T
+            F_GT = get_T_proj(F_G)
+            F_GN = get_N_proj(F_G)
+
+            F_CN = (-2*F_GN*w_L**2 + 8*I_L*a_LNd + 2*dd_d_Nd*mu_SL*h_L*m_M*w_L + 4*dd_d_Nd*m_M*p_CT*w_L - 4*dd_d_Nd*m_M*p_LT*w_L + 2*dd_d_Nd*m_M*w_L**2 + d_theta_L**2*mu_SL*h_L**2*m_M*w_L + 2*d_theta_L**2*mu_SL*h_L*m_M*r*w_L - 2*d_theta_L**2*mu_SL*h_L*m_M*w_L*d_N + 2*d_theta_L**2*h_L*m_M*p_CT*w_L - 2*d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2 + 4*d_theta_L**2*m_M*p_CT*r*w_L - 4*d_theta_L**2*m_M*p_CT*w_L*d_N - 4*d_theta_L**2*m_M*p_LT*r*w_L + 4*d_theta_L**2*m_M*p_LT *
+                    w_L*d_N + 2*d_theta_L**2*m_M*r*w_L**2 - 2*d_theta_L**2*m_M*w_L**2*d_N + 4*d_theta_L*d_d_T*mu_SL*h_L*m_M*w_L + 8*d_theta_L*d_d_T*m_M*p_CT*w_L - 8*d_theta_L*d_d_T*m_M*p_LT*w_L + 4*d_theta_L*d_d_T*m_M*w_L**2 + 4*mu_SL*a_LNd*h_L*m_M*w_L + 4*mu_SL*a_LNd*h_L*m_M*d_T + 2*a_LNd*m_L*w_L**2 + 8*a_LNd*m_M*p_CT*w_L + 8*a_LNd*m_M*p_CT*d_T - 8*a_LNd*m_M*p_LT*w_L - 8*a_LNd*m_M*p_LT*d_T + 4*a_LNd*m_M*w_L**2 + 4*a_LNd*m_M*w_L*d_T)/(2*mu_SL*h_L*w_L + 4*p_CT*w_L - 4*p_LT*w_L + 2*w_L**2)
+
+            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd + dd_d_Td*mu_SL*h_L*m_M*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T - 2*d_theta_L*d_d_N*mu_SL*h_L*m_M*w_L -
+                    4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 + mu_SL*a_LNd*h_L**2*m_M + 2*mu_SL*a_LNd*h_L*m_M*r - 2*mu_SL*a_LNd*h_L*m_M*d_N - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(mu_SL*h_L*w_L + 2*p_CT*w_L - 2*p_LT*w_L + w_L**2)
+            F_CT = 0
+
+            tau_M = -(F_GN*mu_SM*r*w_L**2 - 4*I_L*mu_SM*a_LNd*r - I_M*dd_theta_Md*mu_SL*h_L*w_L - 2*I_M*dd_theta_Md*p_CT*w_L + 2*I_M *
+                      dd_theta_Md*p_LT*w_L - I_M*dd_theta_Md*w_L**2 - mu_SM*a_LNd*m_L*r*w_L**2)/(mu_SL*h_L*w_L + 2*p_CT*w_L - 2*p_LT*w_L + w_L**2)
+            self.last_d_T = d_T
+            self.last_d_N = d_N
 
         F_M = F_CN*N_hat + F_CT*T_hat
 
         if self.debug is not None:
             self.debug['N_hats'].append(N_hat)
             self.debug['T_hats'].append(T_hat)
-            self.debug['theta_xs'].append(theta_x)
-            self.debug['omega_xs'].append(omega_x)
-            self.debug['F_Gs'].append(M_F_G)
             self.debug['F_GTs'].append(F_GT)
             self.debug['F_GNs'].append(F_GN)
-            self.debug['F_Os'].append(M_F_O)
-            self.debug['F_OTs'].append(F_OT)
-            self.debug['F_ONs'].append(F_ON)
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
-            self.debug['F_CYs'].append(F_M.flatten()[1])
-            self.debug['F_CZs'].append(F_M.flatten()[2])
-            self.debug['F_Ms'].append(F_M)
-            self.debug['d_Ns'].append(d_N)
+            self.debug['taus'].append(tau_M)
             self.debug['d_Ts'].append(d_T)
-            self.debug['F_Ns'].append(F_N)
-            self.debug['d_com_Ts'].append(d_com_T)
-            self.debug['d_com_Ns'].append(d_com_N)
-            self.debug['d_coms'].append(d_com)
-            self.debug['d'].append(d)
-            self.debug['F_centripetal'].append(F_centripetal)
-            self.debug['r_Ts'].append(r_T)
+            self.debug['d_Ns'].append(d_N)
 
-        return F_M.flatten()[1:]
+        # print(F_M.flatten()[1:], tau_M)
+        return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
 
 class OptimizationController(FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper_, finger_idx, ll_idx):  # avoids name collision with module
+    # avoids name collision with module
+    def __init__(self, plant, paper_, finger_idx, ll_idx, v_stiction):
         super().__init__(plant, finger_idx)
 
         self.finger_idx = finger_idx
@@ -451,6 +401,7 @@ class OptimizationController(FingerController):
         self.paper = paper_
 
         self.plant = plant
+        self.v_stiction = v_stiction
 
         self.forces = [0, 0]
         self.idx = 0
@@ -555,7 +506,8 @@ class OptimizationController(FingerController):
         h = prog.NewContinuousVariables(self.T, name='h')
 
         # system configuration, generalized velocities, and accelerations
-        q = prog.NewContinuousVariables(rows=self.T+1, cols=self.nq, name='q')
+        q = prog.NewContinuousVariables(
+            rows=self.T+1, cols=self.nq, name='q')
         qd = prog.NewContinuousVariables(
             rows=self.T+1, cols=self.nq, name='qd')
         qdd = prog.NewContinuousVariables(
