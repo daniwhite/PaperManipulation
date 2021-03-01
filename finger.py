@@ -115,6 +115,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         contact_results = self.get_input_port(2).Eval(context)
         contact_point = None
         slip_speed = None
+        pen_depth = None
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -126,10 +127,13 @@ class FingerController(pydrake.systems.framework.LeafSystem):
                     (a_idx == self.finger_idx) and (b_idx == self.ll_idx)):
                 contact_point = point_pair_contact_info.contact_point()
                 slip_speed = point_pair_contact_info.slip_speed()
+                pen_point_pair = point_pair_contact_info.point_pair()
+                pen_depth = pen_point_pair.depth
 
         self.debug['times'].append(context.get_time())
 
-        [fy, fz, tau] = self.GetForces(poses, vels, contact_point, slip_speed)
+        [fy, fz, tau] = self.GetForces(
+            poses, vels, contact_point, slip_speed, pen_depth)
         #
         # fy, fz = self.GetForces(poses, vels, contact_point)
         # tau = 0
@@ -207,7 +211,7 @@ class EdgeController(FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, plant, paper_, finger_idx, ll_idx, F_Nd, debug=False):
+    def __init__(self, plant, paper_, finger_idx, ll_idx, F_Nd, v_stiction, debug=False):
         super().__init__(plant, finger_idx, ll_idx)
         self.paper = paper_
 
@@ -219,6 +223,7 @@ class EdgeController(FingerController):
         self.bar_d_T = None
         self.last_d_T = 0
         self.last_d_N = 0
+        self.v_stiction = v_stiction
 
         # PROGRAMMING: Reintroduce paper parameters
 
@@ -227,14 +232,34 @@ class EdgeController(FingerController):
             self.debug['N_hats'] = []
             self.debug['T_hats'] = []
             self.debug['F_GTs'] = []
-            self.debug['F_GNs'] = []
+            # self.debug['F_GNs'] = []
             self.debug['F_CNs'] = []
             self.debug['F_CTs'] = []
             self.debug['taus'] = []
-            self.debug['d_Ts'] = []
-            self.debug['d_Ns'] = []
+            # self.debug['d_Ts'] = []
+            # self.debug['d_Ns'] = []
 
-    def GetForces(self, poses, vels, contact_point, slip_speed):
+            self.debug['F_GNs'] = []
+            self.debug['I_Ls'] = []
+            self.debug['a_LNds'] = []
+            self.debug['d_Ns'] = []
+            self.debug['d_Ts'] = []
+            self.debug['d_d_Ns'] = []
+            self.debug['d_theta_Ls'] = []
+            self.debug['dd_d_Tds'] = []
+            self.debug['h_Ls'] = []
+            self.debug['m_Ms'] = []
+            self.debug['mu_SLs'] = []
+            self.debug['mu_SMs'] = []
+            self.debug['p_CTs'] = []
+            self.debug['p_LTs'] = []
+            self.debug['rs'] = []
+            self.debug['w_Ls'] = []
+
+            self.debug['v_LNs'] = []
+            self.debug['v_MNs'] = []
+
+    def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth):
         # Directions
         R = poses[self.ll_idx].rotation()
         y_hat = np.array([[0, 1, 0]]).T
@@ -248,17 +273,15 @@ class EdgeController(FingerController):
         # Helper functions
         def get_T_proj(vec):
             T_vec = np.matmul(T_proj_mat, vec)
-            T_mag = np.linalg.norm(T_vec, axis=1)
-            T_sgn = np.sign(
-                np.matmul(np.transpose(T_hat, [0, 2, 1]), T_vec))
+            T_mag = np.linalg.norm(T_vec)
+            T_sgn = np.sign(np.matmul(T_hat.T, T_vec))
             T = T_mag.flatten()*T_sgn.flatten()
             return T
 
         def get_N_proj(vec):
             N_vec = np.matmul(N_proj_mat, vec)
-            N_mag = np.linalg.norm(N_vec, axis=1)
-            N_sgn = np.sign(
-                np.matmul(np.transpose(N_hat, [0, 2, 1]), N_vec))
+            N_mag = np.linalg.norm(N_vec)
+            N_sgn = np.sign(np.matmul(N_hat.T, N_vec))
             N = N_mag.flatten()*N_sgn.flatten()
             return N
 
@@ -274,10 +297,11 @@ class EdgeController(FingerController):
             From
             https://github.com/RobotLocomotion/drake/blob/b09e40db4b1c01232b22f7705fb98aa99ef91f87/multibody/plant/images/stiction.py
             '''
-            u = np.zeros_like(v) + uk
-            u[v < 1] = us * step5(v[v < 1])
-            mask = (v >= 1) & (v < 3)
-            u[mask] = us - (us - uk) * step5((v[mask] - 1) / 2)
+            u = uk
+            if v < 1:
+                u = us * step5(v)
+            elif (v >= 1) and (v < 3):
+                u = us - (us - uk) * step5((v - 1) / 2)
             return u
 
         if contact_point is None:
@@ -289,7 +313,28 @@ class EdgeController(FingerController):
             F_GN = np.nan
             d_T = np.nan
             d_N = np.nan
+
+            F_GN = np.nan
+            I_L = np.nan
+            a_LNd = np.nan
+            d_N = np.nan
+            d_T = np.nan
+            d_d_N = np.nan
+            d_theta_L = np.nan
+            dd_d_Td = np.nan
+            h_L = np.nan
+            m_M = np.nan
+            mu_SL = np.nan
+            mu_SM = np.nan
+            p_CT = np.nan
+            p_LT = np.nan
+            r = np.nan
+            w_L = np.nan
+            v_LN = np.nan
+            v_MN = np.nan
         else:
+            pen_vec = pen_depth*N_hat
+
             # Constants
             w_L = self.paper.link_width
             I_L = self.paper.plant.get_body(
@@ -303,7 +348,7 @@ class EdgeController(FingerController):
             m_L = self.paper.link_mass
 
             # Positions
-            p_C = contact_point
+            p_C = np.array([contact_point]).T
             p_CT = get_T_proj(p_C)
             # p_CN = get_N_proj(p_C)
             p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
@@ -311,9 +356,10 @@ class EdgeController(FingerController):
             # p_LN = get_N_proj(p_L)
             # p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
             p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
-            d = p_C - p_LLE  # TODO: this should be defined differently
+            p_LE = p_L + p_LLE
+            d = p_C - p_LE + pen_vec/2
             d_T = get_T_proj(d)
-            d_N = get_T_proj(d)
+            d_N = get_N_proj(d)
             # p_MConM = p_C - p_M
             # p_MConMN = get_N_proj(p_MConM)
             # p_LConL = p_C - p_L
@@ -323,23 +369,18 @@ class EdgeController(FingerController):
             # Velocities
             d_theta_L = vels[self.ll_idx].rotational()[0]
             d_theta_M = vels[self.finger_idx].rotational()[0]
-            # omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
-            d_d_N = (d_N - self.last_d_N) / \
-                (self.debug['times'][-1]-self.debug['times'][-2])
-            d_d_T = (d_T - self.last_d_T) / \
-                (self.debug['times'][-1]-self.debug['times'][-2])
 
-            v_L = np.array([vels[self.ll_idx].translation()[0:3]]).T
+            v_L = np.array([vels[self.ll_idx].translational()[0:3]]).T
             v_LN = get_N_proj(v_L)
             v_LT = get_T_proj(v_L)
-            v_M = np.array([vels[self.finger_idx].translation()[0:3]]).T
+            v_M = np.array([vels[self.finger_idx].translational()[0:3]]).T
             v_MN = get_N_proj(v_M)
             v_MT = get_T_proj(v_M)
             # v_MN = get_N_proj(v_M)
             # v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
             # v_WConMN = get_N_proj(v_WConM)
             d_d_T = -d_theta_L*h_L/2-d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
-            d_d_N = -d_theta_L*w_L/2-v_LN-v_MN-d_theta_L*d_T
+            d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
 
             # Targets
             dd_d_Nd = 0
@@ -350,8 +391,8 @@ class EdgeController(FingerController):
             # Forces
             # F_N = np.abs((F_FL*h_L*w_L + F_{GN}*w_L**2 - 4*I_L*a_{LNd} - a_{LNd}*m_L*w_L**2)/(2*p_{CT}*w_L - 2*p_{LT}*w_L + w_L**2))
             stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
-            mu_SM = stribeck_mu * np.sign(d_d_T)
-            mu_SL = -stribeck_mu * np.sign(d_d_T)
+            mu_SM = -stribeck_mu * np.sign(d_d_T)
+            mu_SL = stribeck_mu * np.sign(d_d_T)
 
             # Gravity
             g = 9.80665
@@ -359,15 +400,15 @@ class EdgeController(FingerController):
             F_GT = get_T_proj(F_G)
             F_GN = get_N_proj(F_G)
 
-            F_CN = (-2*F_GN*w_L**2 + 8*I_L*a_LNd + 2*dd_d_Nd*mu_SL*h_L*m_M*w_L + 4*dd_d_Nd*m_M*p_CT*w_L - 4*dd_d_Nd*m_M*p_LT*w_L + 2*dd_d_Nd*m_M*w_L**2 + d_theta_L**2*mu_SL*h_L**2*m_M*w_L + 2*d_theta_L**2*mu_SL*h_L*m_M*r*w_L - 2*d_theta_L**2*mu_SL*h_L*m_M*w_L*d_N + 2*d_theta_L**2*h_L*m_M*p_CT*w_L - 2*d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2 + 4*d_theta_L**2*m_M*p_CT*r*w_L - 4*d_theta_L**2*m_M*p_CT*w_L*d_N - 4*d_theta_L**2*m_M*p_LT*r*w_L + 4*d_theta_L**2*m_M*p_LT *
-                    w_L*d_N + 2*d_theta_L**2*m_M*r*w_L**2 - 2*d_theta_L**2*m_M*w_L**2*d_N + 4*d_theta_L*d_d_T*mu_SL*h_L*m_M*w_L + 8*d_theta_L*d_d_T*m_M*p_CT*w_L - 8*d_theta_L*d_d_T*m_M*p_LT*w_L + 4*d_theta_L*d_d_T*m_M*w_L**2 + 4*mu_SL*a_LNd*h_L*m_M*w_L + 4*mu_SL*a_LNd*h_L*m_M*d_T + 2*a_LNd*m_L*w_L**2 + 8*a_LNd*m_M*p_CT*w_L + 8*a_LNd*m_M*p_CT*d_T - 8*a_LNd*m_M*p_LT*w_L - 8*a_LNd*m_M*p_LT*d_T + 4*a_LNd*m_M*w_L**2 + 4*a_LNd*m_M*w_L*d_T)/(2*mu_SL*h_L*w_L + 4*p_CT*w_L - 4*p_LT*w_L + 2*w_L**2)
+            F_CN = (-F_GN*w_L**2 + 4*I_L*a_LNd + dd_d_Nd*mu_SL*h_L*m_M*w_L + 2*dd_d_Nd*m_M*p_CT*w_L - 2*dd_d_Nd*m_M*p_LT*w_L + dd_d_Nd*m_M*w_L**2 + d_theta_L**2*mu_SL*h_L**2*m_M*w_L/2 + d_theta_L**2*mu_SL*h_L*m_M*r*w_L - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_N + d_theta_L**2*h_L*m_M*p_CT*w_L - d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2/2 + 2*d_theta_L**2*m_M*p_CT*r*w_L - 2*d_theta_L**2*m_M*p_CT*w_L*d_N - 2*d_theta_L**2*m_M*p_LT*r*w_L + 2*d_theta_L**2*m_M *
+                    p_LT*w_L*d_N + d_theta_L**2*m_M*r*w_L**2 - d_theta_L**2*m_M*w_L**2*d_N + 2*d_theta_L*d_d_T*mu_SL*h_L*m_M*w_L + 4*d_theta_L*d_d_T*m_M*p_CT*w_L - 4*d_theta_L*d_d_T*m_M*p_LT*w_L + 2*d_theta_L*d_d_T*m_M*w_L**2 + 2*mu_SL*a_LNd*h_L*m_M*w_L + 2*mu_SL*a_LNd*h_L*m_M*d_T + a_LNd*m_L*w_L**2 + 4*a_LNd*m_M*p_CT*w_L + 4*a_LNd*m_M*p_CT*d_T - 4*a_LNd*m_M*p_LT*w_L - 4*a_LNd*m_M*p_LT*d_T + 2*a_LNd*m_M*w_L**2 + 2*a_LNd*m_M*w_L*d_T)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
 
-            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd + dd_d_Td*mu_SL*h_L*m_M*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T - 2*d_theta_L*d_d_N*mu_SL*h_L*m_M*w_L -
-                    4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 + mu_SL*a_LNd*h_L**2*m_M + 2*mu_SL*a_LNd*h_L*m_M*r - 2*mu_SL*a_LNd*h_L*m_M*d_N - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(mu_SL*h_L*w_L + 2*p_CT*w_L - 2*p_LT*w_L + w_L**2)
-            F_CT = 0
+            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd + dd_d_Td*mu_SL*h_L*m_M*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T - 2*d_theta_L*d_d_N*mu_SL*h_L*m_M *
+                    w_L - 4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 + mu_SL*a_LNd*h_L**2*m_M + 2*mu_SL*a_LNd*h_L*m_M*r - 2*mu_SL*a_LNd*h_L*m_M*d_N - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
 
-            tau_M = -(F_GN*mu_SM*r*w_L**2 - 4*I_L*mu_SM*a_LNd*r - I_M*dd_theta_Md*mu_SL*h_L*w_L - 2*I_M*dd_theta_Md*p_CT*w_L + 2*I_M *
-                      dd_theta_Md*p_LT*w_L - I_M*dd_theta_Md*w_L**2 - mu_SM*a_LNd*m_L*r*w_L**2)/(mu_SL*h_L*w_L + 2*p_CT*w_L - 2*p_LT*w_L + w_L**2)
+            tau_M = (-F_GN*mu_SM*r*w_L**2 + 4*I_L*mu_SM*a_LNd*r + I_M*dd_theta_Md*mu_SL*h_L*w_L + 2*I_M*dd_theta_Md*p_CT*w_L - 2 *
+                     I_M*dd_theta_Md*p_LT*w_L + I_M*dd_theta_Md*w_L**2 + mu_SM*a_LNd*m_L*r*w_L**2)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
+            tau_M = tau_M[0]
             self.last_d_T = d_T
             self.last_d_N = d_N
 
@@ -377,14 +418,36 @@ class EdgeController(FingerController):
             self.debug['N_hats'].append(N_hat)
             self.debug['T_hats'].append(T_hat)
             self.debug['F_GTs'].append(F_GT)
-            self.debug['F_GNs'].append(F_GN)
+            # self.debug['F_GNs'].append(F_GN)
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
             self.debug['taus'].append(tau_M)
-            self.debug['d_Ts'].append(d_T)
-            self.debug['d_Ns'].append(d_N)
+            # self.debug['d_Ts'].append(d_T)
+            # self.debug['d_Ns'].append(d_N)
 
-        # print(F_M.flatten()[1:], tau_M)
+            self.debug['F_GNs'].append(F_GN)
+            self.debug['I_Ls'].append(I_L)
+            self.debug['a_LNds'].append(a_LNd)
+            self.debug['d_Ns'].append(d_N)
+            self.debug['d_Ts'].append(d_T)
+            self.debug['d_d_Ns'].append(d_d_N)
+            self.debug['d_theta_Ls'].append(d_theta_L)
+            self.debug['dd_d_Tds'].append(dd_d_Td)
+            self.debug['h_Ls'].append(h_L)
+            self.debug['m_Ms'].append(m_M)
+            self.debug['mu_SLs'].append(mu_SL)
+            self.debug['mu_SMs'].append(mu_SM)
+            self.debug['p_CTs'].append(p_CT)
+            self.debug['p_LTs'].append(p_LT)
+            self.debug['rs'].append(r)
+            self.debug['w_Ls'].append(w_L)
+
+            self.debug['v_LNs'].append(v_LN)
+            self.debug['v_MNs'].append(v_MN)
+
+            # self.debug['p_Cs'].append(p_C)
+            # self.debug['ds'].append(d)
+
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
 
