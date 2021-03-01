@@ -350,37 +350,43 @@ class EdgeController(FingerController):
             # Positions
             p_C = np.array([contact_point]).T
             p_CT = get_T_proj(p_C)
-            # p_CN = get_N_proj(p_C)
+
             p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
             p_LT = get_T_proj(p_L)
-            # p_LN = get_N_proj(p_L)
-            # p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
+
+            p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
             p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
             p_LE = p_L + p_LLE
+
             d = p_C - p_LE + pen_vec/2
             d_T = get_T_proj(d)
             d_N = get_N_proj(d)
-            # p_MConM = p_C - p_M
-            # p_MConMN = get_N_proj(p_MConM)
-            # p_LConL = p_C - p_L
-            # p_LConLN = get_N_proj(p_LConL)
-            # r_T = get_T_proj(p_C - p_L)
+
+            p_MConM = p_C - p_M
+            p_LConL = p_C - p_L
 
             # Velocities
             d_theta_L = vels[self.ll_idx].rotational()[0]
             d_theta_M = vels[self.finger_idx].rotational()[0]
+            omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
+            omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
 
             v_L = np.array([vels[self.ll_idx].translational()[0:3]]).T
+            v_L + np.cross(omega_vec_L, p_LConL, axis=0)
             v_LN = get_N_proj(v_L)
             v_LT = get_T_proj(v_L)
+
+            v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
+
             v_M = np.array([vels[self.finger_idx].translational()[0:3]]).T
             v_MN = get_N_proj(v_M)
             v_MT = get_T_proj(v_M)
-            # v_MN = get_N_proj(v_M)
-            # v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
-            # v_WConMN = get_N_proj(v_WConM)
+            v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
+
             d_d_T = -d_theta_L*h_L/2-d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
             d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
+
+            v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
 
             # Targets
             dd_d_Nd = 0
@@ -389,10 +395,10 @@ class EdgeController(FingerController):
             dd_theta_Md = 0
 
             # Forces
-            # F_N = np.abs((F_FL*h_L*w_L + F_{GN}*w_L**2 - 4*I_L*a_{LNd} - a_{LNd}*m_L*w_L**2)/(2*p_{CT}*w_L - 2*p_{LT}*w_L + w_L**2))
             stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
-            mu_SM = -stribeck_mu * np.sign(d_d_T)
-            mu_SL = stribeck_mu * np.sign(d_d_T)
+            stribeck_sign_L = np.sign(v_S)
+            mu_SM = -stribeck_mu * stribeck_sign_L
+            mu_SL = stribeck_mu * stribeck_sign_L
 
             # Gravity
             g = 9.80665
@@ -444,9 +450,6 @@ class EdgeController(FingerController):
 
             self.debug['v_LNs'].append(v_LN)
             self.debug['v_MNs'].append(v_MN)
-
-            # self.debug['p_Cs'].append(p_C)
-            # self.debug['ds'].append(d)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
