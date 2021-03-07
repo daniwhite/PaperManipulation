@@ -18,6 +18,8 @@ class EdgeController(finger.FingerController):
         self.w_L = sys_params['w_L']
         self.m_L = sys_params['m_L']
 
+        self.d_Td = -0.03  # -0.12
+
         # Initialize debug dict if necessary
         if debug:
             self.debug['N_hats'] = []
@@ -183,7 +185,7 @@ class EdgeController(finger.FingerController):
 
             # Targets
             dd_d_Nd = self.get_dd_d_Nd()
-            dd_d_Td = self.get_dd_Td()
+            dd_d_Td = self.get_dd_Td(d_T, d_d_T)
             a_LNd = self.get_a_LNd()
             dd_theta_Md = self.dd_theta_Md()
 
@@ -253,8 +255,10 @@ class EdgeController(finger.FingerController):
     def get_dd_d_Nd(self):
         return 0
 
-    def get_dd_Td(self):
-        return 0
+    def get_dd_Td(self, d_T, d_d_T):
+        Kp = 1000000
+        Kd = 1000
+        return Kp*(self.d_Td - d_T) - Kd*d_d_T
 
     def get_a_LNd(self):
         return 20
