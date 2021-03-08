@@ -17,6 +17,8 @@ class EdgeController(finger.FingerController):
         self.I_L = sys_params['I_L']
         self.w_L = sys_params['w_L']
         self.m_L = sys_params['m_L']
+        self.b_P = sys_params['b_P']
+        self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
 
@@ -50,6 +52,11 @@ class EdgeController(finger.FingerController):
             self.debug['dd_d_Nds'] = []
             self.debug['dd_d_Tds'] = []
             self.debug['dd_theta_Mds'] = []
+            self.debug['p_CNs'] = []
+            self.debug['p_CTs'] = []
+            self.debug['p_LNs'] = []
+            self.debug['p_LTs'] = []
+            self.debug['p_MNs'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth):
         # Directions
@@ -129,6 +136,11 @@ class EdgeController(finger.FingerController):
             dd_d_Nd = np.nan
             dd_d_Td = np.nan
             dd_theta_Md = np.nan
+            p_CN = np.nan
+            p_CT = np.nan
+            p_LN = np.nan
+            p_LT = np.nan
+            p_MN = np.nan
         else:
             pen_vec = pen_depth*N_hat
 
@@ -141,15 +153,20 @@ class EdgeController(finger.FingerController):
             m_L = self.m_L
             I_L = self.I_L
             I_M = self.I_M
+            b_P = self.b_P
 
             # Positions
             p_C = np.array([contact_point]).T
             p_CT = get_T_proj(p_C)
+            p_CN = get_N_proj(p_C)
 
             p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
             p_LT = get_T_proj(p_L)
+            p_LN = get_N_proj(p_L)
 
             p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
+            p_MN = get_N_proj(p_M)
+
             p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
             p_LE = p_L + p_LLE
 
@@ -250,6 +267,12 @@ class EdgeController(finger.FingerController):
             self.debug['dd_d_Tds'].append(dd_d_Td)
             self.debug['dd_theta_Mds'].append(dd_theta_Md)
 
+            self.debug['p_CNs'].append(p_CN)
+            self.debug['p_CTs'].append(p_CT)
+            self.debug['p_LNs'].append(p_LN)
+            self.debug['p_LTs'].append(p_LT)
+            self.debug['p_MNs'].append(p_MN)
+
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
     def get_dd_d_Nd(self):
@@ -258,7 +281,8 @@ class EdgeController(finger.FingerController):
     def get_dd_Td(self, d_T, d_d_T):
         Kp = 1000000
         Kd = 1000
-        return Kp*(self.d_Td - d_T) - Kd*d_d_T
+        return 0
+        # return Kp*(self.d_Td - d_T) - Kd*d_d_T
 
     def get_a_LNd(self):
         return 20
