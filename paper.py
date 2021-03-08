@@ -63,7 +63,7 @@ class Paper:
             self.torque_stiffness_constants = np.zeros([3, 1])
             self.torque_stiffness_constants[0] = stiffness
             self.torque_damping_constants = np.zeros([3, 1])
-            self.torque_damping_constants[0] = damping
+            self.torque_damping_constants[0] = 0  # damping
             self.force_stiffness_constants = np.zeros([3, 1])
             self.force_damping_constants = np.zeros([3, 1])
 
@@ -157,7 +157,8 @@ class Paper:
                         "paper_hinge",
                         paper1_hinge_frame,
                         paper2_hinge_frame,
-                        [1, 0, 0]))
+                        [1, 0, 0],
+                        damping=damping))
 
                     if isinstance(default_joint_angle, list):
                         joint.set_default_angle(
