@@ -58,13 +58,22 @@ class EdgeController(finger.FingerController):
             self.debug['p_LTs'] = []
             self.debug['p_MNs'] = []
 
-    def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth):
+    def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         # Directions
         R = poses[self.ll_idx].rotation()
         y_hat = np.array([[0, 1, 0]]).T
         z_hat = np.array([[0, 0, 1]]).T
-        T_hat = R@y_hat
-        N_hat = R@z_hat
+        if N_hat is None:
+            T_hat = R@y_hat
+            N_hat = R@z_hat
+        else:
+            T_hat = np.matmul(
+                np.array([
+                    [0,  0, 0],
+                    [0,  0, 1],
+                    [0, -1, 0],
+                ]),
+                N_hat)
 
         T_proj_mat = T_hat@(T_hat.T)
         N_proj_mat = N_hat@(N_hat.T)
@@ -217,14 +226,14 @@ class EdgeController(finger.FingerController):
             F_GT = get_T_proj(F_G)
             F_GN = get_N_proj(F_G)
 
-            F_CN = (-F_GN*w_L**2 + 4*I_L*a_LNd + dd_d_Nd*mu_SL*h_L*m_M*w_L + 2*dd_d_Nd*m_M*p_CT*w_L - 2*dd_d_Nd*m_M*p_LT*w_L + dd_d_Nd*m_M*w_L**2 + d_theta_L**2*mu_SL*h_L**2*m_M*w_L/2 + d_theta_L**2*mu_SL*h_L*m_M*r*w_L - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_N + d_theta_L**2*h_L*m_M*p_CT*w_L - d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2/2 + 2*d_theta_L**2*m_M*p_CT*r*w_L - 2*d_theta_L**2*m_M*p_CT*w_L*d_N - 2*d_theta_L**2*m_M*p_LT*r*w_L + 2*d_theta_L**2*m_M *
-                    p_LT*w_L*d_N + d_theta_L**2*m_M*r*w_L**2 - d_theta_L**2*m_M*w_L**2*d_N + 2*d_theta_L*d_d_T*mu_SL*h_L*m_M*w_L + 4*d_theta_L*d_d_T*m_M*p_CT*w_L - 4*d_theta_L*d_d_T*m_M*p_LT*w_L + 2*d_theta_L*d_d_T*m_M*w_L**2 + 2*mu_SL*a_LNd*h_L*m_M*w_L + 2*mu_SL*a_LNd*h_L*m_M*d_T + a_LNd*m_L*w_L**2 + 4*a_LNd*m_M*p_CT*w_L + 4*a_LNd*m_M*p_CT*d_T - 4*a_LNd*m_M*p_LT*w_L - 4*a_LNd*m_M*p_LT*d_T + 2*a_LNd*m_M*w_L**2 + 2*a_LNd*m_M*w_L*d_T)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
+            F_CN = (-F_GN*w_L**2 + 4*I_L*a_LNd - 2*dd_d_Nd*mu_SL*m_M*p_CN*w_L + 2*dd_d_Nd*mu_SL*m_M*p_LN*w_L + 2*dd_d_Nd*m_M*p_CT*w_L - 2*dd_d_Nd*m_M*p_LT*w_L + dd_d_Nd*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*p_CN*w_L + d_theta_L**2*mu_SL*h_L*m_M*p_LN*w_L - 2*d_theta_L**2*mu_SL*m_M*p_CN*r*w_L + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L*d_N + 2*d_theta_L**2*mu_SL*m_M*p_LN*r*w_L - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L*d_N + d_theta_L**2*h_L*m_M*p_CT*w_L - d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2/2 + 2*d_theta_L**2*m_M*p_CT*r*w_L - 2*d_theta_L**2*m_M*p_CT*w_L*d_N - 2*d_theta_L**2*m_M*p_LT*r*w_L +
+                    2*d_theta_L**2*m_M*p_LT*w_L*d_N + d_theta_L**2*m_M*r*w_L**2 - d_theta_L**2*m_M*w_L**2*d_N - 4*d_theta_L*d_d_T*mu_SL*m_M*p_CN*w_L + 4*d_theta_L*d_d_T*mu_SL*m_M*p_LN*w_L + 4*d_theta_L*d_d_T*m_M*p_CT*w_L - 4*d_theta_L*d_d_T*m_M*p_LT*w_L + 2*d_theta_L*d_d_T*m_M*w_L**2 - 4*mu_SL*a_LNd*m_M*p_CN*w_L - 4*mu_SL*a_LNd*m_M*p_CN*d_T + 4*mu_SL*a_LNd*m_M*p_LN*w_L + 4*mu_SL*a_LNd*m_M*p_LN*d_T + a_LNd*m_L*w_L**2 + 4*a_LNd*m_M*p_CT*w_L + 4*a_LNd*m_M*p_CT*d_T - 4*a_LNd*m_M*p_LT*w_L - 4*a_LNd*m_M*p_LT*d_T + 2*a_LNd*m_M*w_L**2 + 2*a_LNd*m_M*w_L*d_T)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
 
-            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd + dd_d_Td*mu_SL*h_L*m_M*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T - 2*d_theta_L*d_d_N*mu_SL*h_L*m_M *
-                    w_L - 4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 + mu_SL*a_LNd*h_L**2*m_M + 2*mu_SL*a_LNd*h_L*m_M*r - 2*mu_SL*a_LNd*h_L*m_M*d_N - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
+            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd - 2*dd_d_Td*mu_SL*m_M*p_CN*w_L + 2*dd_d_Td*mu_SL*m_M*p_LN*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L**2 + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L*d_T - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L**2 - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T + 4*d_theta_L*d_d_N*mu_SL*m_M*p_CN*w_L - 4*d_theta_L *
+                    d_d_N*mu_SL*m_M*p_LN*w_L - 4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 - 2*mu_SL*a_LNd*h_L*m_M*p_CN + 2*mu_SL*a_LNd*h_L*m_M*p_LN - 4*mu_SL*a_LNd*m_M*p_CN*r + 4*mu_SL*a_LNd*m_M*p_CN*d_N + 4*mu_SL*a_LNd*m_M*p_LN*r - 4*mu_SL*a_LNd*m_M*p_LN*d_N - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
 
-            tau_M = (-F_GN*mu_SM*r*w_L**2 + 4*I_L*mu_SM*a_LNd*r + I_M*dd_theta_Md*mu_SL*h_L*w_L + 2*I_M*dd_theta_Md*p_CT*w_L - 2 *
-                     I_M*dd_theta_Md*p_LT*w_L + I_M*dd_theta_Md*w_L**2 + mu_SM*a_LNd*m_L*r*w_L**2)/(w_L*(mu_SL*h_L + 2*p_CT - 2*p_LT + w_L))
+            tau_M = (-F_GN*mu_SM*p_CN*w_L**2 + F_GN*mu_SM*p_MN*w_L**2 + 4*I_L*mu_SM*a_LNd*p_CN - 4*I_L*mu_SM*a_LNd*p_MN - 2*I_M*dd_theta_Md*mu_SL*p_CN*w_L + 2*I_M*dd_theta_Md*mu_SL*p_LN*w_L + 2*I_M *
+                     dd_theta_Md*p_CT*w_L - 2*I_M*dd_theta_Md*p_LT*w_L + I_M*dd_theta_Md*w_L**2 + mu_SM*a_LNd*m_L*p_CN*w_L**2 - mu_SM*a_LNd*m_L*p_MN*w_L**2)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
             tau_M = tau_M[0]
             self.last_d_T = d_T
             self.last_d_N = d_N
@@ -281,8 +290,7 @@ class EdgeController(finger.FingerController):
     def get_dd_Td(self, d_T, d_d_T):
         Kp = 1000000
         Kd = 1000
-        return 0
-        # return Kp*(self.d_Td - d_T) - Kd*d_d_T
+        return Kp*(self.d_Td - d_T) - Kd*d_d_T
 
     def get_a_LNd(self):
         return 20

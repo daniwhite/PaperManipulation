@@ -101,7 +101,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         self.debug = {}
         self.debug['times'] = []
 
-    def GetForces(self, poses, vels, contact_point):
+    def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         """
         Should be overloaded to return [Fy, Fz, tau] to move manipulator (not including gravity
         compensation.)
@@ -121,6 +121,7 @@ class FingerController(pydrake.systems.framework.LeafSystem):
         contact_point = None
         slip_speed = None
         pen_depth = None
+        N_hat = None
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -134,11 +135,13 @@ class FingerController(pydrake.systems.framework.LeafSystem):
                 slip_speed = point_pair_contact_info.slip_speed()
                 pen_point_pair = point_pair_contact_info.point_pair()
                 pen_depth = pen_point_pair.depth
+                # PROGRAMMING: check sign
+                N_hat = np.expand_dims(pen_point_pair.nhat_BA_W, 1)
 
         self.debug['times'].append(context.get_time())
 
         [fy, fz, tau] = self.GetForces(
-            poses, vels, contact_point, slip_speed, pen_depth)
+            poses, vels, contact_point, slip_speed, pen_depth, N_hat)
         fz += MASS*constants.g
 
         output.SetFromVector([fy, fz, tau])
@@ -151,5 +154,5 @@ class BlankController(FingerController):
     def __init__(self, finger_idx, ll_idx):
         super().__init__(finger_idx, ll_idx)
 
-    def GetForces(self, poses, vels, contact_point):
+    def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         return [0, 0, 0]
