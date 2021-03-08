@@ -5,7 +5,7 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, RotationMatrix, LinearBushingRollPitchYaw
+from pydrake.all import RigidTransform, RotationMatrix
 from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, RevoluteSpring
 
 # Imports of other project files
@@ -60,12 +60,6 @@ class Paper:
         if self.joint_type == "NATURAL":
             self.damping = damping
             self.stiffness = stiffness
-            self.torque_stiffness_constants = np.zeros([3, 1])
-            self.torque_stiffness_constants[0] = stiffness
-            self.torque_damping_constants = np.zeros([3, 1])
-            self.torque_damping_constants[0] = 0  # damping
-            self.force_stiffness_constants = np.zeros([3, 1])
-            self.force_damping_constants = np.zeros([3, 1])
 
             # This is hypothetically how we should be able to derive the stiffness
             # of the links...but it produces way too large values.
@@ -166,11 +160,10 @@ class Paper:
                     else:
                         joint.set_default_angle(self.default_joint_angle)
 
-                    # Set up joint angle
-                    # self.plant.AddForceElement(RevoluteSpring(
-                    #     joint,
-                    #     0,
-                    #     self.stiffness))
+                    self.plant.AddForceElement(RevoluteSpring(
+                        joint,
+                        0,
+                        self.stiffness))
                     self.joints.append(joint)
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
