@@ -3,6 +3,7 @@ import finger
 import paper
 import constants
 import numpy as np
+import sympy as sp
 
 
 class EdgeController(finger.FingerController):
@@ -22,6 +23,8 @@ class EdgeController(finger.FingerController):
         self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
+
+        self.init_math()
 
         # Initialize debug dict if necessary
         if debug:
@@ -85,14 +88,14 @@ class EdgeController(finger.FingerController):
             T_mag = np.linalg.norm(T_vec)
             T_sgn = np.sign(np.matmul(T_hat.T, T_vec))
             T = T_mag.flatten()*T_sgn.flatten()
-            return T
+            return T[0]
 
         def get_N_proj(vec):
             N_vec = np.matmul(N_proj_mat, vec)
             N_mag = np.linalg.norm(N_vec)
             N_sgn = np.sign(np.matmul(N_hat.T, N_vec))
             N = N_mag.flatten()*N_sgn.flatten()
-            return N
+            return N[0]
 
         def step5(x):
             '''Python version of MultibodyPlant::StribeckModel::step5 method'''
@@ -233,15 +236,14 @@ class EdgeController(finger.FingerController):
             F_GT = get_T_proj(F_G)
             F_GN = get_N_proj(F_G)
 
-            F_CN = (-F_GN*w_L**2 + 4*I_L*a_LNd - 2*dd_d_Nd*mu_SL*m_M*p_CN*w_L + 2*dd_d_Nd*mu_SL*m_M*p_LN*w_L + 2*dd_d_Nd*m_M*p_CT*w_L - 2*dd_d_Nd*m_M*p_LT*w_L + dd_d_Nd*m_M*w_L**2 - d_theta_L**2*mu_SL*h_L*m_M*p_CN*w_L + d_theta_L**2*mu_SL*h_L*m_M*p_LN*w_L - 2*d_theta_L**2*mu_SL*m_M*p_CN*r*w_L + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L*d_N + 2*d_theta_L**2*mu_SL*m_M*p_LN*r*w_L - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L*d_N + d_theta_L**2*h_L*m_M*p_CT*w_L - d_theta_L**2*h_L*m_M*p_LT*w_L + d_theta_L**2*h_L*m_M*w_L**2/2 + 2*d_theta_L**2*m_M*p_CT*r*w_L - 2*d_theta_L**2*m_M*p_CT*w_L*d_N - 2*d_theta_L**2*m_M*p_LT*r*w_L + 2*d_theta_L**2*m_M *
-                    p_LT*w_L*d_N + d_theta_L**2*m_M*r*w_L**2 - d_theta_L**2*m_M*w_L**2*d_N - 4*d_theta_L*d_d_T*mu_SL*m_M*p_CN*w_L + 4*d_theta_L*d_d_T*mu_SL*m_M*p_LN*w_L + 4*d_theta_L*d_d_T*m_M*p_CT*w_L - 4*d_theta_L*d_d_T*m_M*p_LT*w_L + 2*d_theta_L*d_d_T*m_M*w_L**2 + 2*d_theta_L*b_J*w_L - 4*mu_SL*a_LNd*m_M*p_CN*w_L - 4*mu_SL*a_LNd*m_M*p_CN*d_T + 4*mu_SL*a_LNd*m_M*p_LN*w_L + 4*mu_SL*a_LNd*m_M*p_LN*d_T + 2*theta_L*k_J*w_L + a_LNd*m_L*w_L**2 + 4*a_LNd*m_M*p_CT*w_L + 4*a_LNd*m_M*p_CT*d_T - 4*a_LNd*m_M*p_LT*w_L - 4*a_LNd*m_M*p_LT*d_T + 2*a_LNd*m_M*w_L**2 + 2*a_LNd*m_M*w_L*d_T)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
+            F_CN = self.get_F_CN(F_GN, I_L, dd_d_Nd, d_theta_L, d_d_T, mu_SL, mu_SM, theta_L,
+                                 a_LNd, b_J, h_L, k_J, m_L, m_M, p_CN, p_CT, p_LN, p_LT, r, w_L, d_N, d_T)
 
-            F_CT = (F_GN*mu_SM*w_L**2 - 4*I_L*mu_SM*a_LNd - 2*dd_d_Td*mu_SL*m_M*p_CN*w_L + 2*dd_d_Td*mu_SL*m_M*p_LN*w_L + 2*dd_d_Td*m_M*p_CT*w_L - 2*dd_d_Td*m_M*p_LT*w_L + dd_d_Td*m_M*w_L**2 + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L**2 + 2*d_theta_L**2*mu_SL*m_M*p_CN*w_L*d_T - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L**2 - 2*d_theta_L**2*mu_SL*m_M*p_LN*w_L*d_T - 2*d_theta_L**2*m_M*p_CT*w_L**2 - 2*d_theta_L**2*m_M*p_CT*w_L*d_T + 2*d_theta_L**2*m_M*p_LT*w_L**2 + 2*d_theta_L**2*m_M*p_LT*w_L*d_T - d_theta_L**2*m_M*w_L**3 - d_theta_L**2*m_M*w_L**2*d_T + 4*d_theta_L*d_d_N*mu_SL*m_M*p_CN*w_L - 4*d_theta_L*d_d_N*mu_SL*m_M*p_LN*w_L -
-                    4*d_theta_L*d_d_N*m_M*p_CT*w_L + 4*d_theta_L*d_d_N*m_M*p_LT*w_L - 2*d_theta_L*d_d_N*m_M*w_L**2 - 2*d_theta_L*mu_SM*b_J*w_L - 2*mu_SL*a_LNd*h_L*m_M*p_CN + 2*mu_SL*a_LNd*h_L*m_M*p_LN - 4*mu_SL*a_LNd*m_M*p_CN*r + 4*mu_SL*a_LNd*m_M*p_CN*d_N + 4*mu_SL*a_LNd*m_M*p_LN*r - 4*mu_SL*a_LNd*m_M*p_LN*d_N - 2*mu_SM*theta_L*k_J*w_L - mu_SM*a_LNd*m_L*w_L**2 + 2*a_LNd*h_L*m_M*p_CT - 2*a_LNd*h_L*m_M*p_LT + a_LNd*h_L*m_M*w_L + 4*a_LNd*m_M*p_CT*r - 4*a_LNd*m_M*p_CT*d_N - 4*a_LNd*m_M*p_LT*r + 4*a_LNd*m_M*p_LT*d_N + 2*a_LNd*m_M*r*w_L - 2*a_LNd*m_M*w_L*d_N)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
+            F_CT = self.get_F_CT(F_GN, I_L, dd_d_Td, d_theta_L, d_d_N, mu_SL, mu_SM, theta_L,
+                                 a_LNd, b_J, h_L, k_J, m_L, m_M, p_CN, p_CT, p_LN, p_LT, r, w_L, d_N, d_T)
 
-            tau_M = (-F_GN*mu_SM*p_CN*w_L**2 + F_GN*mu_SM*p_MN*w_L**2 + 4*I_L*mu_SM*a_LNd*p_CN - 4*I_L*mu_SM*a_LNd*p_MN - 2*I_M*dd_theta_Md*mu_SL*p_CN*w_L + 2*I_M*dd_theta_Md*mu_SL*p_LN*w_L + 2*I_M*dd_theta_Md*p_CT*w_L - 2*I_M*dd_theta_Md*p_LT*w_L + I_M*dd_theta_Md *
-                     w_L**2 + 2*d_theta_L*mu_SM*b_J*p_CN*w_L - 2*d_theta_L*mu_SM*b_J*p_MN*w_L + 2*mu_SM*theta_L*k_J*p_CN*w_L - 2*mu_SM*theta_L*k_J*p_MN*w_L + mu_SM*a_LNd*m_L*p_CN*w_L**2 - mu_SM*a_LNd*m_L*p_MN*w_L**2)/(w_L*(-2*mu_SL*p_CN + 2*mu_SL*p_LN + 2*p_CT - 2*p_LT + w_L))
-            tau_M = tau_M[0]
+            tau_M = self.get_tau_M(p_LT, I_M, theta_L, p_CT, I_L, a_LNd, dd_theta_Md,
+                                   F_GN, b_J, p_CN, d_theta_L, k_J, p_MN, mu_SM, w_L, mu_SL, p_LN, m_L)
             self.last_d_T = d_T
             self.last_d_N = d_N
 
@@ -304,3 +306,408 @@ class EdgeController(finger.FingerController):
 
     def dd_theta_Md(self):
         return 0
+
+    def init_math(self):
+        self.alg = {}
+        self.alg['inputs'] = {}
+
+        # PROGRAMMING: Do this with Drake instead?
+        # Physical and geometric quantities
+        m_L = sp.symbols(r"m_L")
+        self.alg['inputs']['m_L'] = m_L
+        m_M = sp.symbols(r"m_M")
+        self.alg['inputs']['m_M'] = m_M
+        w_L = sp.symbols(r"w_L")
+        self.alg['inputs']['w_L'] = w_L
+        I_L = sp.symbols(r"I_L")
+        self.alg['inputs']['I_L'] = I_L
+        h_L = sp.symbols(r"h_L")
+        self.alg['inputs']['h_L'] = h_L
+        mu = sp.symbols(r"\mu")
+        self.alg['inputs']['mu'] = mu
+        r = sp.symbols(r"r")
+        self.alg['inputs']['r'] = r
+        g = sp.symbols(r"g")
+        self.alg['inputs']['g'] = g
+        I_M = sp.symbols(r"I_M")
+        self.alg['inputs']['I_M'] = I_M
+
+        # Friction coefficients
+        mu_SL = sp.symbols(r"\mu_{SL}")
+        self.alg['inputs']['mu_SL'] = mu_SL
+        mu_SM = sp.symbols(r"\mu_{SM}")
+        self.alg['inputs']['mu_SM'] = mu_SM
+
+        # System gains
+        b_J = sp.symbols(r"b_J")
+        self.alg['inputs']['b_J'] = b_J
+        k_J = sp.symbols(r"k_J")
+        self.alg['inputs']['k_J'] = k_J
+
+        # Positions
+        p_CN = sp.symbols(r"p_{CN}")
+        self.alg['inputs']['p_CN'] = p_CN
+        p_CT = sp.symbols(r"p_{CT}")
+        self.alg['inputs']['p_CT'] = p_CT
+        p_MN = sp.symbols(r"p_{MN}")
+        self.alg['inputs']['p_MN'] = p_MN
+        p_MT = sp.symbols(r"p_{MT}")
+        self.alg['inputs']['p_MT'] = p_MT
+        p_LN = sp.symbols(r"p_{LN}")
+        self.alg['inputs']['p_LN'] = p_LN
+        p_LT = sp.symbols(r"p_{LT}")
+        self.alg['inputs']['p_LT'] = p_LT
+        theta_L = sp.symbols(r"\theta_L")
+        self.alg['inputs']['theta_L'] = theta_L
+        theta_M = sp.symbols(r"\theta_M")
+        self.alg['inputs']['theta_M'] = theta_M
+        d_T = sp.symbols(r"d_T")
+        self.alg['inputs']['d_T'] = d_T
+        d_N = sp.symbols(r"d_N")
+        self.alg['inputs']['d_N'] = d_N
+
+        # Velocities
+        v_CN = sp.symbols(r"v_{CN}")
+        self.alg['inputs']['v_CN'] = v_CN
+        v_CT = sp.symbols(r"v_{CT}")
+        self.alg['inputs']['v_CT'] = v_CT
+        v_MN = sp.symbols(r"v_{MN}")
+        self.alg['inputs']['v_MN'] = v_MN
+        v_MT = sp.symbols(r"v_{MT}")
+        self.alg['inputs']['v_MT'] = v_MT
+        v_LN = sp.symbols(r"v_{LN}")
+        self.alg['inputs']['v_LN'] = v_LN
+        v_LT = sp.symbols(r"v_{LT}")
+        self.alg['inputs']['v_LT'] = v_LT
+        d_theta_L = sp.symbols(r"\dot\theta_L")
+        self.alg['inputs']['d_theta_L'] = d_theta_L
+        d_theta_M = sp.symbols(r"\dot\theta_M")
+        self.alg['inputs']['d_theta_M'] = d_theta_M
+        d_d_T = sp.symbols(r"\dot{d}_T")
+        self.alg['inputs']['d_d_T'] = d_d_T
+        d_d_N = sp.symbols(r"\dot{d}_N")
+        self.alg['inputs']['d_d_N'] = d_d_N
+
+        # Input forces
+        F_GT = sp.symbols(r"F_{GT}")
+        self.alg['inputs']['F_GT'] = F_GT
+        F_GN = sp.symbols(r"F_{GN}")
+        self.alg['inputs']['F_GN'] = F_GN
+        a_LNd = sp.symbols(r"a_{LNd}")
+
+        # Control inputs
+        self.alg['inputs']['a_LNd'] = a_LNd
+        dd_d_Nd = sp.symbols(r"\ddot{d}_{Nd}")
+        self.alg['inputs']['dd_d_Nd'] = dd_d_Nd
+        dd_d_Td = sp.symbols(r"\ddot{d}_{Td}")
+        self.alg['inputs']['dd_d_Td'] = dd_d_Td
+        dd_theta_Md = sp.symbols(r"\ddot\theta_{Md}")
+        self.alg['inputs']['dd_theta_Md'] = dd_theta_Md
+
+        # # Geometric quantities
+        # m_L, m_M, w_L, I_L, h_L, mu, r, g = sp.symbols(
+        #     "m_L m_M w_L I_L h_L \mu r g")
+        # inputs = [m_L, m_M, w_L, I_L, h_L, mu, r, g]
+        # I_M = sp.symbols("I_M")
+        # inputs.append(I_M)
+        # mu_SL, mu_SM = sp.symbols("\mu_{SL} \mu_{SM}")
+
+        # # System gains
+        # b_J, k_J = sp.symbols("b_J k_J")
+        # inputs.append(b_J)
+        # inputs.append(k_J)
+
+        # # Positions
+        # p_CN = sp.symbols(r"p_{CN}")
+        # inputs.append(p_CN)
+        # p_CT = sp.symbols(r"p_{CT}")
+        # inputs.append(p_CT)
+        # p_MN = sp.symbols(r"p_{MN}")
+        # inputs.append(p_MN)
+        # p_MT = sp.symbols(r"p_{MT}")
+        # inputs.append(p_MT)
+        # p_LN = sp.symbols(r"p_{LN}")
+        # inputs.append(p_LN)
+        # p_LT = sp.symbols(r"p_{LT}")
+        # inputs.append(p_LT)
+        # theta_L = sp.symbols(r"\theta_L")
+        # inputs.append(theta_L)
+        # theta_M = sp.symbols(r"\theta_M")
+        # inputs.append(theta_M)
+        # d_T = sp.symbols(r"{d}_T")
+        # inputs.append(d_T)
+        # d_N = sp.symbols(r"{d}_N")
+        # inputs.append(d_N)
+
+        # # Velocities
+        # v_CN = sp.symbols(r"v_{CN}")
+        # inputs.append(v_CN)
+        # v_CT = sp.symbols(r"v_{CT}")
+        # inputs.append(v_CT)
+        # v_MN = sp.symbols(r"v_{MN}")
+        # inputs.append(v_MN)
+        # v_MT = sp.symbols(r"v_{MT}")
+        # inputs.append(v_MT)
+        # v_LN = sp.symbols(r"v_{LN}")
+        # inputs.append(v_LN)
+        # v_LT = sp.symbols(r"v_{LT}")
+        # inputs.append(v_LT)
+        # d_theta_L = sp.symbols(r"\dot\theta_L")
+        # inputs.append(d_theta_L)
+        # d_theta_M = sp.symbols(r"\dot\theta_M")
+        # inputs.append(d_theta_M)
+        # d_d_T = sp.symbols(r"\dot{d}_T")
+        # inputs.append(d_d_T)
+        # d_d_N = sp.symbols(r"\dot{d}_N")
+        # inputs.append(d_d_N)
+
+        # # Vectors which aren't determined by the force balance
+        # F_GT, F_GN = sp.symbols("F_{GT} F_{GN}")
+        # inputs.append(F_GT)
+        # inputs.append(F_GN)
+
+        # # Control targest
+        # a_LNd, dd_d_Nd, dd_d_Td, dd_theta_Md = sp.symbols(
+        #     r"a_{LNd} \ddot{d}_{Nd} \ddot{d}_{Td} \ddot{\theta}_{Md}")
+        # inputs.append(a_LNd)
+        # inputs.append(dd_d_Nd)
+        # inputs.append(dd_d_Td)
+        # inputs.append(dd_theta_Md)
+
+        outputs = [
+            a_LT, a_LN, a_MT, a_MN, dd_theta_L, dd_theta_M, F_OT, F_ON, tau_O, F_NM, F_FL, F_FM, dd_d_N, dd_d_T, F_NL, F_CN, F_CT, tau_M
+        ] = sp.symbols(
+            r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{OT} F_{ON} \tau_O F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
+        )
+        outputs = list(outputs)
+
+        t = sp.symbols("t")
+        theta_L_func = sp.Function(r'\theta_L')(t)
+        N_hat = sp.Function(r'\hat N')(theta_L_func)
+        T_hat = sp.Function(r'\hat T')(theta_L_func)
+
+        d_T_func = sp.Function(r"d_T")(t)
+        d_N_func = sp.Function(r"d_N")(t)
+        d_g = d_T_func*T_hat + d_N_func*N_hat
+
+        d_vel_g = sp.diff(d_g, t)
+
+        d_vel_g = d_vel_g.subs(sp.diff(N_hat, t), -
+                               sp.diff(theta_L_func, t)*T_hat)
+        d_vel_g = d_vel_g.subs(
+            sp.diff(T_hat, t), sp.diff(theta_L_func, t)*N_hat)
+
+        d_acc_g = sp.diff(d_vel_g, t)
+        d_acc_g = d_acc_g.subs(sp.diff(N_hat, t), -
+                               sp.diff(theta_L_func, t)*T_hat)
+        d_acc_g = d_acc_g.subs(
+            sp.diff(T_hat, t), sp.diff(theta_L_func, t)*N_hat)
+
+        d_acc_cos_g = d_acc_g
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(theta_L_func, t, t), dd_theta_L)
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(d_T_func, t, t), dd_d_T)
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(d_N_func, t, t), dd_d_N)
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(theta_L_func, t), d_theta_L)
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(d_T_func, t), d_d_T)
+        d_acc_cos_g = d_acc_cos_g.subs(sp.diff(d_N_func, t), d_d_N)
+        d_acc_cos_g = d_acc_cos_g.subs(d_T_func, d_T)
+        d_acc_cos_g = d_acc_cos_g.subs(d_N_func, d_N)
+
+        dd_d_g_T = d_acc_cos_g.subs(N_hat, 0).subs(T_hat, 1)
+
+        dd_d_g_N = d_acc_cos_g.subs(T_hat, 0).subs(N_hat, 1)
+
+        p_M_func = sp.Function(r"p_M")(t)
+        p_L_func = sp.Function(r"p_L")(t)
+        v_M = sp.symbols(r"v_M")
+        v_L = sp.symbols(r"v_L")
+        d_s = (p_M_func + r*N_hat) - (p_L_func + (w_L/2)*T_hat - (h_L/2)*N_hat)
+
+        d_vel_s = sp.diff(d_s, t)
+        d_vel_s = d_vel_s.subs(sp.diff(N_hat, t), -
+                               sp.diff(theta_L_func, t)*T_hat)
+        d_vel_s = d_vel_s.subs(
+            sp.diff(T_hat, t), sp.diff(theta_L_func, t)*N_hat)
+
+        d_acc_s = sp.diff(d_vel_s, t)
+        d_acc_s = d_acc_s.subs(sp.diff(N_hat, t), -
+                               sp.diff(theta_L_func, t)*T_hat)
+        d_acc_s = d_acc_s.subs(
+            sp.diff(T_hat, t), sp.diff(theta_L_func, t)*N_hat)
+
+        d_acc_cos_s = d_acc_s
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(theta_L_func, t, t), dd_theta_L)
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(d_T_func, t, t), dd_d_T)
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(d_N_func, t, t), dd_d_N)
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(theta_L_func, t), d_theta_L)
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(d_T_func, t), d_d_T)
+        d_acc_cos_s = d_acc_cos_s.subs(sp.diff(d_N_func, t), d_d_N)
+        d_acc_cos_s = d_acc_cos_s.subs(d_T_func, d_T)
+        d_acc_cos_s = d_acc_cos_s.subs(d_N_func, d_N)
+
+        dd_d_s_T = d_acc_cos_s.subs(N_hat, 0).subs(T_hat, 1)
+        dd_d_s_T = dd_d_s_T.subs(sp.diff(p_M_func, t, t), a_MT)
+        dd_d_s_T = dd_d_s_T.subs(sp.diff(p_L_func, t, t), a_LT)
+        dd_d_s_T
+
+        dd_d_s_N = d_acc_cos_s.subs(T_hat, 0).subs(N_hat, 1)
+        dd_d_s_N = dd_d_s_N.subs(sp.diff(p_M_func, t, t), a_MN)
+        dd_d_s_N = dd_d_s_N.subs(sp.diff(p_L_func, t, t), a_LN)
+        dd_d_s_N
+
+        nat_eqs = [
+            # Link tangential force balance
+            [m_L*a_LT, F_FL+F_GT+F_OT],
+            # Link normal force balance
+            [m_L*a_LN, F_NL + F_GN + F_ON, ],
+            # Manipulator tangential force balance
+            [m_M*a_MT, F_FM + F_CT, ],
+            # Manipulator normal force balance
+            [m_M*a_MN, F_NM+F_CN, ],
+            # Joint constraint on link tangential acceleration
+            [a_LT, -(w_L/2)*d_theta_L**2, ],
+            # Joint constraint on link normal acceleration
+            [a_LN, dd_theta_L*w_L/2, ],
+            # Link moment balance
+            [I_L*dd_theta_L, (-w_L/2)*F_ON - (p_CN-p_LN) * \
+             F_FL + (p_CT-p_LT)*F_NL + tau_O, ],
+            # Manipulator moment balance
+            [I_M*dd_theta_M, tau_M-F_FM*(p_CN-p_MN), ],
+            # Torque from object
+            [tau_O, -b_J*d_theta_L-k_J*theta_L],
+            # 3rd law normal forces
+            [F_NL, -F_NM],
+            # Friction relationship L
+            [F_FL, mu_SL*F_NL],
+            # Friction relationship M
+            [F_FM, mu_SM*F_NL],
+            # d_T derivative is derivative
+            [dd_d_s_T, dd_d_g_T],
+            # d_N derivative is derivative
+            [dd_d_s_N, dd_d_g_N],
+        ]
+
+        art_eqs = [
+            [dd_d_N, dd_d_Nd],
+            [dd_d_T, dd_d_Td],
+            [a_LN, a_LNd],
+            [dd_theta_M, dd_theta_Md],
+        ]
+
+        env_eqs = nat_eqs + art_eqs
+
+        A = []
+        b = []
+        for lhs, rhs in env_eqs:
+            A_row = []
+            b_term = rhs - lhs
+            for output_term in outputs:
+                try:
+                    coeff_L = lhs.coeff(output_term)
+                except AttributeError:
+                    coeff_L = 0
+                try:
+                    coeff_R = rhs.coeff(output_term)
+                except AttributeError:
+                    coeff_R = 0
+                coeff = coeff_L - coeff_R
+                A_row.append(coeff)
+                b_term += coeff * output_term
+            A.append(A_row)
+            b.append(b_term)
+        A = sp.Matrix(A)
+        A.simplify()
+        b = sp.Matrix([b]).T
+        b.simplify()
+        x = sp.Matrix([outputs]).T
+        x.simplify()
+
+        A_aug = A.row_join(b)
+        results = A_aug.rref()[0]
+        A_prime = results[:, :-1]
+        b_prime = results[:, -1]
+
+        assert A_prime == sp.eye(A_prime.shape[0])
+
+        F_CN_idx = list(x).index(F_CN)
+        self.F_CN_exp = b_prime[F_CN_idx]
+
+        F_CT_idx = list(x).index(F_CT)
+        self.F_CT_exp = b_prime[F_CT_idx]
+
+        tau_M_idx = list(x).index(tau_M)
+        self.tau_M_exp = b_prime[tau_M_idx]
+
+    def get_F_CN(self, F_GN, I_L, dd_d_Nd, d_theta_L, d_d_T, mu_SL, mu_SM, theta_L, a_LNd, b_J, h_L, k_J, m_L, m_M, p_CN, p_CT, p_LN, p_LT, r, w_L, d_N, d_T):
+        return self.F_CN_exp.subs([
+            (self.alg['inputs']['F_GN'], F_GN),
+            (self.alg['inputs']['I_L'], I_L),
+            (self.alg['inputs']['dd_d_Nd'], dd_d_Nd),
+            (self.alg['inputs']['d_theta_L'], d_theta_L),
+            (self.alg['inputs']['d_d_T'], d_d_T),
+            (self.alg['inputs']['mu_SL'], mu_SL),
+            (self.alg['inputs']['mu_SM'], mu_SM),
+            (self.alg['inputs']['theta_L'], theta_L),
+            (self.alg['inputs']['a_LNd'], a_LNd),
+            (self.alg['inputs']['b_J'], b_J),
+            (self.alg['inputs']['h_L'], h_L),
+            (self.alg['inputs']['k_J'], k_J),
+            (self.alg['inputs']['m_L'], m_L),
+            (self.alg['inputs']['m_M'], m_M),
+            (self.alg['inputs']['p_CN'], p_CN),
+            (self.alg['inputs']['p_CT'], p_CT),
+            (self.alg['inputs']['p_LN'], p_LN),
+            (self.alg['inputs']['p_LT'], p_LT),
+            (self.alg['inputs']['r'], r),
+            (self.alg['inputs']['w_L'], w_L),
+            (self.alg['inputs']['d_N'], d_N),
+            (self.alg['inputs']['d_T'], d_T),
+        ])
+
+    def get_F_CT(self, F_GN, I_L, dd_d_Td, d_theta_L, d_d_N, mu_SL, mu_SM, theta_L, a_LNd, b_J, h_L, k_J, m_L, m_M, p_CN, p_CT, p_LN, p_LT, r, w_L, d_N, d_T):
+        return self.F_CT_exp.subs([
+            (self.alg['inputs']['F_GN'], F_GN),
+            (self.alg['inputs']['I_L'], I_L),
+            (self.alg['inputs']['dd_d_Td'], dd_d_Td),
+            (self.alg['inputs']['d_theta_L'], d_theta_L),
+            (self.alg['inputs']['d_d_N'], d_d_N),
+            (self.alg['inputs']['mu_SL'], mu_SL),
+            (self.alg['inputs']['mu_SM'], mu_SM),
+            (self.alg['inputs']['theta_L'], theta_L),
+            (self.alg['inputs']['a_LNd'], a_LNd),
+            (self.alg['inputs']['b_J'], b_J),
+            (self.alg['inputs']['h_L'], h_L),
+            (self.alg['inputs']['k_J'], k_J),
+            (self.alg['inputs']['m_L'], m_L),
+            (self.alg['inputs']['m_M'], m_M),
+            (self.alg['inputs']['p_CN'], p_CN),
+            (self.alg['inputs']['p_CT'], p_CT),
+            (self.alg['inputs']['p_LN'], p_LN),
+            (self.alg['inputs']['p_LT'], p_LT),
+            (self.alg['inputs']['r'], r),
+            (self.alg['inputs']['w_L'], w_L),
+            (self.alg['inputs']['d_N'], d_N),
+            (self.alg['inputs']['d_T'], d_T),
+        ])
+
+    def get_tau_M(self, p_LT, I_M, theta_L, p_CT, I_L, a_LNd, dd_theta_Md, F_GN, b_J, p_CN, d_theta_L, k_J, p_MN, mu_SM, w_L, mu_SL, p_LN, m_L):
+        return self.tau_M_exp.subs([
+            (self.alg['inputs']['p_LT'], p_LT),
+            (self.alg['inputs']['I_M'], I_M),
+            (self.alg['inputs']['theta_L'], theta_L),
+            (self.alg['inputs']['p_CT'], p_CT),
+            (self.alg['inputs']['I_L'], I_L),
+            (self.alg['inputs']['a_LNd'], a_LNd),
+            (self.alg['inputs']['dd_theta_Md'], dd_theta_Md),
+            (self.alg['inputs']['F_GN'], F_GN),
+            (self.alg['inputs']['b_J'], b_J),
+            (self.alg['inputs']['p_CN'], p_CN),
+            (self.alg['inputs']['d_theta_L'], d_theta_L),
+            (self.alg['inputs']['k_J'], k_J),
+            (self.alg['inputs']['p_MN'], p_MN),
+            (self.alg['inputs']['mu_SM'], mu_SM),
+            (self.alg['inputs']['w_L'], w_L),
+            (self.alg['inputs']['mu_SL'], mu_SL),
+            (self.alg['inputs']['p_LN'], p_LN),
+            (self.alg['inputs']['m_L'], m_L),
+        ])
