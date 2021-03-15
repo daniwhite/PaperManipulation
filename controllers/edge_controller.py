@@ -109,7 +109,6 @@ class EdgeController(finger.FingerController):
         inputs['w_L'] = w_L = self.w_L
         inputs['h_L'] = h_L = paper.PAPER_HEIGHT
         inputs['r'] = r = finger.RADIUS
-        inputs['mu'] = mu = constants.FRICTION
         inputs['m_M'] = finger.MASS
         inputs['m_L'] = self.m_L
         inputs['I_L'] = self.I_L
@@ -199,6 +198,7 @@ class EdgeController(finger.FingerController):
             inputs['dd_theta_Md'] = dd_theta_Md = self.dd_theta_Md()
 
             # Forces
+            mu = constants.FRICTION
             stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
             stribeck_sign_L = np.sign(v_S)
             inputs['mu_SM'] = -stribeck_mu * stribeck_sign_L
@@ -280,8 +280,6 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(I_L)
         h_L = sp.symbols(r"h_L")
         self.alg_inputs.append(h_L)
-        mu = sp.symbols(r"\mu")
-        self.alg_inputs.append(mu)
         r = sp.symbols(r"r")
         self.alg_inputs.append(r)
         I_M = sp.symbols(r"I_M")
