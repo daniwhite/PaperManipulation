@@ -41,13 +41,16 @@ class EdgeController(finger.FingerController):
             self.debug['dd_d_Tds'] = []
             self.debug['a_LNds'] = []
             self.debug['dd_theta_Mds'] = []
+            self.debug['F_OTs'] = []
+            self.debug['F_ONs'] = []
+            self.debug['tau_Os'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
         jnt_frcs = self.jnt_frc_log[-1]
-        inputs['F_OT'] = jnt_frcs.translational()[1]
-        inputs['F_ON'] = jnt_frcs.translational()[2]
-        inputs['tau_O'] = jnt_frcs.rotational()[0]
+        inputs['F_OT'] = F_OT = jnt_frcs.translational()[1]
+        inputs['F_ON'] = F_ON = jnt_frcs.translational()[2]
+        inputs['tau_O'] = tau_O = jnt_frcs.rotational()[0]
 
         # Directions
         R = poses[self.ll_idx].rotation()
@@ -218,6 +221,9 @@ class EdgeController(finger.FingerController):
             self.debug['dd_d_Tds'].append(dd_d_Td)
             self.debug['a_LNds'].append(a_LNd)
             self.debug['dd_theta_Mds'].append(dd_theta_Md)
+            self.debug['F_OTs'].append(F_OT)
+            self.debug['F_ONs'].append(F_ON)
+            self.debug['tau_Os'].append(tau_O)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
