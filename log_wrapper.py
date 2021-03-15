@@ -42,7 +42,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             self.CalcOutput)
 
         self.finger_idx = finger_idx
-        self.ll_idx = paper.get_free_edge_idx()
+        self.ll_idx = paper.link_idxs[-1]
 
     def CalcOutput(self, context, output):
         out = []

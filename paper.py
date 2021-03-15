@@ -56,7 +56,7 @@ class Paper:
                                p_PScm_E=np.array([0., 0., 0.]),
                                # Default moment of inertia for a solid box
                                G_SP_E=UnitInertia.SolidBox(
-                                   self.width, self.link_width, self.true_height))
+                                   self.width, self.link_width, self.height))
             )
 
             if self.plant.geometry_source_is_registered():
@@ -125,13 +125,6 @@ class Paper:
                     [paper1_body, paper2_body])
                 self.scene_graph.ExcludeCollisionsWithin(geometries)
             self.link_idxs.append(int(paper_body.index()))
-
-    def get_free_edge_idx(self):
-        """
-        Returns the model instance corresponding to the edge of the paper which
-        is not affixed to the pedestal.
-        """
-        return self.link_idxs[-1]
 
     def weld_paper_edge(self, pedestal_width, pedestal_height):
         """
