@@ -43,10 +43,11 @@ class EdgeController(finger.FingerController):
             self.debug['dd_theta_Mds'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
+        inputs = {}
         jnt_frcs = self.jnt_frc_log[-1]
-        F_OT = jnt_frcs.translational()[1]
-        F_ON = jnt_frcs.translational()[2]
-        tau_O = jnt_frcs.rotational()[0]
+        inputs['F_OT'] = jnt_frcs.translational()[1]
+        inputs['F_ON'] = jnt_frcs.translational()[2]
+        inputs['tau_O'] = jnt_frcs.rotational()[0]
 
         # Directions
         R = poses[self.ll_idx].rotation()
@@ -113,7 +114,6 @@ class EdgeController(finger.FingerController):
             dd_theta_Md = np.nan
         else:
             pen_vec = pen_depth*N_hat
-            inputs = {}
 
             # Constants
             inputs['w_L'] = w_L = self.w_L
@@ -320,6 +320,10 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(F_GT)
         F_GN = sp.symbols(r"F_{GN}")
         self.alg_inputs.append(F_GN)
+        F_OT, F_ON, tau_O = sp.symbols(r"F_{OT}, F_{ON} \tau_O")
+        self.alg_inputs.append(F_OT)
+        self.alg_inputs.append(F_ON)
+        self.alg_inputs.append(tau_O)
 
         # Control inputs
         a_LNd = sp.symbols(r"a_{LNd}")
@@ -332,9 +336,9 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(dd_theta_Md)
 
         outputs = [
-            a_LT, a_LN, a_MT, a_MN, dd_theta_L, dd_theta_M, F_OT, F_ON, tau_O, F_NM, F_FL, F_FM, dd_d_N, dd_d_T, F_NL, F_CN, F_CT, tau_M
+            a_LT, a_LN, a_MT, a_MN, dd_theta_L, dd_theta_M, F_NM, F_FL, F_FM, dd_d_N, dd_d_T, F_NL, F_CN, F_CT, tau_M
         ] = sp.symbols(
-            r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{OT} F_{ON} \tau_O F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
+            r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
         )
         outputs = list(outputs)
 
@@ -421,17 +425,11 @@ class EdgeController(finger.FingerController):
             [m_M*a_MT, F_FM + F_CT, ],
             # Manipulator normal force balance
             [m_M*a_MN, F_NM+F_CN, ],
-            # Joint constraint on link tangential acceleration
-            [a_LT, -(w_L/2)*d_theta_L**2, ],
-            # Joint constraint on link normal acceleration
-            [a_LN, dd_theta_L*w_L/2, ],
             # Link moment balance
             [I_L*dd_theta_L, (-w_L/2)*F_ON - (p_CN-p_LN) * \
              F_FL + (p_CT-p_LT)*F_NL + tau_O, ],
             # Manipulator moment balance
             [I_M*dd_theta_M, tau_M-F_FM*(p_CN-p_MN), ],
-            # Torque from object
-            [tau_O, -b_J*d_theta_L-k_J*theta_L],
             # 3rd law normal forces
             [F_NL, -F_NM],
             # Friction relationship L
