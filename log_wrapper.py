@@ -21,7 +21,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.joint_entry_start_idx = num_bodies * \
             self.entries_per_body + self.contact_entries
         self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries + 3
+            self.contact_entries + self.joint_entries
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
 
@@ -102,10 +102,4 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         for j in self.paper.joints:
             out += list(joint_forces[int(j.index())].translational())
             out += list(joint_forces[int(j.index())].rotational())
-
-        # Tag on manipulator orientation from the fram of last link
-        X_WL = poses[self.ll_idx]
-        X_WM = poses[self.finger_idx]
-        X_LM = X_WL.inverse().multiply(X_WM)
-        out += list(X_LM.translation())
         output.SetFromVector(out)
