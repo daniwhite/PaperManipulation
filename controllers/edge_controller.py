@@ -6,13 +6,14 @@ import numpy as np
 import sympy as sp
 from sympy.utilities.lambdify import lambdify
 import re
+from pydrake.all import SpatialForce
 
 
 class EdgeController(finger.FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, finger_idx, ll_idx, sys_params, debug=False):
+    def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, debug=False):
         super().__init__(finger_idx, ll_idx)
 
         self.v_stiction = sys_params['v_stiction']
@@ -25,6 +26,9 @@ class EdgeController(finger.FingerController):
         self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
+        self.jnt_frc_log = jnt_frc_log
+        self.jnt_frc_log.append(SpatialForce(
+            np.zeros((3, 1)), np.zeros((3, 1))))
 
         self.init_math()
 
@@ -39,6 +43,11 @@ class EdgeController(finger.FingerController):
             self.debug['dd_theta_Mds'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
+        jnt_frcs = self.jnt_frc_log[-1]
+        F_OT = jnt_frcs.translational()[1]
+        F_ON = jnt_frcs.translational()[2]
+        tau_O = jnt_frcs.rotational()[0]
+
         # Directions
         R = poses[self.ll_idx].rotation()
         y_hat = np.array([[0, 1, 0]]).T
