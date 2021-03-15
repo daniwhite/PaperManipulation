@@ -105,9 +105,61 @@ class EdgeController(finger.FingerController):
                 u = us - (us - uk) * step5((v - 1) / 2)
             return u
 
+        # Constants
+        inputs['w_L'] = w_L = self.w_L
+        inputs['h_L'] = h_L = paper.PAPER_HEIGHT
+        inputs['r'] = r = finger.RADIUS
+        inputs['mu'] = mu = constants.FRICTION
+        inputs['m_M'] = finger.MASS
+        inputs['m_L'] = self.m_L
+        inputs['I_L'] = self.I_L
+        inputs['I_M'] = self.I_M
+        inputs['b_J'] = self.b_J
+        inputs['k_J'] = self.k_J
+
+        # Positions
+        p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
+        inputs['p_LT'] = get_T_proj(p_L)
+        inputs['p_LN'] = get_N_proj(p_L)
+
+        p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
+        inputs['p_MN'] = get_N_proj(p_M)
+
+        angle_axis = poses[self.ll_idx].rotation().ToAngleAxis()
+        theta_L = angle_axis.angle()
+        if sum(angle_axis.axis()) < 0:
+            theta_L *= -1
+        inputs['theta_L'] = theta_L
+
+        p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
+        p_LE = p_L + p_LLE
+
+        p_LEM = p_M - p_LE
+        p_LEMT = get_T_proj(p_LEM)
+
+        # Velocities
+        inputs['d_theta_L'] = d_theta_L = vels[self.ll_idx].rotational()[0]
+        inputs['d_theta_M'] = d_theta_M = vels[self.finger_idx].rotational()[
+            0]
+        omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
+        omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
+
+        v_L = np.array([vels[self.ll_idx].translational()[0:3]]).T
+        inputs['v_LN'] = v_LN = get_N_proj(v_L)
+        inputs['v_LT'] = v_LT = get_T_proj(v_L)
+
+        v_M = np.array([vels[self.finger_idx].translational()[0:3]]).T
+        inputs['v_MN'] = v_MN = get_N_proj(v_M)
+        inputs['v_MT'] = v_MT = get_T_proj(v_M)
+
+        # Assume for now that link edge is not moving
+        # PROGRAMMING: Get rid of this assumption
+        v_LEM = v_M
+        v_LEMT = get_T_proj(p_LEM)
+
         if contact_point is None:
-            F_CN = 10
-            F_CT = 0
+            F_CN = 0.1
+            F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
             tau_M = 0
 
             # For logging purposes
@@ -118,38 +170,10 @@ class EdgeController(finger.FingerController):
         else:
             pen_vec = pen_depth*N_hat
 
-            # Constants
-            inputs['w_L'] = w_L = self.w_L
-            inputs['h_L'] = h_L = paper.PAPER_HEIGHT
-            inputs['r'] = r = finger.RADIUS
-            inputs['mu'] = mu = constants.FRICTION
-            inputs['m_M'] = finger.MASS
-            inputs['m_L'] = self.m_L
-            inputs['I_L'] = self.I_L
-            inputs['I_M'] = self.I_M
-            inputs['b_J'] = self.b_J
-            inputs['k_J'] = self.k_J
-
             # Positions
             p_C = np.array([contact_point]).T
             inputs['p_CT'] = get_T_proj(p_C)
             inputs['p_CN'] = get_N_proj(p_C)
-
-            p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
-            inputs['p_LT'] = get_T_proj(p_L)
-            inputs['p_LN'] = get_N_proj(p_L)
-
-            angle_axis = poses[self.ll_idx].rotation().ToAngleAxis()
-            theta_L = angle_axis.angle()
-            if sum(angle_axis.axis()) < 0:
-                theta_L *= -1
-            inputs['theta_L'] = theta_L
-
-            p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
-            inputs['p_MN'] = get_N_proj(p_M)
-
-            p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
-            p_LE = p_L + p_LLE
 
             d = p_C - p_LE + pen_vec/2
             inputs['d_T'] = d_T = get_T_proj(d)
@@ -159,22 +183,7 @@ class EdgeController(finger.FingerController):
             p_LConL = p_C - p_L
 
             # Velocities
-            inputs['d_theta_L'] = d_theta_L = vels[self.ll_idx].rotational()[0]
-            inputs['d_theta_M'] = d_theta_M = vels[self.finger_idx].rotational()[
-                0]
-            omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
-            omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
-
-            v_L = np.array([vels[self.ll_idx].translational()[0:3]]).T
-            v_L + np.cross(omega_vec_L, p_LConL, axis=0)
-            inputs['v_LN'] = v_LN = get_N_proj(v_L)
-            inputs['v_LT'] = v_LT = get_T_proj(v_L)
-
             v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
-
-            v_M = np.array([vels[self.finger_idx].translational()[0:3]]).T
-            inputs['v_MN'] = v_MN = get_N_proj(v_M)
-            inputs['v_MT'] = v_MT = get_T_proj(v_M)
             v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
 
             inputs['d_d_T'] = d_d_T = -d_theta_L*h_L/2 - \
@@ -240,6 +249,11 @@ class EdgeController(finger.FingerController):
 
     def dd_theta_Md(self):
         return 0
+
+    def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
+        Kp = 0.1
+        Kd = 1
+        return Kp*(self.d_Td - p_LEMT) - Kd*v_LEMT
 
     def latex_to_str(self, sym):
         out = str(sym)
