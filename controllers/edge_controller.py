@@ -182,7 +182,7 @@ class EdgeController(finger.FingerController):
 
             # Targets
             inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
-            inputs['dd_d_Td'] = dd_d_Td = self.get_dd_Td(d_T, d_d_T)
+            inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
             inputs['a_LNd'] = a_LNd = self.get_a_LNd()
             inputs['dd_theta_Md'] = dd_theta_Md = self.dd_theta_Md()
 
@@ -224,7 +224,7 @@ class EdgeController(finger.FingerController):
     def get_dd_d_Nd(self):
         return 0
 
-    def get_dd_Td(self, d_T, d_d_T):
+    def get_dd_d_Td(self, d_T, d_d_T):
         Kp = 1000000
         Kd = 1000
         return Kp*(self.d_Td - d_T) - Kd*d_d_T
