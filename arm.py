@@ -50,7 +50,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         compensation.)
         """
         # raise NotImplementedError()
-        return np.array([[0, 0]]).T
+        return np.array([[10, 0]]).T
 
     def CalcOutput(self, context, output):
         self.debug['times'].append(context.get_time())
@@ -58,25 +58,20 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         q = self.get_input_port().Eval(context)[:self.nq_arm]
         self.plant.SetPositions(self.plant_context, self.arm_instance, q)
 
-        # J_raw = self.plant.CalcJacobianTranslationalVelocity(
-        #     self.plant_context,
-        #     JacobianWrtVariable.kQDot,
-        #     self.finger_body.body_frame(),
-        #     [0, 0, 0],
-        #     self.plant.world_frame(),
-        #     self.plant.world_frame())
+        finger_body = self.plant.GetBodyByName("finger_body")
 
-        # # finger_instance = self.plant.GetModelInstanceByName("finger") # Finger has no actuation ports
-        # J = J_raw[:, -self.nq_arm:]
-        # J_yz = J[1:]
-        # # J_yz = np.zeros((2, 7))
+        J_raw = self.plant.CalcJacobianTranslationalVelocity(
+            self.plant_context,
+            JacobianWrtVariable.kQDot,
+            finger_body.body_frame(),
+            [0, 0, 0],
+            self.plant.world_frame(),
+            self.plant.world_frame())
 
-        # assert J.shape[1] == self.nq_arm
+        J = J_raw[1:, self.q_idxs]
 
-        # forces = self.GetForces()
-        # out = J_yz.T@forces
-
-        out = np.zeros((7, 1))
+        forces = self.GetForces()
+        out = J.T@forces
         out = out.flatten()
 
         grav_all = self.plant.CalcGravityGeneralizedForces(
