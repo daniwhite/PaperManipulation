@@ -26,6 +26,7 @@ class EdgeController(finger.FingerController):
         self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
+        self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
@@ -39,7 +40,7 @@ class EdgeController(finger.FingerController):
             self.debug['taus'] = []
             self.debug['dd_d_Nds'] = []
             self.debug['dd_d_Tds'] = []
-            self.debug['a_LNds'] = []
+            self.debug['dd_theta_Lds'] = []
             self.debug['dd_theta_Mds'] = []
             self.debug['F_OTs'] = []
             self.debug['F_ONs'] = []
@@ -162,7 +163,7 @@ class EdgeController(finger.FingerController):
             tau_M = 0
 
             # For logging purposes
-            a_LNd = np.nan
+            dd_theta_Ld = np.nan
             dd_d_Nd = np.nan
             dd_d_Td = np.nan
             dd_theta_Md = np.nan
@@ -194,8 +195,9 @@ class EdgeController(finger.FingerController):
             # Targets
             inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
             inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
-            inputs['a_LNd'] = a_LNd = self.get_a_LNd()
-            inputs['dd_theta_Md'] = dd_theta_Md = self.dd_theta_Md()
+            inputs['dd_theta_Ld'] = dd_theta_Ld = self.get_dd_theta_Ld(
+                d_theta_L)
+            inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
             mu = constants.FRICTION
@@ -228,7 +230,7 @@ class EdgeController(finger.FingerController):
             self.debug['taus'].append(tau_M)
             self.debug['dd_d_Nds'].append(dd_d_Nd)
             self.debug['dd_d_Tds'].append(dd_d_Td)
-            self.debug['a_LNds'].append(a_LNd)
+            self.debug['dd_theta_Lds'].append(dd_theta_Ld)
             self.debug['dd_theta_Mds'].append(dd_theta_Md)
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
@@ -244,10 +246,12 @@ class EdgeController(finger.FingerController):
         Kd = 1000
         return Kp*(self.d_Td - d_T) - Kd*d_d_T
 
-    def get_a_LNd(self):
-        return 20
+    def get_dd_theta_Ld(self, d_theta_L):
+        Kp = 100  # e-6
+        # Kd = 0
+        return Kp*(self.d_theta_Ld - d_theta_L)  # - Kd*d_d_T
 
-    def dd_theta_Md(self):
+    def get_dd_theta_Md(self):
         return 0
 
     def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
@@ -344,8 +348,8 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(tau_O)
 
         # Control inputs
-        a_LNd = sp.symbols(r"a_{LNd}")
-        self.alg_inputs.append(a_LNd)
+        dd_theta_Ld = sp.symbols(r"\ddot\theta_{Ld}")
+        self.alg_inputs.append(dd_theta_Ld)
         dd_d_Nd = sp.symbols(r"\ddot{d}_{Nd}")
         self.alg_inputs.append(dd_d_Nd)
         dd_d_Td = sp.symbols(r"\ddot{d}_{Td}")
@@ -463,7 +467,7 @@ class EdgeController(finger.FingerController):
         art_eqs = [
             [dd_d_N, dd_d_Nd],
             [dd_d_T, dd_d_Td],
-            [a_LN, a_LNd],
+            [dd_theta_L, dd_theta_Ld],
             [dd_theta_M, dd_theta_Md],
         ]
 
