@@ -77,8 +77,11 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         q = self.get_input_port().Eval(context)[:self.nq_arm]
         self.plant.SetPositions(self.plant_context, self.arm_instance, q)
 
-        finger_body = self.plant.GetBodyByName("panda_leftfinger")
+        # Get desired forces
+        forces = self.GetForces()
 
+        # Convert forces to joint torques
+        finger_body = self.plant.GetBodyByName("panda_leftfinger")
         J_raw = self.plant.CalcJacobianTranslationalVelocity(
             self.plant_context,
             JacobianWrtVariable.kQDot,
@@ -86,15 +89,13 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
             [0, 0, 0],
             self.plant.world_frame(),
             self.plant.world_frame())
-
         J = J_raw[1:, self.q_idxs]
 
-        forces = self.GetForces()
-        out = J.T@forces
-        out = out.flatten()
+        tau_ff = J.T@forces
+        tau_ff = tau_ff.flatten()
 
         grav_all = self.plant.CalcGravityGeneralizedForces(
             self.plant_context)
         grav = grav_all[self.q_idxs]
-        out -= grav
-        output.SetFromVector(out)
+        tau_ff -= grav
+        output.SetFromVector(tau_ff)
