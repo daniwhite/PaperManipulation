@@ -40,13 +40,13 @@ def AddFinger(plant):
     if plant.geometry_source_is_registered():
         col_geom = plant.RegisterCollisionGeometry(
             finger_body, RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
+            pydrake.geometry.Box(RADIUS*2, RADIUS*2, RADIUS*2),
             "finger_body",
             pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
         plant.RegisterVisualGeometry(
             finger_body,
             RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
+            pydrake.geometry.Box(RADIUS*2, RADIUS*2, RADIUS*2),
             "finger_body",
             [.9, .5, .5, 1.0])  # Color
 
