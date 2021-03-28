@@ -19,7 +19,7 @@ def AddArm(plant, scene_graph=None):
     """
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
     arm_instance = parser.AddModelFromFile(FindResourceOrThrow(
-        "drake/manipulation/models/franka_description/urdf/panda_arm.urdf"))
+        "drake/manipulation/models/franka_description/urdf/panda_arm_hand.urdf"))
 
     # Weld pedestal to world
     plant.WeldFrames(
@@ -29,44 +29,6 @@ def AddArm(plant, scene_graph=None):
     )
 
     finger = plant.AddModelInstance("finger")
-
-    RADIUS = 0.03
-    VOLUME = (4/3)*RADIUS**3*np.pi
-    MASS = VOLUME*1e3  # Assume finger is made of water
-
-    # Initialize finger body
-    finger_body = plant.AddRigidBody(
-        "finger_body", finger,
-        pydrake.multibody.tree.SpatialInertia(
-            mass=MASS,
-            p_PScm_E=np.array([0., 0., 0.]),
-            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
-
-    # Register geometry
-    if plant.geometry_source_is_registered():
-        col_geom = plant.RegisterCollisionGeometry(
-            finger_body, RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
-            "finger_body",
-            pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
-        plant.RegisterVisualGeometry(
-            finger_body,
-            RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
-            "finger_body",
-            [.9, .5, .5, 1.0])  # Color
-
-    plant.WeldFrames(
-        plant.GetFrameByName("panda_link8", arm_instance),
-        finger_body.body_frame(),
-        RigidTransform(RotationMatrix(), [0, 0, 0])
-    )
-
-    for i in range(9):
-        panda_body = plant.GetBodyByName("panda_link" + str(i), arm_instance)
-        geometries = plant.CollectRegisteredGeometries(
-            [panda_body, finger_body])
-        scene_graph.ExcludeCollisionsWithin(geometries)
     return arm_instance
 
 
@@ -79,7 +41,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         self.plant = plant
         self.arm_instance = self.plant.GetModelInstanceByName("panda")
         # TODO: fix
-        self.nq_arm = 7  # self.plant.num_positions(arm_instance)
+        self.nq_arm = 9  # self.plant.num_positions(arm_instance)
         self.q_idxs = q_idxs
 
         self.DeclareVectorInputPort("q", BasicVector(self.nq_arm*2))
@@ -107,7 +69,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         compensation.)
         """
         # raise NotImplementedError()
-        return np.array([[10, 0]]).T
+        return np.array([[0, -10]]).T
 
     def CalcOutput(self, context, output):
         self.debug['times'].append(context.get_time())
@@ -115,7 +77,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         q = self.get_input_port().Eval(context)[:self.nq_arm]
         self.plant.SetPositions(self.plant_context, self.arm_instance, q)
 
-        finger_body = self.plant.GetBodyByName("finger_body")
+        finger_body = self.plant.GetBodyByName("panda_leftfinger")
 
         J_raw = self.plant.CalcJacobianTranslationalVelocity(
             self.plant_context,
