@@ -25,7 +25,7 @@ def AddArm(plant, scene_graph=None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix(), [0, pedestal.PEDESTAL_DEPTH*3, 0])
+        RigidTransform(RotationMatrix(), [0, 0.8, 0])
     )
 
     return arm_instance
@@ -66,7 +66,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         compensation.)
         """
         # raise NotImplementedError()
-        return np.array([[0, 0, 0]]).T
+        return np.array([[0, 0, 0.1]]).T
 
     def CalcOutput(self, context, output):
         self.debug['times'].append(context.get_time())

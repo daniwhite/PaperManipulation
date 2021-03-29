@@ -4,8 +4,9 @@ import pydrake
 from pydrake.all import RigidTransform, RotationMatrix
 
 PEDESTAL_WIDTH = 0.225
-PEDESTAL_HEIGHT = 0.1
+PEDESTAL_HEIGHT = 0.2
 PEDESTAL_DEPTH = 0.3
+# TODO: these should actually be reflected in the box
 
 
 def AddPedestal(plant):
