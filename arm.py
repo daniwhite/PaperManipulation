@@ -18,14 +18,24 @@ def AddArm(plant, scene_graph=None):
     Creates the panda arm.
     """
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile(FindResourceOrThrow(
-        "drake/manipulation/models/franka_description/urdf/panda_arm_hand.urdf"))
+    arm_instance = parser.AddModelFromFile("panda_arm_hand.urdf")
 
     # Weld pedestal to world
-    plant.WeldFrames(
+    jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
         RigidTransform(RotationMatrix(), [0, 0.8, 0])
+    )
+    # Weld fingers (offset matches original urdf)
+    plant.WeldFrames(
+        plant.GetFrameByName("panda_hand", arm_instance),
+        plant.GetFrameByName("panda_leftfinger", arm_instance),
+        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
+    )
+    plant.WeldFrames(
+        plant.GetFrameByName("panda_hand", arm_instance),
+        plant.GetFrameByName("panda_rightfinger", arm_instance),
+        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
     )
 
     return arm_instance
