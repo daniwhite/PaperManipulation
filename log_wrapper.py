@@ -4,7 +4,6 @@ import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce
 import numpy as np
 
-
 class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
     Wrapper system that converts RigidTransform and SpatialVelocity inputs into vector output so it

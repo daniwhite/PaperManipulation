@@ -12,6 +12,8 @@ from collections import defaultdict
 import pydrake
 from pydrake.all import FindResourceOrThrow, RigidTransform, RotationMatrix
 
+FINGER_NAME = "panda_leftfinger"
+
 
 def AddArm(plant, scene_graph=None):
     """
@@ -90,7 +92,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         forces = self.GetForces()
 
         # Convert forces to joint torques
-        finger_body = self.arm_plant.GetBodyByName("panda_leftfinger")
+        finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
         J = self.arm_plant.CalcJacobianTranslationalVelocity(
             self.arm_plant_context,
             JacobianWrtVariable.kQDot,
