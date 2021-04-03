@@ -46,9 +46,10 @@ def AddArm(plant, scene_graph=None):
 class ArmForceController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller at the finger."""
 
-    def __init__(self):
+    def __init__(self, arm_acc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
+        self.arm_acc_log = arm_acc_log
         self.arm_plant = MultibodyPlant(constants.DT)
         AddArm(self.arm_plant)
         self.arm_plant.Finalize()
@@ -80,6 +81,25 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         # raise NotImplementedError()
         return np.array([[0, 0, 0.1]]).T
 
+    def get_force_exerted(self, q, v, tau_g, J):
+        # TODO: can I remove some of these arguments?
+
+        # Manipulator equations:
+        # M(q) v_dot + C(q, v) v = tau_g + tau_ctrl - tau_exerted
+        # Moving terms around:
+        # tau_exerted = tau_g + tau_ctrl - M(q) v_dot - C(q, v) v
+        
+        tau_ctrl = self.last_tau_ctrl
+
+        v_dot = np.array(self.arm_acc_log[-1])
+
+        M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
+        C = self.arm_plant.CalcBiasTerm(self.arm_plant_context)
+
+        tau_exerted = tau_g + tau_ctrl - M@v_dot - C@v
+        force_exerted = np.expand_dims(np.linalg.lstsq(J.T, tau_exerted)[0], 1)
+        return force_exerted
+
     def CalcOutput(self, context, output):
         self.debug['times'].append(context.get_time())
         # This input put is already restricted to the arm, but it includes both q and v
@@ -87,6 +107,10 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         v = self.get_input_port().Eval(context)[self.nq_arm:]
         self.arm_plant.SetPositions(self.arm_plant_context, q)
         self.arm_plant.SetVelocities(self.arm_plant_context, v)
+
+        # Get gravity 
+        grav = self.arm_plant.CalcGravityGeneralizedForces(
+            self.arm_plant_context)
 
         # Get desired forces
         forces = self.GetForces()
@@ -104,7 +128,13 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         tau_ff = J.T@forces
         tau_ff = tau_ff.flatten()
 
-        grav = self.arm_plant.CalcGravityGeneralizedForces(
-            self.arm_plant_context)
-        tau_ff -= grav
-        output.SetFromVector(tau_ff)
+        tau_g = grav
+        force_exerted = self.get_force_exerted(q, v, tau_g, J)
+        f_error = forces - force_exerted
+        Kp = 10
+        tau_fb = (J.T@(Kp*f_error))
+        tau_fb = tau_fb.flatten()
+        
+        tau_ctrl = tau_fb + tau_ff - grav
+        output.SetFromVector(tau_ctrl)
+        self.last_tau_ctrl = tau_ctrl

@@ -11,7 +11,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
 
     # PROGRAMMING: Clean up passed around references
-    def __init__(self, num_bodies, finger_idx, paper, jnt_frc_log):
+    def __init__(self, num_bodies, finger_idx, paper, jnt_frc_log, arm_acc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
         self.contact_entries = 18
@@ -23,6 +23,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             self.contact_entries + self.joint_entries
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
+        self.arm_acc_log = arm_acc_log
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -35,6 +36,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             pydrake.common.value.AbstractValue.Make(ContactResults()))
         self.DeclareAbstractInputPort(
             "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
+        self.DeclareVectorInputPort(
+            "arm_accs", pydrake.systems.framework.BasicVector(7))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -50,9 +53,11 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         accs = self.get_input_port(2).Eval(context)
         contact_results = self.get_input_port(3).Eval(context)
         joint_forces = self.get_input_port(4).Eval(context)
+        arm_accs = self.get_input_port(5).Eval(context)
         # PROGRAMMING: Better interface fro this
         self.jnt_frc_log.append(
             joint_forces[int(self.paper.joints[-1].index())])
+        self.arm_acc_log.append(arm_accs)
         for pose, vel, acc in zip(poses, vels, accs):
             out += list(pose.translation())
             rot_vec = RollPitchYaw(pose.rotation()).vector()
