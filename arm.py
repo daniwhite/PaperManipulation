@@ -4,9 +4,10 @@
 import constants
 import pedestal
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
-from pydrake.all import BasicVector, MultibodyPlant
+from pydrake.all import BasicVector, MultibodyPlant, ContactResults
 import numpy as np
 from collections import defaultdict
+from common import get_contact_point_from_results
 
 # Drake imports
 import pydrake
@@ -46,8 +47,10 @@ def AddArm(plant, scene_graph=None):
 class ArmForceController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller at the finger."""
 
-    def __init__(self, arm_acc_log):
+    def __init__(self, arm_acc_log, ll_idx, finger_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
+        self.ll_idx = ll_idx
+        self.finger_idx = finger_idx
 
         self.arm_acc_log = arm_acc_log
         self.arm_plant = MultibodyPlant(constants.DT)
@@ -57,14 +60,23 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         self.nq_arm = self.arm_plant.get_actuation_input_port().size()
 
+        self.last_tau_ctrl = np.zeros(self.nq_arm)
+        self.last_tau_error = 0
+        self.tau_error_int = 0
+
+        self.t_contact_start =  None
+        self.max_tau_fb = np.ones(7)
+        self.max_tau_fb[0] = 0.1
+        self.max_tau_fb[3] = 10
+
         self.DeclareVectorInputPort("q", BasicVector(self.nq_arm*2))
         # self.DeclareAbstractInputPort(
         #     "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
         # self.DeclareAbstractInputPort(
         #     "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
-        # self.DeclareAbstractInputPort(
-        #     "contact_results",
-        #     pydrake.common.value.AbstractValue.Make(ContactResults()))
+        self.DeclareAbstractInputPort(
+            "contact_results",
+            pydrake.common.value.AbstractValue.Make(ContactResults()))
         self.DeclareVectorOutputPort(
             "arm_actuation", pydrake.systems.framework.BasicVector(
                 self.nq_arm),
@@ -81,13 +93,17 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         # raise NotImplementedError()
         return np.array([[0, 0, 0.1]]).T
 
-    def get_force_exerted(self, q, v, tau_g, J):
+    def get_tau_measured(self, q, v, tau_g, J):
+        """
+        Get the torque that corresponds to me exerting the desired force
+        """
         # TODO: can I remove some of these arguments?
 
         # Manipulator equations:
-        # M(q) v_dot + C(q, v) v = tau_g + tau_ctrl - tau_exerted
+        # M(q) v_dot + C(q, v) v = tau_g + tau_ctrl - J^T F_measured
         # Moving terms around:
-        # tau_exerted = tau_g + tau_ctrl - M(q) v_dot - C(q, v) v
+        # J^T F_measured = tau_g + tau_ctrl - M(q) v_dot - C(q, v) v
+        # J^T F_measured = tau_measured
         
         tau_ctrl = self.last_tau_ctrl
 
@@ -96,15 +112,26 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
         C = self.arm_plant.CalcBiasTerm(self.arm_plant_context)
 
-        tau_exerted = tau_g + tau_ctrl - M@v_dot - C@v
-        force_exerted = np.expand_dims(np.linalg.lstsq(J.T, tau_exerted)[0], 1)
-        return force_exerted
+        tau_measured = tau_g + tau_ctrl- C@v  - M@v_dot 
+        return tau_measured
 
     def CalcOutput(self, context, output):
         self.debug['times'].append(context.get_time())
+        contact_results = self.get_input_port(1).Eval(context)
+        contact_point = get_contact_point_from_results(contact_results, self.ll_idx, self.finger_idx)
+        raw_in_contact = not (contact_point is None)
+        if raw_in_contact:
+            if self.t_contact_start is None:
+                self.t_contact_start = self.debug['times'][-1]
+        else:
+            self.t_contact_start =  None
+        
+        in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.002
+
+        
         # This input put is already restricted to the arm, but it includes both q and v
-        q = self.get_input_port().Eval(context)[:self.nq_arm]
-        v = self.get_input_port().Eval(context)[self.nq_arm:]
+        q = self.get_input_port(0).Eval(context)[:self.nq_arm]
+        v = self.get_input_port(0).Eval(context)[self.nq_arm:]
         self.arm_plant.SetPositions(self.arm_plant_context, q)
         self.arm_plant.SetVelocities(self.arm_plant_context, v)
 
@@ -113,7 +140,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
             self.arm_plant_context)
 
         # Get desired forces
-        forces = self.GetForces()
+        F_d = self.GetForces()
 
         # Convert forces to joint torques
         finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
@@ -125,16 +152,66 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
             self.arm_plant.world_frame(),
             self.arm_plant.world_frame())
 
-        tau_ff = J.T@forces
-        tau_ff = tau_ff.flatten()
+        tau_d = J.T@F_d
+        tau_d = tau_d.flatten()
 
         tau_g = grav
-        force_exerted = self.get_force_exerted(q, v, tau_g, J)
-        f_error = forces - force_exerted
-        Kp = 10
-        tau_fb = (J.T@(Kp*f_error))
-        tau_fb = tau_fb.flatten()
+        tau_measured = self.get_tau_measured(q, v, tau_g, J)
+        assert tau_measured.size == self.nq_arm, "Size is {} instead of {}".format(
+                tau_measured.size, self.nq_arm)
+        kernel_size = 50
+        filtered_tau_measured = np.zeros(7)
         
-        tau_ctrl = tau_fb + tau_ff - grav
+        tau_measured_log = self.debug['tau_measured']
+        if len(tau_measured_log) > 0:
+            for i in range(7):
+                if len(tau_measured_log) < kernel_size:
+                    tau_slice = np.array(tau_measured_log)[:,i]
+                else:
+                    tau_slice = np.array(tau_measured_log[-kernel_size:])[:,i]
+                filtered_tau_measured[i] = np.mean(tau_slice)
+        tau_error = tau_d - filtered_tau_measured#tau_measured
+
+        dt = 0
+        if len(self.debug['times']) > 2:
+            dt = self.debug['times'][-1] - self.debug['times'][-2]
+
+        if dt > 0:
+            d_tau_error = (tau_error - self.last_tau_error)/dt
+        else:
+            d_tau_error = 0
+        self.last_tau_error = tau_error
+
+        self.tau_error_int += dt * tau_error
+
+        # K_Ps = np.array([5, 1, 0.99, 0.99, 0.99, 0.99, 0.99]) #0.99])
+        # Gains with 20 filter: K_Ps = np.array([20, 20, 5, 10, 5, 5, 5])
+        K_Ps = np.array([20, 20, 5, 20, 5, 5, 5])
+        K_Ds = np.array([0,   0,  0, 0, 0, 0, 0])
+        K_Is = np.array([0,   0,  0, 0, 0, 0, 0]) # 100
+        tau_fb = K_Ps*tau_error + K_Ds*d_tau_error + K_Is*self.tau_error_int
+        tau_fb =  tau_fb.flatten()
+        if not in_contact:
+            tau_fb *= 0
+            self.last_tau_error = 0
+            self.tau_error_int = 0
+        
+        # tau_fb_clipped = np.min([tau_fb, self.max_tau_fb], axis=0)
+        # tau_fb_clipped = np.max([tau_fb, -self.max_tau_fb], axis=0)
+        tau_fb_clipped = tau_fb
+        
+        tau_ctrl = tau_fb_clipped + tau_d - grav
         output.SetFromVector(tau_ctrl)
         self.last_tau_ctrl = tau_ctrl
+
+        # Debug
+        self.debug['tau_d'].append(tau_d)
+        self.debug['tau_ctrl'].append(tau_ctrl)
+        self.debug['tau_measured'].append(tau_measured)
+        self.debug['filtered_tau_measured'].append(filtered_tau_measured)
+        self.debug['tau_fb'].append(tau_fb)
+        self.debug['tau_fb_clipped'].append(tau_fb_clipped)
+        self.debug['J'].append(J)
+        
+        self.debug['raw_in_contact'].append(raw_in_contact)
+        self.debug['in_contact'].append(in_contact)
