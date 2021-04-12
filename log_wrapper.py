@@ -101,6 +101,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(pen_point_pair.nhat_BA_W)
                 out += [pen_point_pair.depth]
+            if force_found:
+                break # TODO: support multiple contacts
         if not force_found:
             out += [np.nan]*self.contact_entries
         for j in self.paper.joints:
