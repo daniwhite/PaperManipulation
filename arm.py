@@ -27,7 +27,7 @@ def AddArm(plant, scene_graph=None):
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0.8, 0])
+        RigidTransform(RotationMatrix(), [0, 0.85, 0])
     )
     # Weld fingers (offset matches original urdf)
     plant.WeldFrames(
@@ -180,9 +180,9 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         # K_Ps = np.array([5, 1, 0.99, 0.99, 0.99, 0.99, 0.99]) #0.99])
         # Gains with 20 filter: K_Ps = np.array([20, 20, 5, 10, 5, 5, 5])
-        K_Ps = np.array([20, 20, 5, 20, 5, 5, 5])
-        K_Ds = np.array([0,   0,  0, 0, 0, 0, 0])
-        K_Is = np.array([0,   0,  0, 0, 0, 0, 0]) # 100
+        K_Ps = np.array([5, 0.1, 5, 0.1, 5, 0.1, 0.1])
+        K_Ds = np.array([0, 0, 0, 0, 0, 0, 0])
+        K_Is = np.array([0, 0, 0, 0, 0, 0, 0])
         tau_fb = K_Ps*tau_error + K_Ds*d_tau_error + K_Is*self.tau_error_int
         tau_fb =  tau_fb.flatten()
         if not in_contact:
@@ -199,6 +199,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         self.last_tau_ctrl = tau_ctrl
 
         # Debug
+        self.debug['F_d'].append(F_d)
         self.debug['tau_d'].append(tau_d)
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_measured'].append(tau_measured)
