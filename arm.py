@@ -69,29 +69,20 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         self.max_tau_fb[0] = 0.1
         self.max_tau_fb[3] = 10
 
+        # Input ports
         self.DeclareVectorInputPort("q", BasicVector(self.nq_arm*2))
-        # self.DeclareAbstractInputPort(
-        #     "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
-        # self.DeclareAbstractInputPort(
-        #     "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
         self.DeclareAbstractInputPort(
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
+        self.DeclareVectorInputPort("F", BasicVector(3))
+
+        # Output ports
         self.DeclareVectorOutputPort(
             "arm_actuation", pydrake.systems.framework.BasicVector(
                 self.nq_arm),
             self.CalcOutput)
 
         self.debug = defaultdict(list)
-
-    # , poses, vels, contact_point, slip_speed, pen_depth, N_hat):
-    def GetForces(self):
-        """
-        Should be overloaded to return [Fx, Fy, Fz] to move manipulator (not including gravity
-        compensation.)
-        """
-        # raise NotImplementedError()
-        return np.array([[0, 0, 0.1]]).T
 
     def get_tau_measured(self, q, v, tau_g, J):
         """
@@ -140,7 +131,10 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
             self.arm_plant_context)
 
         # Get desired forces
-        F_d = self.GetForces()
+        F_d = self.get_input_port(2).Eval(context)
+        if not in_contact:
+            F_d = np.array([[0, 0, 0.1]]).T
+        
 
         # Convert forces to joint torques
         finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
