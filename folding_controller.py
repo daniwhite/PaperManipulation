@@ -130,7 +130,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Constants
         inputs['w_L'] = w_L = self.w_L
         inputs['h_L'] = h_L = paper.PAPER_HEIGHT
-        inputs['r'] = r = finger.RADIUS  # TODO get rid of
         inputs['m_M'] = finger.MASS # TODO get rid of
         inputs['m_L'] = self.m_L
         inputs['I_L'] = self.I_L
@@ -195,6 +194,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             p_C = np.array([contact_point]).T
             inputs['p_CT'] = get_T_proj(p_C)
             inputs['p_CN'] = get_N_proj(p_C)
+            r = np.linalg.norm(p_C-p_M) # TODO: make this support multiple directions
+
+            inputs['r'] = r 
 
             d = p_C - p_LE + pen_vec/2
             inputs['d_T'] = d_T = get_T_proj(d)
@@ -384,6 +386,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
         )
         outputs = list(outputs)
+        self.outputs = outputs
 
         t = sp.symbols("t")
         theta_L_func = sp.Function(r'\theta_L')(t)
@@ -515,15 +518,21 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             b.append(b_term)
         A = sp.Matrix(A)
         A.simplify()
+        self.A = A
         b = sp.Matrix([b]).T
         b.simplify()
+        self.b = b
         x = sp.Matrix([outputs]).T
         x.simplify()
+        self.x = x
 
         A_aug = A.row_join(b)
         results = A_aug.rref()[0]
+        self.A_aug = A_aug
         A_prime = results[:, :-1]
+        self.A_prime = A_prime
         b_prime = results[:, -1]
+        self.b_prime = b_prime
 
         assert A_prime == sp.eye(A_prime.shape[0])
 
