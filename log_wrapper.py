@@ -79,6 +79,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += list(acc.translational())
             out += list(acc.rotational())
         force_found = False
+        forces_found = 0
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -91,6 +92,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 # PROGRAMMING: Move sparation speed back into this section with correct signs
                 use_this_contact = True
                 force_found = True
+                forces_found += 1
                 out += list(point_pair_contact_info.point_pair().p_WCa)
                 out += list(point_pair_contact_info.point_pair().p_WCb)
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
@@ -98,6 +100,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 out += list(point_pair_contact_info.contact_force())
                 use_this_contact = True
                 force_found = True
+                forces_found += 1
                 out += list(point_pair_contact_info.point_pair().p_WCb)
                 out += list(point_pair_contact_info.point_pair().p_WCa)
             if use_this_contact:
