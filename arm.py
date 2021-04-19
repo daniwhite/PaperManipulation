@@ -102,6 +102,9 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
         C = self.arm_plant.CalcBiasTerm(self.arm_plant_context)
+        self.debug["M"].append(M)
+        self.debug["C"].append(C)
+        self.debug["tau_g"].append(tau_g)
 
         tau_measured = tau_g + tau_ctrl- C@v  - M@v_dot 
         return tau_measured
@@ -121,10 +124,12 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         
         # This input put is already restricted to the arm, but it includes both q and v
-        q = self.get_input_port(0).Eval(context)[:self.nq_arm]
-        v = self.get_input_port(0).Eval(context)[self.nq_arm:]
+        state = self.get_input_port(0).Eval(context)
+        q = state[:self.nq_arm]
+        v = state[self.nq_arm:]
         self.arm_plant.SetPositions(self.arm_plant_context, q)
         self.arm_plant.SetVelocities(self.arm_plant_context, v)
+        real_q_dot = self.arm_plant.MapVelocityToQDot(self.arm_plant_context, v)
 
         # Get gravity 
         grav = self.arm_plant.CalcGravityGeneralizedForces(
@@ -138,13 +143,14 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         # Convert forces to joint torques
         finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
-        J = self.arm_plant.CalcJacobianTranslationalVelocity(
+        J_full = self.arm_plant.CalcJacobianSpatialVelocity(
             self.arm_plant_context,
             JacobianWrtVariable.kQDot,
             finger_body.body_frame(),
             [0, 0, 0],
             self.arm_plant.world_frame(),
             self.arm_plant.world_frame())
+        J = J_full[3:,:]
 
         tau_d = J.T@F_d
         tau_d = tau_d.flatten()
@@ -206,7 +212,8 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         self.debug['filtered_tau_measured'].append(filtered_tau_measured)
         self.debug['tau_fb'].append(tau_fb)
         self.debug['tau_fb_clipped'].append(tau_fb_clipped)
-        self.debug['J'].append(J)
+        self.debug['J'].append(J_full)
+        self.debug['real_q_dot'].append(real_q_dot)
         
         self.debug['raw_in_contact'].append(raw_in_contact)
         self.debug['in_contact'].append(in_contact)
