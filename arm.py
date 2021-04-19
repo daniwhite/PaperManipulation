@@ -200,7 +200,8 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         # tau_fb_clipped = np.max([tau_fb, -self.max_tau_fb], axis=0)
         tau_fb_clipped = tau_fb
         
-        tau_ctrl = tau_fb_clipped + tau_d - grav
+        # tau_ctrl = tau_fb_clipped + tau_d - grav
+        tau_ctrl = tau_d - grav
         output.SetFromVector(tau_ctrl)
         self.last_tau_ctrl = tau_ctrl
 
