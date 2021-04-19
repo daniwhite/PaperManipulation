@@ -245,6 +245,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             F_CT = self.get_F_CT(inps_)
             tau_M = self.get_tau_M(inps_)
 
+
+        # TODO: don't just use N hat
+        F_CT = 0
+        F_CN = 1
         F_M = F_CN*N_hat + F_CT*T_hat
 
         if self.debug is not None:
@@ -584,10 +588,5 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         [fx, fy, fz] = self.GetForces(
             poses, vels, contact_point, slip_speed, pen_depth, N_hat)
-        
-        # TODO: don't just use N hat
-        if N_hat is None:
-            N_hat = np.array([[0, 0, 0.1]]).T/5
-        [fx, fy, fz] = (N_hat * 5).flatten()
 
         output.SetFromVector([fx, fy, fz])

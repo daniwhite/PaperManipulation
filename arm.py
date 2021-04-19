@@ -139,7 +139,7 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         F_d = self.get_input_port(2).Eval(context)
         if not in_contact:
             F_d = np.array([[0, 0, 0.1]]).T
-        
+
 
         # Convert forces to joint torques
         finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
