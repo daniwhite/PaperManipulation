@@ -263,7 +263,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
 
-        return F_M.flatten()[1], F_M.flatten()[2], tau_M
+        return F_M.flatten()
 
     def get_dd_d_Nd(self):
         return 0
