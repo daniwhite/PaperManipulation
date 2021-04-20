@@ -24,7 +24,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.gen_accs_start_idx = self.joint_entry_start_idx + self.joint_entries
         self.state_start_idx = self.gen_accs_start_idx + self.nq_arm
         self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries + self.nq_arm*3
+            self.contact_entries + self.joint_entries + self.nq_arm*3 + 1
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
         self.arm_acc_log = arm_acc_log
@@ -119,4 +119,5 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += list(joint_forces[int(j.index())].rotational())
         out += list(arm_accs)
         out += list(state)
+        out += [forces_found]
         output.SetFromVector(out)

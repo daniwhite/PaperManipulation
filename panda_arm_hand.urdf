@@ -717,17 +717,8 @@
     </actuator>
   </transmission> -->
   <drake:collision_filter_group name="group_link57">
-    <drake:member link="panda_link0"/>
-    <drake:member link="panda_link1"/>
-    <drake:member link="panda_link2"/>
-    <drake:member link="panda_link3"/>
-    <drake:member link="panda_link4"/>
     <drake:member link="panda_link5"/>
-    <drake:member link="panda_link6"/>
     <drake:member link="panda_link7"/>
-    <drake:member link="panda_link8"/>
-    <drake:member link="panda_leftfinger"/> -->
-    <drake:member link="panda_rightfinger"/>
     <drake:ignored_collision_filter_group name="group_link57"/>
   </drake:collision_filter_group>
 </robot>

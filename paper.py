@@ -43,14 +43,13 @@ class Paper:
 
         self.damping = damping
         self.stiffness = stiffness
-
+        self.instance = self.plant.AddModelInstance(self.name)
         for link_num in range(self.num_links):
             # Initialize bodies and instances
-            paper_instance = self.plant.AddModelInstance(
-                self.name + str(link_num))
+            
             paper_body = self.plant.AddRigidBody(
-                self.name + "_body",
-                paper_instance,
+                self.name + "_body" + str(link_num),
+                self.instance,
                 SpatialInertia(mass=self.link_mass,
                                # CoM at origin of body frame
                                p_PScm_E=np.array([0., 0., 0.]),
@@ -66,7 +65,7 @@ class Paper:
                     RigidTransform(),  # Pose in body frame
                     pydrake.geometry.Box(
                         self.width, self.link_width, self.height),  # Actual shape
-                    self.name + "_body", pydrake.multibody.plant.CoulombFriction(
+                    self.name + "_body" + str(link_num), pydrake.multibody.plant.CoulombFriction(
                         self.mu, self.mu)  # Friction parameters
                 )
 
@@ -76,7 +75,7 @@ class Paper:
                     RigidTransform(),
                     pydrake.geometry.Box(
                         self.width, self.link_width, self.height),
-                    self.name + "_body",
+                    self.name + "_body" + str(link_num),
                     [0, 1, 0, 1])  # RGBA color
 
             # Operations between adjacent links
@@ -85,7 +84,7 @@ class Paper:
                 paper1_body = self.plant.get_body(
                     BodyIndex(self.link_idxs[-1]))
                 paper2_body = self.plant.GetBodyByName(
-                    "paper_body", paper_instance)
+                    self.name + "_body" + str(link_num), self.instance)
 
                 # Set up joints
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
