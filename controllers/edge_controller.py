@@ -201,10 +201,9 @@ class EdgeController(finger.FingerController):
 
             # Forces
             mu = constants.FRICTION
-            stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
-            stribeck_sign_L = np.sign(v_S)
-            inputs['mu_SM'] = -stribeck_mu * stribeck_sign_L
-            inputs['mu_SL'] = stribeck_mu * stribeck_sign_L
+            inputs['mu'] = mu
+            stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
+            inputs['mu_S'] = stribeck_mu
 
             # Gravity
             F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
@@ -290,10 +289,10 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(I_M)
 
         # Friction coefficients
-        mu_SL = sp.symbols(r"\mu_{SL}")
-        self.alg_inputs.append(mu_SL)
-        mu_SM = sp.symbols(r"\mu_{SM}")
-        self.alg_inputs.append(mu_SM)
+        mu = sp.symbols(r"\mu")
+        self.alg_inputs.append(mu)
+        mu_S = sp.symbols(r"\mu_{S}")
+        self.alg_inputs.append(mu_S)
 
         # System gains
         b_J = sp.symbols(r"b_J")
@@ -455,9 +454,9 @@ class EdgeController(finger.FingerController):
             # 3rd law normal forces
             [F_NL, -F_NM],
             # Friction relationship L
-            [F_FL, mu_SL*F_NL],
+            [F_FL, mu*mu_S*F_NL],
             # Friction relationship M
-            [F_FM, mu_SM*F_NL],
+            [F_FM, -F_FL],
             # d_T derivative is derivative
             [dd_d_s_T, dd_d_g_T],
             # d_N derivative is derivative
