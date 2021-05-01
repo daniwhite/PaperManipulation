@@ -203,7 +203,7 @@ class EdgeController(finger.FingerController):
             mu = constants.FRICTION
             inputs['mu'] = mu
             stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
-            inputs['mu_S'] = stribeck_mu
+            inputs['mu_S'] = np.sign(stribeck_mu)
 
             # Gravity
             F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
