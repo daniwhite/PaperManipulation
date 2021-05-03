@@ -120,7 +120,7 @@ class EdgeController(finger.FingerController):
         # Positions
         p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
         inputs['p_LT'] = get_T_proj(p_L)
-        inputs['p_LN'] = get_N_proj(p_L)
+        inputs['p_LN'] = p_LN = get_N_proj(p_L)
 
         p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
         inputs['p_MN'] = get_N_proj(p_M)
@@ -195,8 +195,8 @@ class EdgeController(finger.FingerController):
             # Targets
             inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
             inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
-            inputs['dd_theta_Ld'] = dd_theta_Ld = self.get_dd_theta_Ld(
-                d_theta_L)
+            dd_theta_Ld = self.get_dd_theta_Ld( d_theta_L)
+            inputs['a_LNd'] = a_LNd = dd_theta_Ld*d_theta_L**2/p_LN
             inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
@@ -347,8 +347,8 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(tau_O)
 
         # Control inputs
-        dd_theta_Ld = sp.symbols(r"\ddot\theta_{Ld}")
-        self.alg_inputs.append(dd_theta_Ld)
+        a_LNd = sp.symbols(r"a_{LNd}")
+        self.alg_inputs.append(a_LNd)
         dd_d_Nd = sp.symbols(r"\ddot{d}_{Nd}")
         self.alg_inputs.append(dd_d_Nd)
         dd_d_Td = sp.symbols(r"\ddot{d}_{Td}")
@@ -498,14 +498,14 @@ class EdgeController(finger.FingerController):
         b_prime = results[:, -1]
 
         F_CN_idx = list(x).index(F_CN)
-        self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(dd_theta_L)*dd_theta_Ld
+        self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
 
         F_CT_idx = list(x).index(F_CT)
 
-        self.F_CT_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(dd_theta_L)*dd_theta_Ld  - (A_prime@x)[F_CT_idx].coeff(dd_d_T)*dd_d_Td
+        self.F_CT_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd  - (A_prime@x)[F_CT_idx].coeff(dd_d_T)*dd_d_Td
     
         tau_M_idx = list(x).index(tau_M)
-        self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(dd_theta_L)*dd_theta_Ld
+        self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
         self.get_F_CT = lambdify([self.alg_inputs], self.F_CT_exp)
