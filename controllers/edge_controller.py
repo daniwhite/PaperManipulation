@@ -357,9 +357,9 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(dd_theta_Md)
 
         outputs = [
-            a_LT, a_LN, a_MT, a_MN, dd_theta_L, dd_theta_M, F_NM, F_FL, F_FM, dd_d_N, dd_d_T, F_NL, F_CN, F_CT, tau_M
+            a_LT, a_LN, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, dd_theta_L, dd_theta_M, dd_d_N, dd_d_T
         ] = sp.symbols(
-            r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
+            r"a_{LT}, a_{LN}, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, F_{NL}, F_{CN}, F_{CT}, \tau_M, \ddot\theta_L, \ddot\theta_M, \ddot{d}_N, \ddot{d}_T"
         )
         outputs = list(outputs)
 
@@ -461,16 +461,10 @@ class EdgeController(finger.FingerController):
             [dd_d_s_T, dd_d_g_T],
             # d_N derivative is derivative
             [dd_d_s_N, dd_d_g_N],
+            # No penetration
+            [dd_d_N, 0],
         ]
-
-        art_eqs = [
-            [dd_d_N, dd_d_Nd],
-            [dd_d_T, dd_d_Td],
-            [dd_theta_L, dd_theta_Ld],
-            [dd_theta_M, dd_theta_Md],
-        ]
-
-        env_eqs = nat_eqs + art_eqs
+        env_eqs = nat_eqs
 
         A = []
         b = []
@@ -503,14 +497,15 @@ class EdgeController(finger.FingerController):
         A_prime = results[:, :-1]
         b_prime = results[:, -1]
 
-        assert A_prime == sp.eye(A_prime.shape[0])
-
         F_CN_idx = list(x).index(F_CN)
-        self.F_CN_exp = b_prime[F_CN_idx]
+        self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(dd_theta_L)*dd_theta_Ld
+
         F_CT_idx = list(x).index(F_CT)
-        self.F_CT_exp = b_prime[F_CT_idx]
+
+        self.F_CT_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(dd_theta_L)*dd_theta_Ld  - (A_prime@x)[F_CT_idx].coeff(dd_d_T)*dd_d_Td
+    
         tau_M_idx = list(x).index(tau_M)
-        self.tau_M_exp = b_prime[tau_M_idx]
+        self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(dd_theta_L)*dd_theta_Ld
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
         self.get_F_CT = lambdify([self.alg_inputs], self.F_CT_exp)
