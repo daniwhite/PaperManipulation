@@ -32,7 +32,7 @@ class EdgeController(finger.FingerController):
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
 
-        self.mu_est = 0.3
+        self.mu_hat = 0.3
 
         self.init_math()
 
@@ -114,7 +114,7 @@ class EdgeController(finger.FingerController):
         inputs['w_L'] = w_L = self.w_L
         inputs['h_L'] = h_L = paper.PAPER_HEIGHT
         inputs['r'] = r = finger.RADIUS
-        inputs['m_M'] = finger.MASS
+        inputs['m_M'] = m_M = finger.MASS
         inputs['m_L'] = self.m_L
         inputs['I_L'] = self.I_L
         inputs['I_M'] = self.I_M
@@ -204,10 +204,10 @@ class EdgeController(finger.FingerController):
             inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
-            mu = constants.FRICTION
+            mu = self.mu_hat
             inputs['mu'] = mu
             stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
-            inputs['mu_S'] = np.sign(stribeck_mu)
+            inputs['mu_S'] = stribeck_mu
 
             # Gravity
             F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
@@ -221,15 +221,25 @@ class EdgeController(finger.FingerController):
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
 
-            self.lamda = 0.5
-            s = (d_T - self.d_Td) + self.lamda*(-d_d_T)
-            Y = (self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd)
-            if len(self.debug['times']) >= 2:
-                dt = self.debug['times'][-1] - self.debug['times'][-2]
-                self.mu_est += -dt*Y*s
+            self.lamda = 100
+            self.P = 10000
+            s = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
+            if self.debug['times'][-1] > 0.097:
+                # Y = 1
+                if len(self.debug['times']) >= 2:
+                    dt = self.debug['times'][-1] - self.debug['times'][-2]
+                    self.mu_hat += -self.P*dt*Y*s
+                if self.mu_hat > 1:
+                    self.mu_hat = 1
+                if self.mu_hat < 0:
+                    self.mu_hat = 0
+
+            self.k = 10
+            u_hat = -(self.get_f(inps_)*a_LNd) + self.get_g(inps_) - m_M * self.lamda*d_d_T
+            F_CT = u_hat + Y*self.mu_hat -self.k*s
 
             F_CN = self.get_F_CN(inps_)
-            F_CT = self.get_F_CT(inps_)
             tau_M = self.get_tau_M(inps_)
 
         F_M = F_CN*N_hat + F_CT*T_hat
@@ -245,7 +255,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
-            self.debug['mu_ests'].append(self.mu_est)
+            self.debug['mu_ests'].append(self.mu_hat)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
