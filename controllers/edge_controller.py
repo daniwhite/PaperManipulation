@@ -26,6 +26,7 @@ class EdgeController(finger.FingerController):
         self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
+        self.a_LNd = 0.01
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
@@ -196,7 +197,7 @@ class EdgeController(finger.FingerController):
             inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
             inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
             dd_theta_Ld = self.get_dd_theta_Ld( d_theta_L)
-            inputs['a_LNd'] = a_LNd = 0.01
+            inputs['a_LNd'] = a_LNd = self.a_LNd
             inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
@@ -496,6 +497,9 @@ class EdgeController(finger.FingerController):
         results = A_aug.rref()[0]
         A_prime = results[:, :-1]
         b_prime = results[:, -1]
+        self.A_prime = A_prime
+        self.b_prime = b_prime
+        self.x = x
 
         F_CN_idx = list(x).index(F_CN)
         self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
