@@ -6,7 +6,7 @@ import numpy as np
 # Imports of other project files
 from pedestal import PEDESTAL_WIDTH
 
-g = 9.80665
+g = 9.81
 
 EPSILON = 0.001
 IN_TO_M = 0.0254

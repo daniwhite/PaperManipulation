@@ -17,11 +17,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.entries_per_body = 3*6
         self.contact_entries = 18
         self.joint_entries = len(paper.joints)*6
+        self.ctrl_forces_entries = 3
+
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
         self.joint_entry_start_idx = num_bodies * \
             self.entries_per_body + self.contact_entries
+        self.ctrl_forces_start_idx = self.joint_entry_start_idx + self.joint_entries
+
         self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries
+            self.contact_entries + self.joint_entries + self.ctrl_forces_entries
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
 
@@ -36,6 +40,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             pydrake.common.value.AbstractValue.Make(ContactResults()))
         self.DeclareAbstractInputPort(
             "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
+        self.DeclareVectorInputPort(
+            "finger_actuation", pydrake.systems.framework.BasicVector(self.ctrl_forces_entries))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -51,6 +57,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         accs = self.get_input_port(2).Eval(context)
         contact_results = self.get_input_port(3).Eval(context)
         joint_forces = self.get_input_port(4).Eval(context)
+        ctrl_forces = self.get_input_port(5).Eval(context)
         # PROGRAMMING: Better interface fro this
         self.jnt_frc_log.append(
             joint_forces[int(self.paper.joints[-1].index())])
@@ -102,4 +109,5 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         for j in self.paper.joints:
             out += list(joint_forces[int(j.index())].translational())
             out += list(joint_forces[int(j.index())].rotational())
+        out += list(ctrl_forces)
         output.SetFromVector(out)

@@ -196,7 +196,7 @@ class EdgeController(finger.FingerController):
             inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
             inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
             dd_theta_Ld = self.get_dd_theta_Ld( d_theta_L)
-            inputs['a_LNd'] = a_LNd = dd_theta_Ld*d_theta_L**2/p_LN
+            inputs['a_LNd'] = a_LNd = 0.01
             inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
@@ -357,9 +357,9 @@ class EdgeController(finger.FingerController):
         self.alg_inputs.append(dd_theta_Md)
 
         outputs = [
-            a_LT, a_LN, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, dd_theta_L, dd_theta_M, dd_d_N, dd_d_T
+            a_LT, dd_theta_L, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, a_LN, dd_theta_M, dd_d_N, dd_d_T
         ] = sp.symbols(
-            r"a_{LT}, a_{LN}, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, F_{NL}, F_{CN}, F_{CT}, \tau_M, \ddot\theta_L, \ddot\theta_M, \ddot{d}_N, \ddot{d}_T"
+            r"a_{LT}, \ddot\theta_L, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, F_{NL}, F_{CN}, F_{CT}, \tau_M, a_{LN}, \ddot\theta_M, \ddot{d}_N, \ddot{d}_T"
         )
         outputs = list(outputs)
 
