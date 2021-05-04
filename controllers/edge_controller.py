@@ -32,6 +32,8 @@ class EdgeController(finger.FingerController):
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
 
+        self.mu_est = 0.3
+
         self.init_math()
 
         # Initialize debug dict if necessary
@@ -46,6 +48,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'] = []
             self.debug['F_ONs'] = []
             self.debug['tau_Os'] = []
+            self.debug['mu_ests'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
@@ -218,6 +221,13 @@ class EdgeController(finger.FingerController):
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
 
+            self.lamda = 0.5
+            s = (d_T - self.d_Td) + self.lamda*(-d_d_T)
+            Y = (self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd)
+            if len(self.debug['times']) >= 2:
+                dt = self.debug['times'][-1] - self.debug['times'][-2]
+                self.mu_est += -dt*Y*s
+
             F_CN = self.get_F_CN(inps_)
             F_CT = self.get_F_CT(inps_)
             tau_M = self.get_tau_M(inps_)
@@ -235,6 +245,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
+            self.debug['mu_ests'].append(self.mu_est)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
@@ -503,17 +514,36 @@ class EdgeController(finger.FingerController):
 
         F_CN_idx = list(x).index(F_CN)
         self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
+        N_a_LN_exp = (A_prime@x)[F_CN_idx,0].coeff(a_LN).expand()
+        self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
+        self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
+        N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
+        self.gamma_mu_exp = N_rhs_exp.coeff(mu)
+        self.gamma_exp = (N_rhs_exp - N_rhs_exp.coeff(mu)*mu).simplify()
 
         F_CT_idx = list(x).index(F_CT)
-
         self.F_CT_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd  - (A_prime@x)[F_CT_idx].coeff(dd_d_T)*dd_d_Td
-    
+        T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
+        self.f_mu_exp = T_a_LN_exp.coeff(mu)
+        self.f_exp = (T_a_LN_exp - T_a_LN_exp.coeff(mu)*mu).simplify()
+        T_rhs_exp = (b_prime)[F_CT_idx,0].expand()
+        self.g_mu_exp = T_rhs_exp.coeff(mu)
+        self.g_exp = (T_rhs_exp - T_rhs_exp.coeff(mu)*mu).simplify()
+
         tau_M_idx = list(x).index(tau_M)
         self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
         self.get_F_CT = lambdify([self.alg_inputs], self.F_CT_exp)
         self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
+        self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
+        self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
+        self.get_gamma = lambdify([self.alg_inputs], self.gamma_exp)
+        self.get_gamma_mu = lambdify([self.alg_inputs], self.gamma_mu_exp)
+        self.get_f = lambdify([self.alg_inputs], self.f_exp)
+        self.get_f_mu = lambdify([self.alg_inputs], self.f_mu_exp)
+        self.get_g = lambdify([self.alg_inputs], self.g_exp)
+        self.get_g_mu = lambdify([self.alg_inputs], self.g_mu_exp)
 
         tau_M_idx = list(x).index(tau_M)
         self.tau_M_exp = b_prime[tau_M_idx]
