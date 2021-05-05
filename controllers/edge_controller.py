@@ -16,6 +16,7 @@ class EdgeController(finger.FingerController):
     def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, debug=False):
         super().__init__(finger_idx, ll_idx)
 
+        # System parameters
         self.v_stiction = sys_params['v_stiction']
         self.I_M = sys_params['I_M']
         self.I_L = sys_params['I_L']
@@ -25,9 +26,17 @@ class EdgeController(finger.FingerController):
         self.k_J = sys_params['k_J']
         self.g = sys_params['g']
 
-        self.d_Td = -0.03  # -0.12
+        # Control targets
+        self.d_Td = -0.03
         self.a_LNd = 0.1
-        self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
+
+        # Control constants
+        self.lamda = 100 # Sliding surface time constant
+        self.P = 10000 # Adapatation law gain
+        self.d_d_N_sqr_log_len = 10
+        self.d_d_N_sqr_lim = 0.02e-3
+
+        # Other init
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
@@ -42,10 +51,6 @@ class EdgeController(finger.FingerController):
             self.debug['F_CNs'] = []
             self.debug['F_CTs'] = []
             self.debug['taus'] = []
-            self.debug['dd_d_Nds'] = []
-            self.debug['dd_d_Tds'] = []
-            self.debug['dd_theta_Lds'] = []
-            self.debug['dd_theta_Mds'] = []
             self.debug['F_OTs'] = []
             self.debug['F_ONs'] = []
             self.debug['tau_Os'] = []
@@ -167,11 +172,6 @@ class EdgeController(finger.FingerController):
             F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
             tau_M = 0
 
-            # For logging purposes
-            dd_theta_Ld = np.nan
-            dd_d_Nd = np.nan
-            dd_d_Td = np.nan
-            dd_theta_Md = np.nan
         else:
             pen_vec = pen_depth*N_hat
 
@@ -196,7 +196,7 @@ class EdgeController(finger.FingerController):
             inputs['d_d_N'] = d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
 
             # Calculate metric used to tell whether or not contact transients have passed
-            if len(self.d_d_N_sqr_log) < 10:
+            if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
                 self.d_d_N_sqr_log.append(d_d_N**2)
             else:
                 self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N]
@@ -205,11 +205,7 @@ class EdgeController(finger.FingerController):
             v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
 
             # Targets
-            inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
-            inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
-            dd_theta_Ld = self.get_dd_theta_Ld( d_theta_L)
             inputs['a_LNd'] = a_LNd = self.a_LNd
-            inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
 
             # Forces
             mu = self.mu_hat
@@ -229,11 +225,9 @@ class EdgeController(finger.FingerController):
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
 
-            self.lamda = 100
-            self.P = 10000
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
-            if len(self.d_d_N_sqr_log) > 10 and d_d_N_sqr_sum < 0.02e-3: # Check if d_N is oscillating
+            if len(self.d_d_N_sqr_log) > self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
                     self.mu_hat += -self.P*dt*Y*s
@@ -255,10 +249,6 @@ class EdgeController(finger.FingerController):
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
             self.debug['taus'].append(tau_M)
-            self.debug['dd_d_Nds'].append(dd_d_Nd)
-            self.debug['dd_d_Tds'].append(dd_d_Td)
-            self.debug['dd_theta_Lds'].append(dd_theta_Ld)
-            self.debug['dd_theta_Mds'].append(dd_theta_Md)
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
@@ -266,21 +256,6 @@ class EdgeController(finger.FingerController):
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
-    def get_dd_d_Nd(self):
-        return 0
-
-    def get_dd_d_Td(self, d_T, d_d_T):
-        Kp = 1000000
-        Kd = 1000
-        return Kp*(self.d_Td - d_T) - Kd*d_d_T
-
-    def get_dd_theta_Ld(self, d_theta_L):
-        Kp = 100  # e-6
-        # Kd = 0
-        return Kp*(self.d_theta_Ld - d_theta_L)  # - Kd*d_d_T
-
-    def get_dd_theta_Md(self):
-        return 0
 
     def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
         Kp = 0.1
@@ -378,12 +353,6 @@ class EdgeController(finger.FingerController):
         # Control inputs
         a_LNd = sp.symbols(r"a_{LNd}")
         self.alg_inputs.append(a_LNd)
-        dd_d_Nd = sp.symbols(r"\ddot{d}_{Nd}")
-        self.alg_inputs.append(dd_d_Nd)
-        dd_d_Td = sp.symbols(r"\ddot{d}_{Td}")
-        self.alg_inputs.append(dd_d_Td)
-        dd_theta_Md = sp.symbols(r"\ddot\theta_{Md}")
-        self.alg_inputs.append(dd_theta_Md)
 
         outputs = [
             a_LT, dd_theta_L, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, a_LN, dd_theta_M, dd_d_N, dd_d_T
@@ -539,7 +508,6 @@ class EdgeController(finger.FingerController):
         self.gamma_exp = (N_rhs_exp - N_rhs_exp.coeff(mu)*mu).simplify()
 
         F_CT_idx = list(x).index(F_CT)
-        self.F_CT_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd  - (A_prime@x)[F_CT_idx].coeff(dd_d_T)*dd_d_Td
         T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
         self.f_mu_exp = T_a_LN_exp.coeff(mu)
         self.f_exp = (T_a_LN_exp - T_a_LN_exp.coeff(mu)*mu).simplify()
@@ -551,7 +519,6 @@ class EdgeController(finger.FingerController):
         self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
-        self.get_F_CT = lambdify([self.alg_inputs], self.F_CT_exp)
         self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
         self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
         self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
