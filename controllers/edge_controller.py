@@ -33,6 +33,7 @@ class EdgeController(finger.FingerController):
             np.zeros((3, 1)), np.zeros((3, 1))))
 
         self.mu_hat = 0.8
+        self.d_d_N_sqr_log = []
 
         self.init_math()
 
@@ -194,6 +195,13 @@ class EdgeController(finger.FingerController):
                 d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
             inputs['d_d_N'] = d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
 
+            # Calculate metric used to tell whether or not contact transients have passed
+            if len(self.d_d_N_sqr_log) < 10:
+                self.d_d_N_sqr_log.append(d_d_N**2)
+            else:
+                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N]
+            d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
+
             v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
 
             # Targets
@@ -225,8 +233,7 @@ class EdgeController(finger.FingerController):
             self.P = 10000
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
-            if self.debug['times'][-1] > 0.097:
-                # Y = 1
+            if len(self.d_d_N_sqr_log) > 10 and d_d_N_sqr_sum < 0.02e-3: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
                     self.mu_hat += -self.P*dt*Y*s
