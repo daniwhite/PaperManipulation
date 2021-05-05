@@ -10,8 +10,8 @@ g = 9.81
 
 EPSILON = 0.001
 IN_TO_M = 0.0254
-FRICTION = 0.5
+FRICTION = 0.2
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 0.8
+TSPAN = 1.5

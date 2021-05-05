@@ -26,13 +26,13 @@ class EdgeController(finger.FingerController):
         self.g = sys_params['g']
 
         self.d_Td = -0.03  # -0.12
-        self.a_LNd = 0.01
+        self.a_LNd = 0.1
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
 
-        self.mu_hat = 0.3
+        self.mu_hat = 0.8
 
         self.init_math()
 
