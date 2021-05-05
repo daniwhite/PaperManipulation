@@ -33,8 +33,8 @@ class EdgeController(finger.FingerController):
         # Control constants
         self.lamda = 100 # Sliding surface time constant
         self.P = 10000 # Adapatation law gain
-        self.d_d_N_sqr_log_len = 10
-        self.d_d_N_sqr_lim = 0.02e-3
+        self.d_d_N_sqr_log_len = 100
+        self.d_d_N_sqr_lim = 2e-4
 
         # Other init
         self.jnt_frc_log = jnt_frc_log
@@ -55,6 +55,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_ONs'] = []
             self.debug['tau_Os'] = []
             self.debug['mu_ests'] = []
+            self.debug['d_d_N_sqr_sum'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
@@ -172,6 +173,7 @@ class EdgeController(finger.FingerController):
             F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
             tau_M = 0
 
+            d_d_N_sqr_sum = np.nan
         else:
             pen_vec = pen_depth*N_hat
 
@@ -199,7 +201,7 @@ class EdgeController(finger.FingerController):
             if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
                 self.d_d_N_sqr_log.append(d_d_N**2)
             else:
-                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N]
+                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
             d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
 
             v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
@@ -227,7 +229,7 @@ class EdgeController(finger.FingerController):
 
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
-            if len(self.d_d_N_sqr_log) > self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
+            if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
                     self.mu_hat += -self.P*dt*Y*s
@@ -253,6 +255,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
             self.debug['mu_ests'].append(self.mu_hat)
+            self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
