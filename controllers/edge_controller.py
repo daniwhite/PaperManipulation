@@ -227,20 +227,41 @@ class EdgeController(finger.FingerController):
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
 
+            def sat(phi):
+                if phi > 0:
+                    return min(phi, 1)
+                return max(phi, -1)
+
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            phi = 0.001
+            s_delta = s - phi*sat(s/phi)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
-                    self.mu_hat += -self.P*dt*Y*s
+                    self.mu_hat += -self.P*dt*Y*s_delta
                 if self.mu_hat > 1:
                     self.mu_hat = 1
                 if self.mu_hat < 0:
                     self.mu_hat = 0
 
             self.k = 10
-            u_hat = -(self.get_f(inps_)*a_LNd) + self.get_g(inps_) - m_M * self.lamda*d_d_T
-            F_CT = u_hat + Y*self.mu_hat -self.k*s
+
+            f_mu = self.get_f_mu(inps_)
+            f = self.get_f(inps_)
+            g_mu = self.get_g_mu(inps_)
+            g = self.get_g(inps_)
+            gamma_mu = self.get_gamma_mu(inps_)
+            gamma = self.get_gamma(inps_)
+            alpha_mu = self.get_alpha_mu(inps_)
+            alpha = self.get_alpha(inps_)
+
+
+            k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
+
+            
+            u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
+            F_CT = u_hat + Y*self.mu_hat -self.k*s_delta - k_robust*np.sign(s_delta)
 
             F_CN = self.get_F_CN(inps_)
             tau_M = self.get_tau_M(inps_)
