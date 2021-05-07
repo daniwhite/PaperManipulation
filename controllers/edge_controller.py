@@ -54,7 +54,9 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'] = []
             self.debug['F_ONs'] = []
             self.debug['tau_Os'] = []
-            self.debug['mu_ests'] = []
+            self.debug['a_mu_hats_0'] = []
+            self.debug['a_mu_hats_1'] = []
+            self.debug['a_mu_hats_2'] = []
             self.debug['d_d_N_sqr_sum'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
@@ -249,7 +251,7 @@ class EdgeController(finger.FingerController):
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             phi = 0.001
             s_delta = s # - phi*sat(s/phi)
-            Y_mu = np.array([[g_mu+g_Fmu*F_ON - f_mu*a_LNd, 0, 0]])
+            Y_mu = np.array([[g_mu - f_mu*a_LNd, -g_Fmu*theta_L, -g_Fmu*d_theta_L]])
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
@@ -280,7 +282,9 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
-            self.debug['mu_ests'].append(self.a_mu_hat[0,0])
+            self.debug['a_mu_hats_0'].append(self.a_mu_hat[0,0])
+            self.debug['a_mu_hats_1'].append(self.a_mu_hat[1,0])
+            self.debug['a_mu_hats_2'].append(self.a_mu_hat[2,0])
             self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
