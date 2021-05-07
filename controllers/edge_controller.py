@@ -232,14 +232,28 @@ class EdgeController(finger.FingerController):
                     return min(phi, 1)
                 return max(phi, -1)
 
+            f_mu = self.get_f_mu(inps_)
+            f = self.get_f(inps_)
+            alpha_mu = self.get_alpha_mu(inps_)
+            alpha = self.get_alpha(inps_)
+            g = self.get_g(inps_)
+            g_mu = self.get_g_mu(inps_)
+            g_Fmu = self.get_g_Fmu(inps_)
+            g_F = self.get_g_F(inps_)
+            g_tau = self.get_g_tau(inps_)
+            gamma_mu = self.get_gamma_mu(inps_)
+            gamma_Fmu = self.get_gamma_Fmu(inps_)
+            gamma_F = self.get_gamma_F(inps_)
+            gamma_tau = self.get_gamma_tau(inps_)
+
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             phi = 0.001
-            s_delta = s - phi*sat(s/phi)
-            Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
+            s_delta = s # - phi*sat(s/phi)
+            Y_mu = g_mu+g_Fmu*F_ON - f_mu*a_LNd
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
-                    self.mu_hat += -self.P*dt*Y*s_delta
+                    self.mu_hat += -self.P*dt*Y_mu*s_delta
                 if self.mu_hat > 1:
                     self.mu_hat = 1
                 if self.mu_hat < 0:
@@ -247,21 +261,12 @@ class EdgeController(finger.FingerController):
 
             self.k = 10
 
-            f_mu = self.get_f_mu(inps_)
-            f = self.get_f(inps_)
-            g_mu = self.get_g_mu(inps_)
-            g = self.get_g(inps_)
-            gamma_mu = self.get_gamma_mu(inps_)
-            gamma = self.get_gamma(inps_)
-            alpha_mu = self.get_alpha_mu(inps_)
-            alpha = self.get_alpha(inps_)
-
 
             k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
-            
-            u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
-            F_CT = u_hat + Y*self.mu_hat -self.k*s_delta - k_robust*np.sign(s_delta)
+
+            u_hat = -(f*a_LNd) + g + g_F*F_ON +g_tau*tau_O - m_M * self.lamda*d_d_T
+            F_CT = u_hat + Y_mu*self.mu_hat -self.k*s_delta # - k_robust*np.sign(s_delta)
 
             F_CN = self.get_F_CN(inps_)
             tau_M = self.get_tau_M(inps_)
@@ -528,30 +533,50 @@ class EdgeController(finger.FingerController):
         self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
         self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
         N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
-        self.gamma_mu_exp = N_rhs_exp.coeff(mu)
-        self.gamma_exp = (N_rhs_exp - N_rhs_exp.coeff(mu)*mu).simplify()
+        self.gamma_Fmu_exp = N_rhs_exp.collect(mu*F_ON).coeff(mu*F_ON)
+        N_rhs_exp  = (N_rhs_exp - self.gamma_Fmu_exp*mu*F_ON).simplify().expand()
+        self.gamma_mu_exp = N_rhs_exp.collect(mu).coeff(mu)
+        self.gamma_F_exp = N_rhs_exp.collect(F_ON).coeff(F_ON)
+        self.gamma_tau_exp = N_rhs_exp.collect(tau_O).coeff(tau_O)
+        self.gamma_exp = (N_rhs_exp - self.gamma_mu_exp*mu - self.gamma_F_exp*F_ON-self.gamma_tau_exp*tau_O).simplify()
+
 
         F_CT_idx = list(x).index(F_CT)
         T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
-        self.f_mu_exp = T_a_LN_exp.coeff(mu)
+        self.f_mu_exp = T_a_LN_exp.collect(mu).coeff(mu)
         self.f_exp = (T_a_LN_exp - T_a_LN_exp.coeff(mu)*mu).simplify()
         T_rhs_exp = (b_prime)[F_CT_idx,0].expand()
-        self.g_mu_exp = T_rhs_exp.coeff(mu)
-        self.g_exp = (T_rhs_exp - T_rhs_exp.coeff(mu)*mu).simplify()
+        self.g_Fmu_exp = T_rhs_exp.collect(mu*F_ON).coeff(mu*F_ON)
+        T_rhs_exp  = (T_rhs_exp - self.g_Fmu_exp*mu*F_ON).simplify().expand()
+        self.g_mu_exp = T_rhs_exp.collect(mu).coeff(mu)
+        self.g_F_exp = T_rhs_exp.collect(F_ON).coeff(F_ON)
+        self.g_tau_exp = T_rhs_exp.collect(tau_O).coeff(tau_O)
+        self.g_exp = (T_rhs_exp - self.g_mu_exp*mu - self.g_F_exp*F_ON-self.g_tau_exp*tau_O).simplify()
 
         tau_M_idx = list(x).index(tau_M)
         self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
         self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
+
         self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
         self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
+
         self.get_gamma = lambdify([self.alg_inputs], self.gamma_exp)
-        self.get_gamma_mu = lambdify([self.alg_inputs], self.gamma_mu_exp)
+        self.get_gamma_F = lambdify([self.alg_inputs], self.gamma_mu_exp)
+        self.get_gamma_mu = lambdify([self.alg_inputs], self.gamma_F_exp)
+        self.get_gamma_Fmu = lambdify([self.alg_inputs], self.gamma_Fmu_exp)
+        self.get_gamma_tau = lambdify([self.alg_inputs], self.gamma_tau_exp)
+
         self.get_f = lambdify([self.alg_inputs], self.f_exp)
         self.get_f_mu = lambdify([self.alg_inputs], self.f_mu_exp)
+
         self.get_g = lambdify([self.alg_inputs], self.g_exp)
         self.get_g_mu = lambdify([self.alg_inputs], self.g_mu_exp)
+        self.get_g_F = lambdify([self.alg_inputs], self.g_F_exp)
+        self.get_g_mu = lambdify([self.alg_inputs], self.g_mu_exp)
+        self.get_g_Fmu = lambdify([self.alg_inputs], self.g_Fmu_exp)
+        self.get_g_tau = lambdify([self.alg_inputs], self.g_tau_exp)
 
         tau_M_idx = list(x).index(tau_M)
         self.tau_M_exp = b_prime[tau_M_idx]
