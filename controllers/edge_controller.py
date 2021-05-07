@@ -32,7 +32,7 @@ class EdgeController(finger.FingerController):
 
         # Control constants
         self.lamda = 100 # Sliding surface time constant
-        self.P = 10000 # Adapatation law gain
+        self.P_mu = np.array([[10000]]) # Adapatation law gain
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
 
@@ -41,7 +41,7 @@ class EdgeController(finger.FingerController):
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
 
-        self.mu_hat = 0.8
+        self.a_mu_hat = np.array([[0.8]]).T
         self.d_d_N_sqr_log = []
 
         self.init_math()
@@ -210,7 +210,7 @@ class EdgeController(finger.FingerController):
             inputs['a_LNd'] = a_LNd = self.a_LNd
 
             # Forces
-            mu = self.mu_hat
+            mu = self.a_mu_hat[0,0]
             inputs['mu'] = mu
             stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
             inputs['mu_S'] = stribeck_mu
@@ -249,15 +249,15 @@ class EdgeController(finger.FingerController):
             s = self.lamda*(d_T - self.d_Td) + (d_d_T)
             phi = 0.001
             s_delta = s # - phi*sat(s/phi)
-            Y_mu = g_mu+g_Fmu*F_ON - f_mu*a_LNd
+            Y_mu = np.array([[g_mu+g_Fmu*F_ON - f_mu*a_LNd]])
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
-                    self.mu_hat += -self.P*dt*Y_mu*s_delta
-                if self.mu_hat > 1:
-                    self.mu_hat = 1
-                if self.mu_hat < 0:
-                    self.mu_hat = 0
+                    self.a_mu_hat[0,0] += -dt*(self.P_mu@Y_mu.T)*s_delta
+                if self.a_mu_hat[0,0] > 1:
+                    self.a_mu_hat[0,0] = 1
+                if self.a_mu_hat[0,0] < 0:
+                    self.a_mu_hat[0,0] = 0
 
             self.k = 10
 
@@ -266,7 +266,7 @@ class EdgeController(finger.FingerController):
 
 
             u_hat = -(f*a_LNd) + g + g_F*F_ON +g_tau*tau_O - m_M * self.lamda*d_d_T
-            F_CT = u_hat + Y_mu*self.mu_hat -self.k*s_delta # - k_robust*np.sign(s_delta)
+            F_CT = u_hat + Y_mu@self.a_mu_hat -self.k*s_delta # - k_robust*np.sign(s_delta)
 
             F_CN = self.get_F_CN(inps_)
             tau_M = self.get_tau_M(inps_)
@@ -280,7 +280,7 @@ class EdgeController(finger.FingerController):
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
-            self.debug['mu_ests'].append(self.mu_hat)
+            self.debug['mu_ests'].append(self.a_mu_hat[0,0])
             self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
