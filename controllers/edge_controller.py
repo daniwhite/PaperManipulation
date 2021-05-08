@@ -32,9 +32,7 @@ class EdgeController(finger.FingerController):
 
         # Control constants
         self.lamda = 100 # Sliding surface time constant
-        self.P_mu = 10000*np.eye(3) # Adapatation law gain
-        self.P_mu[1,1] = 0
-        self.P_mu[2,2] = 0
+        self.P_mu = np.diag([1e6, 1e5, 1e6]) # Adapatation law gain
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
 
@@ -254,7 +252,7 @@ class EdgeController(finger.FingerController):
             phi = 0.001
             s_delta = s # - phi*sat(s/phi)
             F_ON_approx = -2.372965423804721*theta_L + 0.3679566727001195
-            Y_mu = np.array([[g_mu+g_Fmu*F_ON_approx - f_mu*a_LNd, 0, 0]])
+            Y_mu = np.array([[g_mu - f_mu*a_LNd, g_Fmu*-2.372965423804721*theta_L, g_Fmu*0.3679566727001195]])
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
