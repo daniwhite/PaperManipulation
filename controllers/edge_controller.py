@@ -252,7 +252,7 @@ class EdgeController(finger.FingerController):
             phi = 0.001
             s_delta = s # - phi*sat(s/phi)
             F_ON_approx = -2.372965423804721*theta_L + 0.3679566727001195
-            Y_mu = np.array([[g_mu - f_mu*a_LNd, g_Fmu*-2.372965423804721*theta_L, g_Fmu*0.3679566727001195]])
+            Y_mu = np.array([[g_mu - f_mu*a_LNd, g_Fmu*theta_L, g_Fmu]])
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
