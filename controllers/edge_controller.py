@@ -606,13 +606,9 @@ class EdgeController(finger.FingerController):
         N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
         self.gamma_Fmu_exp = N_rhs_exp.collect(mu*F_ON).coeff(mu*F_ON)
         N_rhs_exp  = sp.simplify(N_rhs_exp - self.gamma_Fmu_exp*mu*F_ON).expand()
-        self.N_rhs_wo_muF_exp = N_rhs_exp
         self.gamma_mu_exp = N_rhs_exp.collect(mu).coeff(mu)
-        self.N_rhs_wo_muF_mu_exp = sp.simplify(self.N_rhs_wo_muF_exp -  self.gamma_mu_exp*mu)
         self.gamma_F_exp = N_rhs_exp.collect(F_ON).coeff(F_ON)
-        self.N_rhs_wo_muF_mu_F_exp = sp.simplify(self.N_rhs_wo_muF_mu_exp -  self.gamma_F_exp*F_ON)
         self.gamma_tau_exp = N_rhs_exp.collect(tau_O).coeff(tau_O)
-        self.N_rhs_wo_muF_mu_F_tau_exp = sp.simplify(self.N_rhs_wo_muF_mu_F_exp -  self.gamma_tau_exp*tau_O)
         self.gamma_exp = sp.simplify(N_rhs_exp - self.gamma_mu_exp*mu - self.gamma_F_exp*F_ON-self.gamma_tau_exp*tau_O)
         assert sp.simplify(b_prime[F_CN_idx] - self.gamma_exp - self.gamma_mu_exp*mu \
             - self.gamma_Fmu_exp*F_ON*mu - self.gamma_F_exp*F_ON - self.gamma_tau_exp*tau_O) == 0
@@ -644,10 +640,6 @@ class EdgeController(finger.FingerController):
         self.get_gamma_Fmu = lambdify([self.alg_inputs], self.gamma_Fmu_exp)
         self.get_gamma_tau = lambdify([self.alg_inputs], self.gamma_tau_exp)
 
-        self.get_N_rhs_wo_muF = lambdify([self.alg_inputs], self.N_rhs_wo_muF_exp)
-        self.get_N_rhs_wo_muF_mu = lambdify([self.alg_inputs], self.N_rhs_wo_muF_mu_exp)
-        self.get_N_rhs_wo_muF_mu_F = lambdify([self.alg_inputs], self.N_rhs_wo_muF_mu_F_exp)
-        self.get_N_rhs_wo_muF_mu_F_tau = lambdify([self.alg_inputs], self.N_rhs_wo_muF_mu_F_tau_exp)
         self.get_f = lambdify([self.alg_inputs], self.f_exp)
         self.get_f_mu = lambdify([self.alg_inputs], self.f_mu_exp)
 
