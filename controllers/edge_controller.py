@@ -32,7 +32,7 @@ class EdgeController(finger.FingerController):
 
         # Control constants
         self.lamda = 100 # Sliding surface time constant
-        self.P_mu = np.diag([1e6, 1e5, 1e6]) # Adapatation law gain
+        self.P_mu = np.diag([1000, 10, 10]) # Adapatation law gain
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
 
