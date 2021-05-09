@@ -505,11 +505,11 @@ class EdgeController(finger.FingerController):
             b_term = rhs - lhs
             for output_term in outputs:
                 try:
-                    coeff_L = lhs.coeff(output_term)
+                    coeff_L = lhs.expand().collect(output_term).coeff(output_term)
                 except AttributeError:
                     coeff_L = 0
                 try:
-                    coeff_R = rhs.coeff(output_term)
+                    coeff_R = rhs.expand().collect(output_term).coeff(output_term)
                 except AttributeError:
                     coeff_R = 0
                 coeff = coeff_L - coeff_R
@@ -519,10 +519,29 @@ class EdgeController(finger.FingerController):
             b.append(b_term)
         A = sp.Matrix(A)
         A.simplify()
+        self.A = A
         b = sp.Matrix([b]).T
+        self.b = b
         b.simplify()
         x = sp.Matrix([outputs]).T
         x.simplify()
+
+        self.lhs_funcs = []
+        self.lhs_labels = []
+        self.rhs_funcs = []
+        self.rhs_labels = []
+        for i in range(len(nat_eqs)):
+            lhs_exp = (A@x)[i]
+            lhs_func = sp.lambdify([self.alg_inputs, x], lhs_exp)
+            lhs_label = "$" + sp.latex(lhs_exp) + "$"
+            self.lhs_funcs.append(lhs_func)
+            self.lhs_labels.append(lhs_label)
+            
+            rhs_exp = b[i]
+            rhs_func = sp.lambdify([self.alg_inputs], rhs_exp)
+            rhs_label = "$" + sp.latex(rhs_exp) + "$"
+            self.rhs_funcs.append(rhs_func)
+            self.rhs_labels.append(rhs_label)
 
         A_aug = A.row_join(b)
         results = A_aug.rref()[0]
@@ -532,11 +551,29 @@ class EdgeController(finger.FingerController):
         self.b_prime = b_prime
         self.x = x
 
+        self.lhs_funcs_prime = []
+        self.lhs_labels_prime = []
+        self.rhs_funcs_prime = []
+        self.rhs_labels_prime = []
+        for i in range(len(nat_eqs)):
+            lhs_exp = (A_prime@x)[i]
+            lhs_func = sp.lambdify([self.alg_inputs, x], lhs_exp)
+            lhs_label = "A_prime@x (should have $" + sp.latex(x[i]) + "$)"
+            self.lhs_funcs_prime.append(lhs_func)
+            self.lhs_labels_prime.append(lhs_label)
+            
+            rhs_exp = b_prime[i]
+            rhs_func = sp.lambdify([self.alg_inputs], rhs_exp)
+            rhs_label = "b_prime (should have $" + sp.latex(x[i]) + "$)"
+            self.rhs_funcs_prime.append(rhs_func)
+            self.rhs_labels_prime.append(rhs_label)
+
         F_CN_idx = list(x).index(F_CN)
         self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
         N_a_LN_exp = (A_prime@x)[F_CN_idx,0].coeff(a_LN).expand()
         self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
         self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
+        assert sp.simplify((A_prime@x)[F_CN_idx] - F_CN - (self.alpha_mu_exp*mu + self.alpha_exp)*a_LN) == 0
         N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
         self.gamma_Fmu_exp = N_rhs_exp.collect(mu*F_ON).coeff(mu*F_ON)
         N_rhs_exp  = (N_rhs_exp - self.gamma_Fmu_exp*mu*F_ON).simplify().expand()
@@ -544,7 +581,8 @@ class EdgeController(finger.FingerController):
         self.gamma_F_exp = N_rhs_exp.collect(F_ON).coeff(F_ON)
         self.gamma_tau_exp = N_rhs_exp.collect(tau_O).coeff(tau_O)
         self.gamma_exp = (N_rhs_exp - self.gamma_mu_exp*mu - self.gamma_F_exp*F_ON-self.gamma_tau_exp*tau_O).simplify()
-
+        assert sp.simplify(b_prime[F_CN_idx] - self.gamma_exp - self.gamma_mu_exp*mu \
+            - self.gamma_Fmu_exp*F_ON*mu - self.gamma_F_exp*F_ON - self.gamma_tau_exp*tau_O) == 0
 
         F_CT_idx = list(x).index(F_CT)
         T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
