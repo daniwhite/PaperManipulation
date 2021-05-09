@@ -29,10 +29,13 @@ class EdgeController(finger.FingerController):
         # Control targets
         self.d_Td = -0.03
         self.a_LNd = 0.1
+        self.v_LNd = 0
+        self.last_v_LN = 0
 
         # Control constants
         self.lamda = 100 # Sliding surface time constant
-        self.P_mu = np.diag([1000, 10, 10]) # Adapatation law gain
+        self.P_mu = np.diag([1000.0, 10.0, 10.0]) # Adapatation law gain
+        self.P_F = np.diag([0, 0, 0, 1000.0, 1000.0])
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
 
@@ -42,6 +45,7 @@ class EdgeController(finger.FingerController):
             np.zeros((3, 1)), np.zeros((3, 1))))
 
         self.a_mu_hat = np.array([[0.8, 0, 0]]).T
+        self.a_F_hat = np.array([[1.0, 1.0, 1.0, 1.0, 1.0]]).T
         self.d_d_N_sqr_log = []
 
         self.init_math()
@@ -57,6 +61,11 @@ class EdgeController(finger.FingerController):
             self.debug['a_mu_hats_0'] = []
             self.debug['a_mu_hats_1'] = []
             self.debug['a_mu_hats_2'] = []
+            self.debug['a_F_hats_0'] = []
+            self.debug['a_F_hats_1'] = []
+            self.debug['a_F_hats_2'] = []
+            self.debug['a_F_hats_3'] = []
+            self.debug['a_F_hats_4'] = []
             self.debug['d_d_N_sqr_sum'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
@@ -124,7 +133,7 @@ class EdgeController(finger.FingerController):
         inputs['h_L'] = h_L = paper.PAPER_HEIGHT
         inputs['r'] = r = finger.RADIUS
         inputs['m_M'] = m_M = finger.MASS
-        inputs['m_L'] = self.m_L
+        inputs['m_L'] = m_L = self.m_L
         inputs['I_L'] = self.I_L
         inputs['I_M'] = self.I_M
         inputs['b_J'] = self.b_J
@@ -243,35 +252,50 @@ class EdgeController(finger.FingerController):
             g_Fmu = self.get_g_Fmu(inps_)
             g_F = self.get_g_F(inps_)
             g_tau = self.get_g_tau(inps_)
+            gamma = self.get_gamma_mu(inps_)
             gamma_mu = self.get_gamma_mu(inps_)
             gamma_Fmu = self.get_gamma_Fmu(inps_)
             gamma_F = self.get_gamma_F(inps_)
             gamma_tau = self.get_gamma_tau(inps_)
 
-            s = self.lamda*(d_T - self.d_Td) + (d_d_T)
-            phi = 0.001
-            s_delta = s # - phi*sat(s/phi)
+            dt = self.debug['times'][-1] - self.debug['times'][-2]
+            self.v_LNd += a_LNd * dt
+            a_LN = (v_LN - self.last_v_LN)/dt
+            s_mu = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            s_F = v_LN - self.v_LNd
+
             F_ON_approx = -2.372965423804721*theta_L + 0.3679566727001195
             Y_mu = np.array([[g_mu - f_mu*a_LNd, g_Fmu*theta_L, g_Fmu]])
+            Y_F = np.array([
+                [
+                    gamma_mu - alpha_mu*a_LNd,
+                    gamma_Fmu*theta_L,
+                    gamma_Fmu,
+                    gamma_F*theta_L,
+                    gamma_F,
+                ]
+            ])
+            self.k = 10
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
-                if len(self.debug['times']) >= 2:
-                    dt = self.debug['times'][-1] - self.debug['times'][-2]
-                    self.a_mu_hat += -dt*(self.P_mu@Y_mu.T)*s_delta
+                self.a_mu_hat += -dt*(self.P_mu@Y_mu.T)*s_mu
+                self.a_F_hat += -dt*(self.P_F@Y_F.T)*s_F
                 if self.a_mu_hat[0,0] > 1:
                     self.a_mu_hat[0,0] = 1
                 if self.a_mu_hat[0,0] < 0:
                     self.a_mu_hat[0,0] = 0
 
-            self.k = 10
+                k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
+                F_CN_hat = gamma + gamma_tau*tau_O - (alpha_mu*self.a_mu_hat[0,0] + alpha) * a_LNd
+                F_CN = F_CN_hat + (Y_F@self.a_F_hat) - self.k*s_F
+                # F_CN = self.a_LNd/(m_M + m_L)
+            else:
+                F_CN = self.a_LNd/(m_M + m_L)
+            
+            F_CT_hat = -f*a_LNd + g +g_tau*tau_O - m_M * self.lamda*d_d_T
+            F_CT = F_CT_hat + (Y_mu@self.a_mu_hat) -self.k*s_mu
 
-            k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
-
-
-            u_hat = -(f*a_LNd) + g + g_F*F_ON_approx +g_tau*tau_O - m_M * self.lamda*d_d_T
-            F_CT = u_hat + Y_mu@self.a_mu_hat -self.k*s_delta # - k_robust*np.sign(s_delta)
-
-            F_CN = self.get_F_CN(inps_)
+            # F_CN = self.get_F_CN(inps_)
             tau_M = self.get_tau_M(inps_)
 
         F_M = F_CN*N_hat + F_CT*T_hat
@@ -286,6 +310,11 @@ class EdgeController(finger.FingerController):
             self.debug['a_mu_hats_0'].append(self.a_mu_hat[0,0])
             self.debug['a_mu_hats_1'].append(self.a_mu_hat[1,0])
             self.debug['a_mu_hats_2'].append(self.a_mu_hat[2,0])
+            self.debug['a_F_hats_0'].append(self.a_F_hat[0,0])
+            self.debug['a_F_hats_1'].append(self.a_F_hat[1,0])
+            self.debug['a_F_hats_2'].append(self.a_F_hat[2,0])
+            self.debug['a_F_hats_3'].append(self.a_F_hat[3,0])
+            self.debug['a_F_hats_4'].append(self.a_F_hat[4,0])
             self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
