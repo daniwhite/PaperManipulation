@@ -38,6 +38,7 @@ class EdgeController(finger.FingerController):
         self.P_F = np.diag([0, 0, 0, 1000.0, 1000.0])
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
+        self.sticky_flag = False
 
         # Other init
         self.jnt_frc_log = jnt_frc_log
@@ -295,7 +296,8 @@ class EdgeController(finger.FingerController):
             ])
             h_F = -gamma -gamma_tau*tau_O
             self.k = 10
-            if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
+            if self.sticky_flag or (len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim): # Check if d_N is oscillating
+                self.sticky_flag = True
                 self.a_mu_hat += -dt*(self.P_mu@Y_mu.T)*s_mu
                 slope = 2.7394598353828403
                 intercept = 0.42939947035492243

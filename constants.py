@@ -14,4 +14,4 @@ FRICTION = 0.2
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 0.2
+TSPAN = 0.5
