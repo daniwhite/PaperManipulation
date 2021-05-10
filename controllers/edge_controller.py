@@ -70,6 +70,7 @@ class EdgeController(finger.FingerController):
             self.debug['d_d_N_sqr_sum'] = []
             self.debug['a_LNs'] = []
             self.debug['raw_a_LNs'] = []
+            self.debug['v_LNds'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
@@ -319,15 +320,16 @@ class EdgeController(finger.FingerController):
 
                 k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
-                F_CN =  (Y_F@self.a_F_hat)  - h_F - (alpha_mu*self.a_mu_hat[0,0] + alpha) * a_LNd -self.k*s_F
+                F_CN =  (Y_F@self.a_F_hat)  - h_F - (alpha_mu*self.a_mu_hat[0,0] + alpha) * a_LNd# -0.01*s_F
+                # F_CN = self.a_LNd/(m_M + m_L)
             else:
                 F_CN = self.a_LNd/(m_M + m_L)
             F_CT =  (Y_mu@self.a_mu_hat)  - h_mu + m_M*dd_d_Tr -self.k*s_mu
-
-            # F_CN = self.get_F_CN(inps_)
             tau_M = self.get_tau_M(inps_)
 
-        F_M = F_CN*N_hat + F_CT*T_hat
+        F_M = (F_CN*N_hat + F_CT*T_hat)
+        if self.debug['times'][-1] < 0.2:
+            F_M *= 0
 
         if self.debug is not None:
             self.debug['F_CNs'].append(F_CN)
@@ -347,6 +349,7 @@ class EdgeController(finger.FingerController):
             self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
             self.debug['a_LNs'].append(a_LN)
             self.debug['raw_a_LNs'].append(raw_a_LN)
+            self.debug['v_LNds'].append(self.v_LNd)
 
         return F_M.flatten()[1], F_M.flatten()[2], tau_M
 
