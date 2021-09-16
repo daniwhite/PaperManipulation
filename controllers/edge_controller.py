@@ -13,7 +13,7 @@ class EdgeController(finger.FingerController):
     """Fold paper with feedback on position of the past link"""
 
     # Making these parameters keywords means that
-    def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, debug=False):
+    def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, options, debug=False):
         super().__init__(finger_idx, ll_idx)
 
         # System parameters
@@ -30,18 +30,25 @@ class EdgeController(finger.FingerController):
         self.d_Td = -0.03
         self.a_LNd = 0.1
 
-        # Control constants
-        self.lamda = 100 # Sliding surface time constant
-        self.P = 10000 # Adapatation law gain
-        self.d_d_N_sqr_log_len = 100
-        self.d_d_N_sqr_lim = 2e-4
-
         # Other init
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
 
+        self.use_friction_adaptive_ctrl = options['use_friction_adaptive_ctrl']
+        self.use_friction_robust_adaptive_ctrl = options['use_friction_robust_adaptive_ctrl']
+        
+        # Init for friction adaptive control
+        self.lamda = 100 # Sliding surface time constant
+        self.P = 10000 # Adapatation law gain
+
+        #$ Initialize friction
         self.mu_hat = 0.8
+
+        ## Initialize terms used to tell if contact transients have passed
+        ## and we can start adaptation
+        self.d_d_N_sqr_log_len = 100
+        self.d_d_N_sqr_lim = 2e-4
         self.d_d_N_sqr_log = []
 
         self.init_math()
@@ -197,20 +204,16 @@ class EdgeController(finger.FingerController):
                 d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
             inputs['d_d_N'] = d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
 
-            # Calculate metric used to tell whether or not contact transients have passed
-            if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
-                self.d_d_N_sqr_log.append(d_d_N**2)
-            else:
-                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
-            d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
-
             v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
 
             # Targets
             inputs['a_LNd'] = a_LNd = self.a_LNd
 
             # Forces
-            mu = self.mu_hat
+            if self.use_friction_adaptive_ctrl:
+                mu = self.mu_hat
+            else:
+                mu = constants.FRICTION
             inputs['mu'] = mu
             stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
             inputs['mu_S'] = stribeck_mu
@@ -226,6 +229,15 @@ class EdgeController(finger.FingerController):
                 var_name = inp.name
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
+
+            F_CN = self.get_F_CN(inps_)
+
+            # Calculate metric used to tell whether or not contact transients have passed
+            if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
+                self.d_d_N_sqr_log.append(d_d_N**2)
+            else:
+                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
+            d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
 
             def sat(phi):
                 if phi > 0:
@@ -247,6 +259,7 @@ class EdgeController(finger.FingerController):
 
             self.k = 10
 
+            
             f_mu = self.get_f_mu(inps_)
             f = self.get_f(inps_)
             g_mu = self.get_g_mu(inps_)
@@ -256,14 +269,21 @@ class EdgeController(finger.FingerController):
             alpha_mu = self.get_alpha_mu(inps_)
             alpha = self.get_alpha(inps_)
 
-
             k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
-            
+            # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
             u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
-            F_CT = u_hat + Y*self.mu_hat -self.k*s_delta - k_robust*np.sign(s_delta)
+            
+            if self.use_friction_adaptive_ctrl:
+                Y_mu_term = Y*self.mu_hat
+            else:
+                Y_mu_term = Y*constants.FRICTION
 
-            F_CN = self.get_F_CN(inps_)
+            F_CT = u_hat + Y_mu_term
+            if self.use_friction_robust_adaptive_ctrl:
+                F_CT += -self.k*s_delta - k_robust*np.sign(s_delta)
+            else:
+                F_CT += -self.k*s
             tau_M = self.get_tau_M(inps_)
 
         F_M = F_CN*N_hat + F_CT*T_hat
