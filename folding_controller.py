@@ -1,24 +1,24 @@
 """Functions for creating and controlling the finger manipulator."""
 
 # Standard imports
-import constants
-import pedestal
+import finger
 import paper
-from pydrake.multibody.tree import SpatialInertia, UnitInertia
+import pedestal
+import constants
 import numpy as np
 import sympy as sp
 from sympy.utilities.lambdify import lambdify
 import re
-import finger
 
 # Drake imports
 import pydrake
 from pydrake.all import RigidTransform, SpatialVelocity, ProximityProperties, ContactResults, SpatialForce
+from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller at the finger."""
 
-    def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, debug=False):
+    def __init__(self, finger_idx, ll_idx, sys_params, jnt_frc_log, options, debug=False):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.DeclareAbstractInputPort(
@@ -37,6 +37,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug = {}
         self.debug['times'] = []
 
+        # System parameters
         self.v_stiction = sys_params['v_stiction']
         self.I_M = sys_params['I_M']
         self.I_L = sys_params['I_L']
@@ -46,11 +47,31 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.k_J = sys_params['k_J']
         self.g = sys_params['g']
 
-        self.d_Td = -0.03  # -0.12
+        # Control targets
+        self.d_Td = -0.03
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
+        self.a_LNd = 0.1
+
+        # Other init
         self.jnt_frc_log = jnt_frc_log
         self.jnt_frc_log.append(SpatialForce(
             np.zeros((3, 1)), np.zeros((3, 1))))
+
+        self.use_friction_adaptive_ctrl = options['use_friction_adaptive_ctrl']
+        self.use_friction_robust_adaptive_ctrl = options['use_friction_robust_adaptive_ctrl']
+        
+        # Init for friction adaptive control
+        self.lamda = 100 # Sliding surface time constant
+        self.P = 10000 # Adapatation law gain
+
+        #$ Initialize friction
+        self.mu_hat = 0.8
+
+        ## Initialize terms used to tell if contact transients have passed
+        ## and we can start adaptation
+        self.d_d_N_sqr_log_len = 100
+        self.d_d_N_sqr_lim = 2e-4
+        self.d_d_N_sqr_log = []
 
         self.init_math()
 
@@ -59,13 +80,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.debug['F_CNs'] = []
             self.debug['F_CTs'] = []
             self.debug['taus'] = []
-            self.debug['dd_d_Nds'] = []
-            self.debug['dd_d_Tds'] = []
-            self.debug['dd_theta_Lds'] = []
-            self.debug['dd_theta_Mds'] = []
             self.debug['F_OTs'] = []
             self.debug['F_ONs'] = []
             self.debug['tau_Os'] = []
+            self.debug['mu_ests'] = []
+            self.debug['d_d_N_sqr_sum'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
@@ -130,7 +149,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Constants
         inputs['w_L'] = w_L = self.w_L
         inputs['h_L'] = h_L = paper.PAPER_HEIGHT
-        inputs['m_M'] = finger.MASS # TODO get rid of
+        inputs['m_M'] = m_M = finger.MASS # TODO get rid of
         inputs['m_L'] = self.m_L
         inputs['I_L'] = self.I_L
         inputs['I_M'] = self.I_M
@@ -140,7 +159,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Positions
         p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
         inputs['p_LT'] = get_T_proj(p_L)
-        inputs['p_LN'] = get_N_proj(p_L)
+        inputs['p_LN'] = p_LN = get_N_proj(p_L)
 
         p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
         inputs['p_MN'] = get_N_proj(p_M)
@@ -182,11 +201,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
             tau_M = 0
 
-            # For logging purposes
-            dd_theta_Ld = np.nan
-            dd_d_Nd = np.nan
-            dd_d_Td = np.nan
-            dd_theta_Md = np.nan
+            d_d_N_sqr_sum = np.nan
         else:
             pen_vec = pen_depth*N_hat
 
@@ -216,18 +231,16 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
 
             # Targets
-            inputs['dd_d_Nd'] = dd_d_Nd = self.get_dd_d_Nd()
-            inputs['dd_d_Td'] = dd_d_Td = self.get_dd_d_Td(d_T, d_d_T)
-            inputs['dd_theta_Ld'] = dd_theta_Ld = self.get_dd_theta_Ld(
-                d_theta_L)
-            inputs['dd_theta_Md'] = dd_theta_Md = self.get_dd_theta_Md()
+            inputs['a_LNd'] = a_LNd = self.a_LNd
 
             # Forces
-            mu = constants.FRICTION
-            stribeck_mu = stribeck(mu, mu, slip_speed/self.v_stiction)
-            stribeck_sign_L = np.sign(v_S)
-            inputs['mu_SM'] = -stribeck_mu * stribeck_sign_L
-            inputs['mu_SL'] = stribeck_mu * stribeck_sign_L
+            if self.use_friction_adaptive_ctrl:
+                mu = self.mu_hat
+            else:
+                mu = constants.FRICTION
+            inputs['mu'] = mu
+            stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
+            inputs['mu_S'] = stribeck_mu
 
             # Gravity
             F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
@@ -242,44 +255,75 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 inps_.append(inputs[var_str])
 
             F_CN = self.get_F_CN(inps_)
-            F_CT = self.get_F_CT(inps_)
+
+            # Calculate metric used to tell whether or not contact transients have passed
+            if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
+                self.d_d_N_sqr_log.append(d_d_N**2)
+            else:
+                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
+            d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
+
+            def sat(phi):
+                if phi > 0:
+                    return min(phi, 1)
+                return max(phi, -1)
+
+            s = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            phi = 0.001
+            s_delta = s - phi*sat(s/phi)
+            Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
+            if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
+                if len(self.debug['times']) >= 2:
+                    dt = self.debug['times'][-1] - self.debug['times'][-2]
+                    self.mu_hat += -self.P*dt*Y*s_delta
+                if self.mu_hat > 1:
+                    self.mu_hat = 1
+                if self.mu_hat < 0:
+                    self.mu_hat = 0
+
+            self.k = 10
+
+            
+            f_mu = self.get_f_mu(inps_)
+            f = self.get_f(inps_)
+            g_mu = self.get_g_mu(inps_)
+            g = self.get_g(inps_)
+            gamma_mu = self.get_gamma_mu(inps_)
+            gamma = self.get_gamma(inps_)
+            alpha_mu = self.get_alpha_mu(inps_)
+            alpha = self.get_alpha(inps_)
+
+            k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
+
+            # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
+            u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
+            
+            if self.use_friction_adaptive_ctrl:
+                Y_mu_term = Y*self.mu_hat
+            else:
+                Y_mu_term = Y*constants.FRICTION
+
+            F_CT = u_hat + Y_mu_term
+            if self.use_friction_robust_adaptive_ctrl:
+                F_CT += -self.k*s_delta - k_robust*np.sign(s_delta)
+            else:
+                F_CT += -self.k*s
             tau_M = self.get_tau_M(inps_)
 
-
-        # TODO: don't just use N hat
-        F_CT = 0
-        F_CN = 1
         F_M = F_CN*N_hat + F_CT*T_hat
 
         if self.debug is not None:
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
             self.debug['taus'].append(tau_M)
-            self.debug['dd_d_Nds'].append(dd_d_Nd)
-            self.debug['dd_d_Tds'].append(dd_d_Td)
-            self.debug['dd_theta_Lds'].append(dd_theta_Ld)
-            self.debug['dd_theta_Mds'].append(dd_theta_Md)
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
+            self.debug['mu_ests'].append(self.mu_hat)
+            self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
 
         return F_M.flatten()
 
-    def get_dd_d_Nd(self):
-        return 0
-
-    def get_dd_d_Td(self, d_T, d_d_T):
-        Kp = 1000000
-        Kd = 1000
-        return Kp*(self.d_Td - d_T) - Kd*d_d_T
-
-    def get_dd_theta_Ld(self, d_theta_L):
-        Kp = 100  # e-6
-        # Kd = 0
-        return Kp*(self.d_theta_Ld - d_theta_L)  # - Kd*d_d_T
-
-    def get_dd_theta_Md(self):
-        return 0
 
     def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
         Kp = 0.1
@@ -317,10 +361,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.alg_inputs.append(I_M)
 
         # Friction coefficients
-        mu_SL = sp.symbols(r"\mu_{SL}")
-        self.alg_inputs.append(mu_SL)
-        mu_SM = sp.symbols(r"\mu_{SM}")
-        self.alg_inputs.append(mu_SM)
+        mu = sp.symbols(r"\mu")
+        self.alg_inputs.append(mu)
+        mu_S = sp.symbols(r"\mu_{S}")
+        self.alg_inputs.append(mu_S)
 
         # System gains
         b_J = sp.symbols(r"b_J")
@@ -375,19 +419,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.alg_inputs.append(tau_O)
 
         # Control inputs
-        dd_theta_Ld = sp.symbols(r"\ddot\theta_{Ld}")
-        self.alg_inputs.append(dd_theta_Ld)
-        dd_d_Nd = sp.symbols(r"\ddot{d}_{Nd}")
-        self.alg_inputs.append(dd_d_Nd)
-        dd_d_Td = sp.symbols(r"\ddot{d}_{Td}")
-        self.alg_inputs.append(dd_d_Td)
-        dd_theta_Md = sp.symbols(r"\ddot\theta_{Md}")
-        self.alg_inputs.append(dd_theta_Md)
+        a_LNd = sp.symbols(r"a_{LNd}")
+        self.alg_inputs.append(a_LNd)
 
         outputs = [
-            a_LT, a_LN, a_MT, a_MN, dd_theta_L, dd_theta_M, F_NM, F_FL, F_FM, dd_d_N, dd_d_T, F_NL, F_CN, F_CT, tau_M
+            a_LT, dd_theta_L, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, a_LN, dd_theta_M, dd_d_N, dd_d_T
         ] = sp.symbols(
-            r"a_{LT} a_{LN} a_{MT} a_{MN} \ddot\theta_L \ddot\theta_M  F_{NM} F_{FL} F_{FM} \ddot{d}_N \ddot{d}_T F_{NL} F_{CN}, F_{CT} \tau_M"
+            r"a_{LT}, \ddot\theta_L, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, F_{NL}, F_{CN}, F_{CT}, \tau_M, a_{LN}, \ddot\theta_M, \ddot{d}_N, \ddot{d}_T"
         )
         outputs = list(outputs)
         self.outputs = outputs
@@ -483,23 +521,17 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             # 3rd law normal forces
             [F_NL, -F_NM],
             # Friction relationship L
-            [F_FL, mu_SL*F_NL],
+            [F_FL, mu*mu_S*F_NL],
             # Friction relationship M
-            [F_FM, mu_SM*F_NL],
+            [F_FM, -F_FL],
             # d_T derivative is derivative
             [dd_d_s_T, dd_d_g_T],
             # d_N derivative is derivative
             [dd_d_s_N, dd_d_g_N],
+            # No penetration
+            [dd_d_N, 0],
         ]
-
-        art_eqs = [
-            [dd_d_N, dd_d_Nd],
-            [dd_d_T, dd_d_Td],
-            [dd_theta_L, dd_theta_Ld],
-            [dd_theta_M, dd_theta_Md],
-        ]
-
-        env_eqs = nat_eqs + art_eqs
+        env_eqs = nat_eqs
 
         A = []
         b = []
@@ -536,20 +568,40 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         A_prime = results[:, :-1]
         self.A_prime = A_prime
         b_prime = results[:, -1]
+        self.A_prime = A_prime
         self.b_prime = b_prime
-
-        assert A_prime == sp.eye(A_prime.shape[0])
+        self.x = x
 
         F_CN_idx = list(x).index(F_CN)
-        self.F_CN_exp = b_prime[F_CN_idx]
+        self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
+        N_a_LN_exp = (A_prime@x)[F_CN_idx,0].coeff(a_LN).expand()
+        self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
+        self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
+        N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
+        self.gamma_mu_exp = N_rhs_exp.coeff(mu)
+        self.gamma_exp = (N_rhs_exp - N_rhs_exp.coeff(mu)*mu).simplify()
+
         F_CT_idx = list(x).index(F_CT)
-        self.F_CT_exp = b_prime[F_CT_idx]
+        T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
+        self.f_mu_exp = T_a_LN_exp.coeff(mu)
+        self.f_exp = (T_a_LN_exp - T_a_LN_exp.coeff(mu)*mu).simplify()
+        T_rhs_exp = (b_prime)[F_CT_idx,0].expand()
+        self.g_mu_exp = T_rhs_exp.coeff(mu)
+        self.g_exp = (T_rhs_exp - T_rhs_exp.coeff(mu)*mu).simplify()
+
         tau_M_idx = list(x).index(tau_M)
-        self.tau_M_exp = b_prime[tau_M_idx]
+        self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
-        self.get_F_CT = lambdify([self.alg_inputs], self.F_CT_exp)
         self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
+        self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
+        self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
+        self.get_gamma = lambdify([self.alg_inputs], self.gamma_exp)
+        self.get_gamma_mu = lambdify([self.alg_inputs], self.gamma_mu_exp)
+        self.get_f = lambdify([self.alg_inputs], self.f_exp)
+        self.get_f_mu = lambdify([self.alg_inputs], self.f_mu_exp)
+        self.get_g = lambdify([self.alg_inputs], self.g_exp)
+        self.get_g_mu = lambdify([self.alg_inputs], self.g_mu_exp)
 
         tau_M_idx = list(x).index(tau_M)
         self.tau_M_exp = b_prime[tau_M_idx]
