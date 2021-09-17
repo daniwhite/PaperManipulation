@@ -16,15 +16,27 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.entries_per_body = 3*6
         self.contact_entries = 18
         self.joint_entries = len(paper.joints)*6
+<<<<<<< HEAD
         self.nq_arm = 7
+=======
+        self.ctrl_forces_entries = 3
+>>>>>>> main
 
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
         self.joint_entry_start_idx = num_bodies * \
             self.entries_per_body + self.contact_entries
+
         self.gen_accs_start_idx = self.joint_entry_start_idx + self.joint_entries
-        self.state_start_idx = self.gen_accs_start_idx + self.nq_arm
+        self.gen_accs_entries = self.nq_arm
+
+        self.state_start_idx = self.gen_accs_start_idx + self.gen_accs_entries
+        self.state_entries = self.nq_arm*3 + 1
+
+        # self.ctrl_forces_start_idx = self.state_start_idx + self.state_entries
+
         self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries + self.nq_arm*3 + 1
+            self.contact_entries + self.joint_entries + self.state_entries # + self.ctrl_forces_entries
+
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
         self.arm_acc_log = arm_acc_log
@@ -42,7 +54,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
         self.DeclareVectorInputPort(
             "arm_accs", pydrake.systems.framework.BasicVector(7))
-        self.DeclareVectorInputPort("state", BasicVector(self.nq_arm*2))
+        # self.DeclareVectorInputPort("state", BasicVector(self.nq_arm*2))
+        #     "finger_actuation", pydrake.systems.framework.BasicVector(self.ctrl_forces_entries))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -60,6 +73,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         joint_forces = self.get_input_port(4).Eval(context)
         arm_accs = self.get_input_port(5).Eval(context)
         state = self.get_input_port(6).Eval(context)
+        # ctrl_forces = self.get_input_port(5).Eval(context)
         # PROGRAMMING: Better interface fro this
         self.jnt_frc_log.append(
             joint_forces[int(self.paper.joints[-1].index())])
@@ -120,4 +134,5 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(arm_accs)
         out += list(state)
         out += [forces_found]
+        # out += list(ctrl_forces)
         output.SetFromVector(out)
