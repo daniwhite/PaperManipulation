@@ -16,11 +16,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.entries_per_body = 3*6
         self.contact_entries = 18
         self.joint_entries = len(paper.joints)*6
-<<<<<<< HEAD
         self.nq_arm = 7
-=======
         self.ctrl_forces_entries = 3
->>>>>>> main
 
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
         self.joint_entry_start_idx = num_bodies * \
@@ -54,8 +51,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
         self.DeclareVectorInputPort(
             "arm_accs", pydrake.systems.framework.BasicVector(7))
-        # self.DeclareVectorInputPort("state", BasicVector(self.nq_arm*2))
-        #     "finger_actuation", pydrake.systems.framework.BasicVector(self.ctrl_forces_entries))
+        self.DeclareVectorInputPort("state", BasicVector(self.nq_arm*2))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -124,8 +120,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(pen_point_pair.nhat_BA_W)
                 out += [pen_point_pair.depth]
-            # if force_found:
-            #     break # TODO: support multiple contacts
+            if force_found:
+                break # TODO: support multiple contacts
         if not force_found:
             out += [np.nan]*self.contact_entries
         for j in self.paper.joints:
