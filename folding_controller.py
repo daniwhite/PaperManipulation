@@ -237,7 +237,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             if self.use_friction_adaptive_ctrl:
                 mu = self.mu_hat
             else:
-                mu = constants.FRICTION
+                mu_paper = constants.FRICTION
+                mu = 2*mu_paper/(1+mu_paper)
             inputs['mu'] = mu
             stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
             inputs['mu_S'] = stribeck_mu
@@ -268,14 +269,14 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                     return min(phi, 1)
                 return max(phi, -1)
 
-            s = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
             phi = 0.001
-            s_delta = s - phi*sat(s/phi)
+            s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
-                    self.mu_hat += -self.P*dt*Y*s_delta
+                    self.mu_hat += -self.P*dt*Y*s_delta_d_T
                 if self.mu_hat > 1:
                     self.mu_hat = 1
                 if self.mu_hat < 0:
@@ -305,9 +306,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
             F_CT = u_hat + Y_mu_term
             if self.use_friction_robust_adaptive_ctrl:
-                F_CT += -self.k*s_delta - k_robust*np.sign(s_delta)
+                F_CT += -self.k*s_delta_d_T - k_robust*np.sign(s_delta_d_T)
             else:
-                F_CT += -self.k*s
+                F_CT += -self.k*s_d_T
             tau_M = self.get_tau_M(inps_)
 
         F_M = F_CN*N_hat + F_CT*T_hat

@@ -98,21 +98,23 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             # Always take contact forces on manipulator
             if int(point_pair_contact_info.bodyA_index()) == self.finger_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
-                out += list(-point_pair_contact_info.contact_force())
-                # PROGRAMMING: Move sparation speed back into this section with correct signs
-                use_this_contact = True
-                force_found = True
                 forces_found += 1
-                out += list(point_pair_contact_info.point_pair().p_WCa)
-                out += list(point_pair_contact_info.point_pair().p_WCb)
+                # PROGRAMMING: Move sparation speed back into this section with correct signs
+                if not force_found:
+                    out += list(-point_pair_contact_info.contact_force())
+                    out += list(point_pair_contact_info.point_pair().p_WCa)
+                    out += list(point_pair_contact_info.point_pair().p_WCb)
+                    use_this_contact = True
+                    force_found = True
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.finger_idx:
-                out += list(point_pair_contact_info.contact_force())
-                use_this_contact = True
-                force_found = True
                 forces_found += 1
-                out += list(point_pair_contact_info.point_pair().p_WCb)
-                out += list(point_pair_contact_info.point_pair().p_WCa)
+                if not force_found:
+                    out += list(point_pair_contact_info.contact_force())
+                    out += list(point_pair_contact_info.point_pair().p_WCb)
+                    out += list(point_pair_contact_info.point_pair().p_WCa)
+                    force_found = True
+                    use_this_contact = True
             if use_this_contact:
                 out += [point_pair_contact_info.separation_speed(),
                         point_pair_contact_info.slip_speed()]
@@ -120,8 +122,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(pen_point_pair.nhat_BA_W)
                 out += [pen_point_pair.depth]
-            if force_found:
-                break # TODO: support multiple contacts
+            # TODO: support multiple contacts
         if not force_found:
             out += [np.nan]*self.contact_entries
         for j in self.paper.joints:
