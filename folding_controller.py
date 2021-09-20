@@ -52,6 +52,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
         self.a_LNd = 0.1
         self.d_Xd = 0
+        self.v_LNd = 0
+        self.last_v_LN = 0
 
         # Other init
         self.jnt_frc_log = jnt_frc_log
@@ -88,6 +90,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.debug['tau_Os'] = []
             self.debug['mu_ests'] = []
             self.debug['d_d_N_sqr_sum'] = []
+            self.debug['v_LNds'] = []
 
     def GetForces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat):
         inputs = {}
@@ -270,7 +273,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 var_str = self.latex_to_str(var_name)
                 inps_.append(inputs[var_str])
 
-            F_CN = self.get_F_CN(inps_)
             F_NL = self.get_F_NL(inps_)
 
             F_FMX = stribeck_mu*F_NL*mu*s_hat_X
@@ -288,9 +290,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 return max(phi, -1)
 
             s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
+            s_F = v_LN - self.v_LNd
             phi = 0.001
             s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
             Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
+            dt = 0
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
                     dt = self.debug['times'][-1] - self.debug['times'][-2]
@@ -309,6 +313,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             alpha_mu = self.get_alpha_mu(inps_)
             alpha = self.get_alpha(inps_)
 
+            self.v_LNd += a_LNd * dt
+
             k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
             # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
@@ -325,6 +331,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             else:
                 F_CT += -self.k*s_d_T
             tau_M = self.get_tau_M(inps_)
+            F_CN = self.get_F_CN(inps_) - self.k*s_F
 
         s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
         F_CX = -self.k*s_d_X - F_FMX
@@ -341,6 +348,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.debug['tau_Os'].append(tau_O)
             self.debug['mu_ests'].append(self.mu_hat)
             self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
+            self.debug['v_LNds'].append(self.v_LNd)
 
         return F_M.flatten()
 
