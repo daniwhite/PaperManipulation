@@ -51,6 +51,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.d_Td = -0.03
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
         self.a_LNd = 0.1
+        self.d_Xd = 0
 
         # Other init
         self.jnt_frc_log = jnt_frc_log
@@ -63,6 +64,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Init for friction adaptive control
         self.lamda = 100 # Sliding surface time constant
         self.P = 10000 # Adapatation law gain
+
+        self.k = 10
 
         #$ Initialize friction
         self.mu_hat = 0.8
@@ -202,6 +205,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             tau_M = 0
 
             d_d_N_sqr_sum = np.nan
+
+            d_X = p_M[0]
+            d_d_X = v_M[0]
+            F_FMX = 0
         else:
             pen_vec = pen_depth*N_hat
 
@@ -216,6 +223,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             d = p_C - p_LE + pen_vec/2
             inputs['d_T'] = d_T = get_T_proj(d)
             inputs['d_N'] = d_N = get_N_proj(d)
+            d_X = d[0]
 
             p_MConM = p_C - p_M
             p_LConL = p_C - p_L
@@ -227,8 +235,15 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             inputs['d_d_T'] = d_d_T = -d_theta_L*h_L/2 - \
                 d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
             inputs['d_d_N'] = d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
+            d_d_X = v_WConM[0]
 
-            v_S = np.matmul(T_hat.T, (v_WConM - v_WConL))[0, 0]
+            v_S_raw = v_WConM - v_WConL
+            v_S_N = np.matmul(N_proj_mat, v_S_raw)
+            v_S = v_S_raw - v_S_N
+
+            s_hat = v_S/np.linalg.norm(v_S)
+            inputs['hats_T'] = get_T_proj(s_hat)
+            s_hat_X = s_hat[0]
 
             # Targets
             inputs['a_LNd'] = a_LNd = self.a_LNd
@@ -240,7 +255,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 mu_paper = constants.FRICTION
                 mu = 2*mu_paper/(1+mu_paper)
             inputs['mu'] = mu
-            stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)*np.sign(v_S)
+            stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)
             inputs['mu_S'] = stribeck_mu
 
             # Gravity
@@ -256,6 +271,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 inps_.append(inputs[var_str])
 
             F_CN = self.get_F_CN(inps_)
+            F_NL = self.get_F_NL(inps_)
+
+            F_FMX = stribeck_mu*F_NL*mu*s_hat_X
 
             # Calculate metric used to tell whether or not contact transients have passed
             if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
@@ -282,9 +300,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 if self.mu_hat < 0:
                     self.mu_hat = 0
 
-            self.k = 10
-
-            
             f_mu = self.get_f_mu(inps_)
             f = self.get_f(inps_)
             g_mu = self.get_g_mu(inps_)
@@ -311,7 +326,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 F_CT += -self.k*s_d_T
             tau_M = self.get_tau_M(inps_)
 
+        s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
+        F_CX = -self.k*s_d_X - F_FMX
+
         F_M = F_CN*N_hat + F_CT*T_hat
+        F_M[0] = F_CX
 
         if self.debug is not None:
             self.debug['F_CNs'].append(F_CN)
@@ -366,6 +385,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.alg_inputs.append(mu)
         mu_S = sp.symbols(r"\mu_{S}")
         self.alg_inputs.append(mu_S)
+        hats_T = sp.symbols(r"\hat{s}_T")
+        self.alg_inputs.append(hats_T)
 
         # System gains
         b_J = sp.symbols(r"b_J")
@@ -522,7 +543,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             # 3rd law normal forces
             [F_NL, -F_NM],
             # Friction relationship L
-            [F_FL, mu*mu_S*F_NL],
+            [F_FL, mu*mu_S*F_NL*hats_T],
             # Friction relationship M
             [F_FM, -F_FL],
             # d_T derivative is derivative
@@ -575,6 +596,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         F_CN_idx = list(x).index(F_CN)
         self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
+        F_NL_idx = list(x).index(F_NL)
+        self.F_NL_exp = b_prime[F_NL_idx] - (A_prime@x)[F_NL_idx].coeff(a_LN)*a_LNd
         N_a_LN_exp = (A_prime@x)[F_CN_idx,0].coeff(a_LN).expand()
         self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
         self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
@@ -594,6 +617,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
 
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
+        self.get_F_NL = lambdify([self.alg_inputs], self.F_NL_exp)
         self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
         self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
         self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
