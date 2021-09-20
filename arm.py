@@ -60,7 +60,12 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
 
         self.nq_arm = self.arm_plant.get_actuation_input_port().size()
 
+        self.K_centering = 1
+        self.D_centering = 0.1
+
         self.t_contact_start =  None
+
+        self.init_q = None
 
         # Input ports
         self.DeclareVectorInputPort("q", BasicVector(self.nq_arm*2))
@@ -99,6 +104,9 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
         self.arm_plant.SetVelocities(self.arm_plant_context, v)
         real_q_dot = self.arm_plant.MapVelocityToQDot(self.arm_plant_context, v)
 
+        if self.init_q is None:
+            self.init_q = q
+
         # Get gravity 
         grav = self.arm_plant.CalcGravityGeneralizedForces(
             self.arm_plant_context)
@@ -119,9 +127,15 @@ class ArmForceController(pydrake.systems.framework.LeafSystem):
             self.arm_plant.world_frame())
         J = J_full[3:,:]
 
+        J_plus = np.linalg.pinv(J)
+        nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
+
+        # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
+        joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
+
         tau_d = (J.T@F_d).flatten()
 
-        tau_ctrl = tau_d - grav
+        tau_ctrl = tau_d - grav + joint_centering_torque
         output.SetFromVector(tau_ctrl)
 
         # Debug
