@@ -425,11 +425,16 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                     return min(phi, 1)
                 return max(phi, -1)
 
+            f_mu = self.get_f_mu(inps_)
+            f = self.get_f(inps_)
+            g_mu = self.get_g_mu(inps_)
+            g = self.get_g(inps_)
+
             s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
             s_F = v_LN - self.v_LNd
             phi = 0.001
             s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
-            Y = self.get_g_mu(inps_) - self.get_f_mu(inps_)*a_LNd
+            Y = g_mu - f_mu*a_LNd
             dt = 0
             if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
                 if len(self.debug['times']) >= 2:
@@ -440,18 +445,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                 if self.mu_hat < 0:
                     self.mu_hat = 0
 
-            f_mu = self.get_f_mu(inps_)
-            f = self.get_f(inps_)
-            g_mu = self.get_g_mu(inps_)
-            g = self.get_g(inps_)
-            gamma_mu = self.get_gamma_mu(inps_)
-            gamma = self.get_gamma(inps_)
-            alpha_mu = self.get_alpha_mu(inps_)
-            alpha = self.get_alpha(inps_)
-
             self.v_LNd += a_LNd * dt
-
-            k_robust = np.abs(f_mu+f)*(np.abs(gamma_mu)+np.abs(alpha_mu + alpha))/np.abs(alpha)
 
             # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
             u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
@@ -463,10 +457,10 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
             F_CT = u_hat + Y_mu_term
             if self.use_friction_robust_adaptive_ctrl:
-                F_CT += -self.k*s_delta_d_T - k_robust*np.sign(s_delta_d_T)
+                # TODO: remove this option
+                F_CT += -self.k*s_delta_d_T# - k_robust*np.sign(s_delta_d_T)
             else:
                 F_CT += -self.k*s_d_T
-            tau_M = self.get_tau_M(inps_)
             F_CN = self.get_F_CN(inps_) - self.k*s_F
 
         s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
@@ -478,7 +472,6 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         if self.debug is not None:
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
-            self.debug['taus'].append(tau_M)
             self.debug['F_OTs'].append(F_OT)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
@@ -581,9 +574,9 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.alg_inputs.append(a_LNd)
 
         outputs = [
-            a_LT, dd_theta_L, a_MT, a_MN, F_NM, F_FL, F_FM, F_NL, F_CN, F_CT, tau_M, a_LN, dd_theta_M, dd_d_N, dd_d_T
+            a_LT, dd_theta_L, a_MT, a_MN, F_NM, F_FL, F_FM, tau_M, dd_theta_M, dd_d_N, F_NL, F_CN, F_CT, a_LN, dd_d_T,
         ] = sp.symbols(
-            r"a_{LT}, \ddot\theta_L, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, F_{NL}, F_{CN}, F_{CT}, \tau_M, a_{LN}, \ddot\theta_M, \ddot{d}_N, \ddot{d}_T"
+            r"a_{LT}, \ddot\theta_L, a_{MT}, a_{MN}, F_{NM}, F_{FL}, F_{FM}, \tau_M, \ddot\theta_M, \ddot{d}_N, F_{NL}, F_{CN}, F_{CT}, a_{LN}, \ddot{d}_T"
         )
         outputs = list(outputs)
         self.outputs = outputs
@@ -720,52 +713,92 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         x.simplify()
         self.x = x
 
-        A_aug = A.row_join(b)
-        results = A_aug.rref()[0]
-        self.A_aug = A_aug
-        A_prime = results[:, :-1]
-        self.A_prime = A_prime
-        b_prime = results[:, -1]
-        self.A_prime = A_prime
-        self.b_prime = b_prime
-        self.x = x
+        L, U, perm = A.LUdecomposition()
+        P = sp.eye(A.rows).permuteFwd(perm)
 
+        y = sp.MatrixSymbol("y", L.shape[0], 1).as_explicit()
+        y_00 = (P*b)[0]
+        y_out = y.subs(y[0,0], y_00)
+        for i in range(1, L.shape[0]):
+            y_i0 = y[i,0] - (L*y_out - P*b)[i]
+            y_out = y_out.subs(y[i,0], y_i0)
+        y = y_out.simplify()
+
+        assert (L*y - P*b).simplify() == sp.zeros(L.shape[0], 1)
+
+        self.A_prime = A_prime = U
+        self.b_prime = b_prime = y
+
+        # Grab indices
         F_CN_idx = list(x).index(F_CN)
-        self.F_CN_exp = b_prime[F_CN_idx] - (A_prime@x)[F_CN_idx].coeff(a_LN)*a_LNd
-        F_NL_idx = list(x).index(F_NL)
-        self.F_NL_exp = b_prime[F_NL_idx] - (A_prime@x)[F_NL_idx].coeff(a_LN)*a_LNd
-        N_a_LN_exp = (A_prime@x)[F_CN_idx,0].coeff(a_LN).expand()
-        self.alpha_mu_exp = N_a_LN_exp.coeff(mu)
-        self.alpha_exp = (N_a_LN_exp - N_a_LN_exp.coeff(mu)*mu).simplify()
-        N_rhs_exp = (b_prime)[F_CN_idx,0].expand()
-        self.gamma_mu_exp = N_rhs_exp.coeff(mu)
-        self.gamma_exp = (N_rhs_exp - N_rhs_exp.coeff(mu)*mu).simplify()
-
         F_CT_idx = list(x).index(F_CT)
-        T_a_LN_exp = (A_prime@x)[F_CT_idx,0].coeff(a_LN).expand()
-        self.f_mu_exp = T_a_LN_exp.coeff(mu)
-        self.f_exp = (T_a_LN_exp - T_a_LN_exp.coeff(mu)*mu).simplify()
-        T_rhs_exp = (b_prime)[F_CT_idx,0].expand()
-        self.g_mu_exp = T_rhs_exp.coeff(mu)
-        self.g_exp = (T_rhs_exp - T_rhs_exp.coeff(mu)*mu).simplify()
+        a_LN_idx = list(x).index(a_LN)
+        F_NL_idx = list(x).index(F_NL)
 
-        tau_M_idx = list(x).index(tau_M)
-        self.tau_M_exp = b_prime[F_CT_idx] - (A_prime@x)[F_CT_idx].coeff(a_LN)*a_LNd
+        ## F_CN
+        # Slice
+        F_CN_eq_lhs = (A_prime)[F_CN_idx-1,:]
+        F_CN_eq_rhs = (b_prime)[F_CN_idx-1]
+        F_CN_eq_rhs /= F_CN_eq_lhs[F_CN_idx] # rhs has to go first to do anything
+        F_CN_eq_lhs /= F_CN_eq_lhs[F_CN_idx]
+        for (i, elem) in enumerate(F_CN_eq_lhs):
+            if (i == F_CN_idx) or (i == a_LN_idx):
+                continue
+            assert elem == 0
 
+        # Grab coeffs
+        F_CN__a_LN_coef = F_CN_eq_lhs[a_LN_idx]
+        F_CN__constant_coef = F_CN_eq_rhs
+
+        # Pack expressions
+        self.F_CN_exp = F_CN__constant_coef - F_CN__a_LN_coef*a_LNd
+
+        ## F_CT
+        F_CT_eq_lhs = (A_prime)[F_CT_idx-1,:]
+        F_CT_eq_rhs = (b_prime)[F_CT_idx-1]
+        F_CT_eq_rhs /= F_CT_eq_lhs[F_CT_idx] # rhs has to go first to do anything
+        F_CT_eq_lhs /= F_CT_eq_lhs[F_CT_idx]
+
+        # Grab coeffs
+        F_CT__a_LN_mixed_coef = F_CT_eq_lhs[a_LN_idx]
+        F_CT__a_LN_mu_coef = F_CT__a_LN_mixed_coef.expand().coeff(mu)
+        F_CT__a_LN_only_coef = (F_CT__a_LN_mixed_coef - F_CT__a_LN_mu_coef*mu).simplify()
+
+        F_CT__constant_mixed_coef = F_CT_eq_rhs
+        F_CT__constant_mu_coef = F_CT__constant_mixed_coef.expand().coeff(mu)
+        F_CT__constant_only_coef = (F_CT__constant_mixed_coef - F_CT__constant_mu_coef*mu).simplify()
+
+        ## F_NL
+        F_NL_eq_lhs = (A_prime)[F_NL_idx-1,:]
+        F_NL_eq_rhs = (b_prime)[F_NL_idx-1]
+        F_NL_eq_rhs /= F_NL_eq_lhs[F_NL_idx] # rhs has to go first to do anything
+        F_NL_eq_lhs /= F_NL_eq_lhs[F_NL_idx]
+        F_NL_eq_lhs /= F_NL_eq_lhs[F_NL_idx]
+        for (i, elem) in enumerate(F_NL_eq_lhs):
+            if (i == F_NL_idx) or (i == a_LN_idx):
+                continue
+            assert elem == 0
+
+        # Grab coeffs
+        F_NL__a_LN_coef = F_NL_eq_lhs[a_LN_idx]
+        F_NL__constant_coef = F_NL_eq_rhs
+
+        # Pack expressions
+        self.F_NL_exp = F_NL__constant_coef - F_NL__a_LN_coef*a_LNd
+
+        # Pack adaptive terms
+        self.f_mu_exp = F_CT__a_LN_mu_coef
+        self.f_exp = F_CT__a_LN_only_coef
+        self.g_mu_exp = F_CT__constant_mu_coef
+        self.g_exp = F_CT__constant_only_coef
+
+        # Generate output functions
         self.get_F_CN = lambdify([self.alg_inputs], self.F_CN_exp)
         self.get_F_NL = lambdify([self.alg_inputs], self.F_NL_exp)
-        self.get_tau_M = lambdify([self.alg_inputs], self.tau_M_exp)
-        self.get_alpha = lambdify([self.alg_inputs], self.alpha_exp)
-        self.get_alpha_mu = lambdify([self.alg_inputs], self.alpha_mu_exp)
-        self.get_gamma = lambdify([self.alg_inputs], self.gamma_exp)
-        self.get_gamma_mu = lambdify([self.alg_inputs], self.gamma_mu_exp)
         self.get_f = lambdify([self.alg_inputs], self.f_exp)
         self.get_f_mu = lambdify([self.alg_inputs], self.f_mu_exp)
         self.get_g = lambdify([self.alg_inputs], self.g_exp)
         self.get_g_mu = lambdify([self.alg_inputs], self.g_mu_exp)
-
-        tau_M_idx = list(x).index(tau_M)
-        self.tau_M_exp = b_prime[tau_M_idx]
 
 
     def latex_to_str(self, sym):
