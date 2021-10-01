@@ -21,6 +21,11 @@ from pydrake.all import (
     MathematicalProgram, Solve, eq, le, ge,
 )
 
+if constants.USE_NEW_MESHCAT:
+    import sys
+    sys.path.append("manipulation/")
+    from manipulation.meshcat_cpp_utils import StartMeshcat, AddMeshcatTriad
+
 FINGER_NAME = "panda_leftfinger"
 
 
@@ -129,6 +134,9 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             "arm_actuation", pydrake.systems.framework.BasicVector(
                 self.nq_arm),
             self.CalcOutput)
+
+    def set_meshcat(self, meshcat):
+        self.meshcat = meshcat
 
     def CalcOutput(self, context, output):
         ## Load inputs
@@ -239,9 +247,9 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             angle = np.arccos(np.matmul(N_hat.T, z_hat))
             angle *= np.sign(N_hat.T@z_hat)
             X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
-            # assert 1 == 2
             X_PT.set_translation(contact_point)
-        AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
+        if constants.USE_NEW_MESHCAT:
+            AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
                         length=0.15, radius=0.006, X_PT=X_PT)
 
 
