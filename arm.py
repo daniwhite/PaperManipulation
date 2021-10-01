@@ -191,9 +191,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             self.init_q = q
 
         # Get gravity
-        grav = self.arm_plant.CalcGravityGeneralizedForces(
-            self.arm_plant_context)
-        tau_g = grav
+        tau_g = self.arm_plant.CalcGravityGeneralizedForces(self.arm_plant_context)
 
         # Get desired forces
         M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
@@ -211,8 +209,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             self.arm_plant.world_frame())
         J = J_full[3:,:]
         F_d = self.get_control_forces(poses, vels, contact_point, slip_speed, pen_depth, N_hat, q, v, M, Cv, tau_g, J_full)
-        if not in_contact:
-            F_d = np.array([[0, 0, 0.1]]).T
+        # if not in_contact:
+        #     F_d = np.array([[0, 0, 0.1]]).T
 
         J_plus = np.linalg.pinv(J)
         nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
@@ -222,11 +220,11 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         tau_d = (J.T@F_d).flatten()
 
-        tau_ctrl = tau_d - grav + joint_centering_torque
+        tau_ctrl = tau_d - tau_g + joint_centering_torque
         output.SetFromVector(tau_ctrl)
 
         # Debug
-        self.debug["tau_g"].append(grav)
+        self.debug["tau_g"].append(tau_g)
 
         self.debug['F_d'].append(F_d)
         self.debug['tau_d'].append(tau_d)
