@@ -85,6 +85,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         # Initialize gains
         self.k = 10
+        self.k_F = 100
         self.K_centering = 1
         self.D_centering = 0.1
         self.lamda = 100 # Sliding surface time constant
@@ -155,12 +156,14 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         slip_speed = None
         pen_depth = None
         N_hat = None
+        self.contacts = []
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
 
             a_idx = int(point_pair_contact_info.bodyA_index())
             b_idx = int(point_pair_contact_info.bodyB_index())
+            self.contacts.append([a_idx, b_idx])
 
             if ((a_idx == self.ll_idx) and (b_idx == self.finger_idx) or
                     (a_idx == self.finger_idx) and (b_idx == self.ll_idx)):
@@ -219,6 +222,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
         tau_d = (J.T@F_d).flatten()
+        if self.tau_ctrl_result is not None:
+            tau_d = self.tau_ctrl_result
 
         tau_ctrl = tau_d - tau_g + joint_centering_torque
         output.SetFromVector(tau_ctrl)
@@ -359,7 +364,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         v_LEMT = get_T_proj(p_LEM)
 
         if contact_point is None:
-            F_CN = 0.1
+            F_CN = 0.01
             F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
             tau_M = 0
 
@@ -368,6 +373,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             d_X = p_M[0]
             d_d_X = v_M[0]
             F_FMX = 0
+            self.tau_ctrl_result = None
         else:
             pen_vec = pen_depth*N_hat
 
@@ -515,7 +521,10 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             a_MN = prog.NewContinuousVariables(1, 1)
             a_LT = prog.NewContinuousVariables(1, 1)
             a_LN = prog.NewContinuousVariables(1, 1)
-            a_MXYZ = np.array([a_MX, a_MY, a_MZ])[:,:,0]
+            alpha_MX = prog.NewContinuousVariables(1, 1)
+            alpha_MY = prog.NewContinuousVariables(1, 1)
+            alpha_MZ = prog.NewContinuousVariables(1, 1)
+            alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
 
             # Derived accelerations
             dd_theta_L = prog.NewContinuousVariables(1, 1)
@@ -527,6 +536,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             dd_d_g_N = dd_theta_L*d_T + dd_d_N - d_N*d_theta_L**2 + 2*d_theta_L*d_d_T
 
             ddq = prog.NewContinuousVariables(7, 1)
+
+            prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
 
             ## Constraints
             # Link tangential force balance
@@ -544,14 +555,14 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             # d_N derivative is derivative
             prog.AddConstraint(eq(dd_d_s_N, dd_d_g_N))
             # No penetration
-            prog.AddConstraint(eq(dd_d_N, 0))
+            # prog.AddConstraint(eq(dd_d_N, 0))
             # Friction relationship LT
             prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T))
             # Friction relationship LX
             prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X))
 
             # Relate manipulator and end effector with joint velocities in Y direction
-            prog.AddConstraint(eq(a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))[3:]))
+            prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))
 
             # Manipulator equations
             tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
@@ -567,13 +578,23 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
             prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
-            prog.AddConstraint(eq(np.matmul(M,ddq) + Cv, tau_g +tau_contact + tau_ctrl))
-            prog.AddConstraint(eq(tau_ctrl, np.matmul(J_translational.T,F_CXYZ)))
+            # Relate forces and torques
+            prog.AddConstraint(eq(tau_ctrl, np.matmul(J_translational.T,F_CXYZ)-tau_g))
+
+            # Desired quantities
+            prog.AddConstraint(eq(a_LNd, a_LN))
+            prog.AddConstraint(eq(dd_d_T, 0))
+            prog.AddConstraint(eq(a_MX, 0))
+            prog.AddConstraint(eq(alpha_MY, 0))
+            # Don't want to rotate around the u axis
 
             ##
             result = Solve(prog)
-            F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])] -self.k*s_d_T
-            F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])] - self.k*s_F
+            self.tau_ctrl_result = []
+            for i in range(self.nq_arm):
+                self.tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+            F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
+            F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
         F_CN = 0.01
         F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
         F_FMX = 0
@@ -589,6 +610,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             self.debug['F_CNs'].append(F_CN)
             self.debug['F_CTs'].append(F_CT)
             self.debug['F_OTs'].append(F_OT)
+            self.debug['F_CXs'].append(F_CX)
             self.debug['F_ONs'].append(F_ON)
             self.debug['tau_Os'].append(tau_O)
             self.debug['mu_ests'].append(self.mu_hat)
@@ -599,8 +621,10 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
 
     def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
-        Kp = 0.1
-        Kd = 1
+        # pre_contact_F = 
+
+        Kp = 0.01
+        Kd = 1000
         return Kp*(self.d_Td - p_LEMT) - Kd*v_LEMT
 
 

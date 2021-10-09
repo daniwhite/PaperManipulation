@@ -719,6 +719,9 @@
   <drake:collision_filter_group name="group_link57">
     <drake:member link="panda_link5"/>
     <drake:member link="panda_link7"/>
+    <drake:member link="panda_hand"/>
+    <drake:member link="panda_leftfinger"/>
+    <drake:member link="panda_rightfinger"/>
     <drake:ignored_collision_filter_group name="group_link57"/>
   </drake:collision_filter_group>
 </robot>
