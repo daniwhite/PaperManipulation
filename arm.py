@@ -57,6 +57,27 @@ def AddArm(plant, scene_graph=None):
     return arm_instance
 
 
+def stribeck(us, uk, v):
+    '''
+    Python version of MultibodyPlant::StribeckModel::ComputeFrictionCoefficient
+
+    From
+    https://github.com/RobotLocomotion/drake/blob/b09e40db4b1c01232b22f7705fb98aa99ef91f87/multibody/plant/images/stiction.py
+    '''
+    u = uk
+    if v < 1:
+        u = us * step5(v)
+    elif (v >= 1) and (v < 3):
+        u = us - (us - uk) * step5((v - 1) / 2)
+    return u
+
+
+def step5(x):
+    '''Python version of MultibodyPlant::StribeckModel::step5 method'''
+    x3 = x * x * x
+    return x3 * (10 + x * (6 * x - 15))
+
+
 class ArmFoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller at the finger."""
 
@@ -93,6 +114,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         # Initialize logs
         self.arm_acc_log = arm_acc_log
+        # %DEBUG_APPEND%
         self.debug = defaultdict(list)
         self.debug['times'] = []
         self.jnt_frc_log = jnt_frc_log
@@ -136,22 +158,12 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                 self.nq_arm),
             self.CalcOutput)
 
+
     def set_meshcat(self, meshcat):
         self.meshcat = meshcat
 
-    def CalcOutput(self, context, output):
-        ## Load inputs
-        # This input put is already restricted to the arm, but it includes both q and v
-        state = self.get_input_port(0).Eval(context)
-        poses = self.get_input_port(1).Eval(context)
-        vels = self.get_input_port(2).Eval(context)
-        contact_results = self.get_input_port(3).Eval(context)
 
-        # Get time
-        self.debug['times'].append(context.get_time())
-
-        ## Process contact
-        # Get contact point
+    def process_contact_results(self, contact_results):
         contact_point = None
         slip_speed = None
         pen_depth = None
@@ -175,7 +187,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                 N_hat = np.expand_dims(pen_point_pair.nhat_BA_W, 1)
 
         # Get contact times
-        raw_in_contact = not (contact_point is None)
+        raw_in_contact = (not (contact_point is None))
         if raw_in_contact:
             if self.t_contact_start is None:
                 self.t_contact_start = self.debug['times'][-1]
@@ -183,80 +195,44 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             self.t_contact_start =  None
         in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.002
 
-        # Process state
+        return contact_point, slip_speed, pen_depth, N_hat, raw_in_contact, in_contact
+
+
+    def evaluate_arm(self, state):
         q = state[:self.nq_arm]
         v = state[self.nq_arm:]
         self.arm_plant.SetPositions(self.arm_plant_context, q)
         self.arm_plant.SetVelocities(self.arm_plant_context, v)
-        real_q_dot = self.arm_plant.MapVelocityToQDot(self.arm_plant_context, v)
 
-        if self.init_q is None:
-            self.init_q = q
-
-        # Get gravity
-        tau_g = self.arm_plant.CalcGravityGeneralizedForces(self.arm_plant_context)
-
-        # Get desired forces
         M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
         Cv = self.arm_plant.CalcBiasTerm(self.arm_plant_context)
-        self.debug["M"].append(M)
-        self.debug["C"].append(Cv)
-        # Convert forces to joint torques
+
+        tau_g = self.arm_plant.CalcGravityGeneralizedForces(self.arm_plant_context)
+
         finger_body = self.arm_plant.GetBodyByName(FINGER_NAME)
-        J_full = self.arm_plant.CalcJacobianSpatialVelocity(
+        J = self.arm_plant.CalcJacobianSpatialVelocity(
             self.arm_plant_context,
             JacobianWrtVariable.kQDot,
             finger_body.body_frame(),
             [0, 0, 0],
             self.arm_plant.world_frame(),
             self.arm_plant.world_frame())
-        J = J_full[3:,:]
-        F_d = self.get_control_forces(poses, vels, contact_point, slip_speed, pen_depth, N_hat, q, v, M, Cv, tau_g, J_full)
-        # if not in_contact:
-        #     F_d = np.array([[0, 0, 0.1]]).T
+        
+        Jdot_qdot = self.last_Jdot_qdot
+        if len(self.debug['times']) > 1:
+            dt_for_Jdot = self.debug['times'][-1] - self.debug['times'][-2]
+            if dt_for_Jdot > 0 and len(self.debug['J']) > 0:
+                Jdot = (J - self.debug['J'][-1])/(dt_for_Jdot)
+                Jdot_qdot = np.expand_dims(np.matmul(Jdot, v), 1)
+        self.last_Jdot_qdot = Jdot_qdot
 
-        J_plus = np.linalg.pinv(J)
-        nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
+        J_rotational = J[:3,:]
+        J_translational = J[3:,:]
 
-        # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
-        joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
-
-        tau_d = (J.T@F_d).flatten()
-        if self.tau_ctrl_result is not None:
-            tau_d = self.tau_ctrl_result
-
-        tau_ctrl = tau_d - tau_g + joint_centering_torque
-        output.SetFromVector(tau_ctrl)
-
-        # Debug
-        self.debug["tau_g"].append(tau_g)
-
-        self.debug['F_d'].append(F_d)
-        self.debug['tau_d'].append(tau_d)
-        self.debug['tau_ctrl'].append(tau_ctrl)
-        self.debug['J'].append(J_full)
-        self.debug['real_q_dot'].append(real_q_dot)
-
-        self.debug['raw_in_contact'].append(raw_in_contact)
-        self.debug['in_contact'].append(in_contact)
+        return q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational
 
 
-
-        X_PT = RigidTransform()
-        if contact_point is not None:
-            z_hat = np.array([[0, 0, 1]]).T
-            axis = np.cross(N_hat, z_hat, axis=0)
-            axis /= np.sqrt(axis.T@axis)
-            angle = np.arccos(np.matmul(N_hat.T, z_hat))
-            angle *= np.sign(N_hat.T@z_hat)
-            X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
-            X_PT.set_translation(contact_point)
-        if constants.USE_NEW_MESHCAT:
-            AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
-                        length=0.15, radius=0.006, X_PT=X_PT)
-
-
-    def get_control_forces(self, poses, vels, contact_point, slip_speed, pen_depth, N_hat, q, v, M, Cv, tau_g, J):
+    def calc_inputs(self, poses, vels, in_contact, N_hat):
         jnt_frcs = self.jnt_frc_log[-1]
         F_OT = jnt_frcs.translational()[1]
         F_ON = jnt_frcs.translational()[2]
@@ -266,7 +242,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         R = poses[self.ll_idx].rotation()
         y_hat = np.array([[0, 1, 0]]).T
         z_hat = np.array([[0, 0, 1]]).T
-        if N_hat is None:
+        if not in_contact:
             T_hat = R@y_hat
             N_hat = R@z_hat
         else:
@@ -277,6 +253,11 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                     [0, -1, 0],
                 ]),
                 N_hat)
+        T_hat_geo = R@y_hat
+        N_hat_geo = R@z_hat
+        # %DEBUG_APPEND%
+        self.debug['T_hat_geos'].append(T_hat_geo)
+        self.debug['N_hat_geos'].append(N_hat_geo)
 
         T_proj_mat = T_hat@(T_hat.T)
         N_proj_mat = N_hat@(N_hat.T)
@@ -288,6 +269,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             T_sgn = np.sign(np.matmul(T_hat.T, T_vec))
             T = T_mag.flatten()*T_sgn.flatten()
             return T[0]
+        self.get_T_proj = get_T_proj
 
         def get_N_proj(vec):
             N_vec = np.matmul(N_proj_mat, vec)
@@ -295,35 +277,17 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             N_sgn = np.sign(np.matmul(N_hat.T, N_vec))
             N = N_mag.flatten()*N_sgn.flatten()
             return N[0]
-
-        def step5(x):
-            '''Python version of MultibodyPlant::StribeckModel::step5 method'''
-            x3 = x * x * x
-            return x3 * (10 + x * (6 * x - 15))
-
-        def stribeck(us, uk, v):
-            '''
-            Python version of MultibodyPlant::StribeckModel::ComputeFrictionCoefficient
-
-            From
-            https://github.com/RobotLocomotion/drake/blob/b09e40db4b1c01232b22f7705fb98aa99ef91f87/multibody/plant/images/stiction.py
-            '''
-            u = uk
-            if v < 1:
-                u = us * step5(v)
-            elif (v >= 1) and (v < 3):
-                u = us - (us - uk) * step5((v - 1) / 2)
-            return u
+        self.get_N_proj = get_N_proj
 
         # Constants
         w_L = self.w_L
         h_L = paper.PAPER_HEIGHT
-        m_M = finger.MASS # TODO get rid of
+        # m_M = finger.MASS # TODO get rid of
         m_L = self.m_L
         I_L = self.I_L
-        I_M = self.I_M
-        b_J = self.b_J
-        k_J = self.k_J
+        # I_M = self.I_M
+        # b_J = self.b_J
+        # k_J = self.k_J
 
         # Positions
         p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
@@ -342,7 +306,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         p_LE = p_L + p_LLE
 
         p_LEM = p_M - p_LE
-        p_LEMT = get_T_proj(p_LEM)
+        # p_LEMT = get_T_proj(p_LEM)
+        p_LEMT = (p_LEM.T@T_hat)[0,0]
 
         # Velocities
         d_theta_L = vels[self.ll_idx].rotational()[0]
@@ -361,80 +326,151 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         # Assume for now that link edge is not moving
         # PROGRAMMING: Get rid of this assumption
         v_LEM = v_M
-        v_LEMT = get_T_proj(p_LEM)
+        v_LEMT = get_T_proj(v_LEM)
 
-        if contact_point is None:
-            F_CN = 0.01
-            F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
-            tau_M = 0
+        p_LEMX = p_LEM[0]
+        v_LEMX = v_LEM[0]
 
-            d_d_N_sqr_sum = np.nan
+        return m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
+            p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX
 
-            d_X = p_M[0]
-            d_d_X = v_M[0]
-            F_FMX = 0
-            self.tau_ctrl_result = None
+    def calc_inputs_contact(self, pen_depth, N_hat, contact_point, slip_speed, p_LE, p_M, p_L, \
+            N_proj_mat, d_theta_L, v_L, v_M, omega_vec_L, omega_vec_M, h_L, w_L, \
+            v_LT, v_LN, v_MT, v_MN):
+        pen_vec = pen_depth*N_hat
+
+        # Positions
+        p_C = np.array([contact_point]).T
+        p_CT = self.get_T_proj(p_C)
+        p_CN = self.get_N_proj(p_C)
+        r = np.linalg.norm(p_C-p_M) # TODO: make this support multiple directions
+
+
+        d = p_C - p_LE + pen_vec/2
+        d_T = self.get_T_proj(d)
+        d_N = self.get_N_proj(d)
+        d_X = d[0]
+
+        p_MConM = p_C - p_M
+        p_LConL = p_C - p_L
+
+        # Velocities
+        v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
+        v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
+
+        d_d_T = -d_theta_L*h_L/2 - d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
+        d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
+        d_d_X = v_WConM[0]
+
+        v_S_raw = v_WConM - v_WConL
+        v_S_N = np.matmul(N_proj_mat, v_S_raw)
+        v_S = v_S_raw - v_S_N
+
+        s_hat = v_S/np.linalg.norm(v_S)
+        hats_T = self.get_T_proj(s_hat)
+        s_hat_X = s_hat[0]
+
+        # Targets
+        a_LNd = self.a_LNd
+
+        # Forces
+        if self.use_friction_adaptive_ctrl:
+            mu = self.mu_hat
         else:
-            pen_vec = pen_depth*N_hat
+            mu_paper = constants.FRICTION
+            mu = 2*mu_paper/(1+mu_paper)
+        stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)
+        mu_S = stribeck_mu
 
-            # Positions
-            p_C = np.array([contact_point]).T
-            p_CT = get_T_proj(p_C)
-            p_CN = get_N_proj(p_C)
-            r = np.linalg.norm(p_C-p_M) # TODO: make this support multiple directions
+        # Gravity
+        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
+        F_GT = self.get_T_proj(F_G)
+        F_GN = self.get_N_proj(F_G)
 
+        # def sat(phi):
+        #     if phi > 0:
+        #         return min(phi, 1)
+        #     return max(phi, -1)
 
-            d = p_C - p_LE + pen_vec/2
-            d_T = get_T_proj(d)
-            d_N = get_N_proj(d)
-            d_X = d[0]
+        # f_mu = self.get_f_mu(inps_)
+        # f = self.get_f(inps_)
+        # g_mu = self.get_g_mu(inps_)
+        # g = self.get_g(inps_)
 
-            p_MConM = p_C - p_M
-            p_LConL = p_C - p_L
+        # s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
+        # s_F = v_LN - self.v_LNd
+        # phi = 0.001
+        # s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
+        # Y = g_mu - f_mu*a_LNd
+        # dt = 0
+        # if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
+        #     if len(self.debug['times']) >= 2:
+        #         dt = self.debug['times'][-1] - self.debug['times'][-2]
+        #         self.mu_hat += -self.P*dt*Y*s_delta_d_T
+        #     if self.mu_hat > 1:
+        #         self.mu_hat = 1
+        #     if self.mu_hat < 0:
+        #         self.mu_hat = 0
 
-            # Velocities
-            v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
-            v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
+        # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
+        # u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
 
-            d_d_T = -d_theta_L*h_L/2 - d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
-            d_d_N = -d_theta_L*w_L/2-v_LN+v_MN-d_theta_L*d_T
-            d_d_X = v_WConM[0]
+        # if self.use_friction_adaptive_ctrl:
+        #     Y_mu_term = Y*self.mu_hat
+        # else:
+        #     Y_mu_term = Y*constants.FRICTION
 
-            v_S_raw = v_WConM - v_WConL
-            v_S_N = np.matmul(N_proj_mat, v_S_raw)
-            v_S = v_S_raw - v_S_N
+        # F_CT = u_hat + Y_mu_term
+        # if self.use_friction_robust_adaptive_ctrl:
+        #     # TODO: remove this option
+        #     F_CT += -self.k*s_delta_d_T# - k_robust*np.sign(s_delta_d_T)
+        # else:
+        #     F_CT += -self.k*s_d_T
+        # F_CN = self.get_F_CN(inps_) - self.k*s_F
 
-            s_hat = v_S/np.linalg.norm(v_S)
-            hats_T = get_T_proj(s_hat)
-            s_hat_X = s_hat[0]
+        return r, mu, d_N, d_T, d_d_N, d_d_T, \
+            F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, \
+            hats_T, s_hat_X, d_X, d_d_X
 
-            # Targets
-            a_LNd = self.a_LNd
+    def CalcOutput(self, context, output):
+        ## Load inputs
+        # This input put is already restricted to the arm, but it includes both q and v
+        state = self.get_input_port(0).Eval(context)
+        poses = self.get_input_port(1).Eval(context)
+        vels = self.get_input_port(2).Eval(context)
+        contact_results = self.get_input_port(3).Eval(context)
 
-            # Forces
-            if self.use_friction_adaptive_ctrl:
-                mu = self.mu_hat
-            else:
-                mu_paper = constants.FRICTION
-                mu = 2*mu_paper/(1+mu_paper)
-            stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)
-            mu_S = stribeck_mu
+        # Get time
+        # %DEBUG_APPEND%
+        self.debug['times'].append(context.get_time())
 
-            # Gravity
-            F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
-            F_GT = get_T_proj(F_G)
-            F_GN = get_N_proj(F_G)
+        # Process contact
+        contact_point, slip_speed, pen_depth, N_hat, raw_in_contact, in_contact = \
+            self.process_contact_results(contact_results)
 
-            dt_for_Jdot = self.debug['times'][-1] - self.debug['times'][-2]
-            if dt_for_Jdot > 0:
-                Jdot = (J - self.debug['J'][-1])/(dt_for_Jdot)
-                Jdot_qdot = np.expand_dims(np.matmul(Jdot, v), 1)
-            else:
-                Jdot_qdot = self.last_Jdot_qdot
-            self.last_Jdot_qdot = Jdot_qdot
+        # Process state
+        q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational = self.evaluate_arm(state)
 
-            dq = v
+        # Book keeping
+        if self.init_q is None:
+            self.init_q = q
+        dt = 0
+        if len(self.debug['times']) >= 2:
+            dt = self.debug['times'][-1] - self.debug['times'][-2]
+        self.v_LNd += self.a_LNd * dt
 
+        # Precompute other inputs
+        m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
+            p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX \
+            = self.calc_inputs(poses, vels, raw_in_contact, N_hat)
+        if in_contact:
+            r, mu, d_N, d_T, d_d_N, d_d_T, F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, hats_T, s_hat_X, \
+                d_X, d_d_X = self.calc_inputs_contact(pen_depth, N_hat, \
+                    contact_point, slip_speed, p_LE, p_M, p_L, N_proj_mat, d_theta_L, v_L, v_M, \
+                        omega_vec_L, omega_vec_M, h_L, w_L, v_LT, v_LN, v_MT, v_MN)
+        
             # Calculate metric used to tell whether or not contact transients have passed
             if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
                 self.d_d_N_sqr_log.append(d_d_N**2)
@@ -442,197 +478,231 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                 self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
             d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
 
-            def sat(phi):
-                if phi > 0:
-                    return min(phi, 1)
-                return max(phi, -1)
+        # Get torques
+        if in_contact:
+            tau_ctrl = self.get_contact_control_torques( m_L, h_L, w_L, I_L, r, mu,  d_theta_L, d_N, d_T, \
+                d_d_N, d_d_T, F_GT, F_GN, F_OT, F_ON, tau_O,  p_CN, p_CT, p_LN, p_LT, p_MConM, \
+                theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
+                Cv, tau_g)
+        else:
+            tau_ctrl = self.get_pre_contact_control_torques(p_LE, p_M, v_M, J_translational)
 
-            J_rotational = J[:3,:]
-            J_translational = J[3:,:]
+        J_plus = np.linalg.pinv(J)
+        nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
 
-            # f_mu = self.get_f_mu(inps_)
-            # f = self.get_f(inps_)
-            # g_mu = self.get_g_mu(inps_)
-            # g = self.get_g(inps_)
+        # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
+        joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
-            s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
-            s_F = v_LN - self.v_LNd
-            # phi = 0.001
-            # s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
-            # Y = g_mu - f_mu*a_LNd
-            dt = 0
-            if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
-                if len(self.debug['times']) >= 2:
-                    dt = self.debug['times'][-1] - self.debug['times'][-2]
-            #         self.mu_hat += -self.P*dt*Y*s_delta_d_T
-            #     if self.mu_hat > 1:
-            #         self.mu_hat = 1
-            #     if self.mu_hat < 0:
-            #         self.mu_hat = 0
+        tau_out = tau_ctrl - tau_g + joint_centering_torque
+        output.SetFromVector(tau_out)
 
-            self.v_LNd += a_LNd * dt
+        # Debug
+        # %DEBUG_APPEND%
+        self.debug["tau_g"].append(tau_g)
 
-            # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
-            # u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
+        # self.debug['F_d'].append(F_d)
+        self.debug['tau_ctrl'].append(tau_ctrl)
+        self.debug['tau_out'].append(tau_out)
+        self.debug['J'].append(J)
 
-            # if self.use_friction_adaptive_ctrl:
-            #     Y_mu_term = Y*self.mu_hat
-            # else:
-            #     Y_mu_term = Y*constants.FRICTION
+        self.debug['raw_in_contact'].append(raw_in_contact)
+        self.debug['in_contact'].append(in_contact)
 
-            # F_CT = u_hat + Y_mu_term
-            # if self.use_friction_robust_adaptive_ctrl:
-            #     # TODO: remove this option
-            #     F_CT += -self.k*s_delta_d_T# - k_robust*np.sign(s_delta_d_T)
-            # else:
-            #     F_CT += -self.k*s_d_T
-            # F_CN = self.get_F_CN(inps_) - self.k*s_F
-
-            ## 1. Define an instance of MathematicalProgram
-            prog = MathematicalProgram()
-
-            ## 2. Add decision variables
-            # Contact values
-            tau_contact = prog.NewContinuousVariables(self.nq_arm, 1)
-            F_NM = prog.NewContinuousVariables(1, 1)
-            F_FMT = prog.NewContinuousVariables(1, 1)
-            F_FMX = prog.NewContinuousVariables(1, 1)
-            F_ContactMY = prog.NewContinuousVariables(1, 1)
-            F_ContactMZ = prog.NewContinuousVariables(1, 1)
-            F_NL = prog.NewContinuousVariables(1, 1)
-            F_FLT = prog.NewContinuousVariables(1, 1)
-            F_FLX = prog.NewContinuousVariables(1, 1)
-            F_ContactM_XYZ = np.array([F_FMX, F_ContactMY, F_ContactMZ])[:,:,0]
-
-            # Control values
-            tau_ctrl = prog.NewContinuousVariables(7, 1)
-            F_CX = prog.NewContinuousVariables(1, 1)
-            F_CY = prog.NewContinuousVariables(1, 1)
-            F_CZ = prog.NewContinuousVariables(1, 1)
-            F_CN = prog.NewContinuousVariables(1, 1)
-            F_CT = prog.NewContinuousVariables(1, 1)
-            F_CXYZ = np.array([F_CX, F_CY, F_CZ])[:,:,0]
-
-            # Object accelerations
-            a_MX = prog.NewContinuousVariables(1, 1)
-            a_MT = prog.NewContinuousVariables(1, 1)
-            a_MY = prog.NewContinuousVariables(1, 1)
-            a_MZ = prog.NewContinuousVariables(1, 1)
-            a_MN = prog.NewContinuousVariables(1, 1)
-            a_LT = prog.NewContinuousVariables(1, 1)
-            a_LN = prog.NewContinuousVariables(1, 1)
-            alpha_MX = prog.NewContinuousVariables(1, 1)
-            alpha_MY = prog.NewContinuousVariables(1, 1)
-            alpha_MZ = prog.NewContinuousVariables(1, 1)
-            alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
-
-            # Derived accelerations
-            dd_theta_L = prog.NewContinuousVariables(1, 1)
-            dd_d_N = prog.NewContinuousVariables(1, 1)
-            dd_d_T = prog.NewContinuousVariables(1, 1)
-            dd_d_s_T = -dd_theta_L*h_L/2 - dd_theta_L*r + d_theta_L**2 - a_LT + a_MT
-            dd_d_s_N = -dd_theta_L - (h_L*d_theta_L**2)/2 - r*d_theta_L**2 - a_LN + a_MN
-            dd_d_g_T = -dd_theta_L*d_N + dd_d_T - d_T*d_theta_L**2 - 2*d_theta_L*d_d_N
-            dd_d_g_N = dd_theta_L*d_T + dd_d_N - d_N*d_theta_L**2 + 2*d_theta_L*d_d_T
-
-            ddq = prog.NewContinuousVariables(7, 1)
-
-            prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
-
-            ## Constraints
-            # Link tangential force balance
-            prog.AddConstraint(eq(m_L*a_LT, F_FLT+F_GT+F_OT))
-            # Link normal force balance
-            prog.AddConstraint(eq(m_L*a_LN, F_NL + F_GN + F_ON))
-            # Link moment balance
-            prog.AddConstraint(eq(I_L*dd_theta_L, (-w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O))
-            # 3rd law normal forces
-            prog.AddConstraint(eq(F_NL, -F_NM))
-            # 3rd law friction forces
-            prog.AddConstraint(eq(F_FMT, -F_FLT))
-            # d_T derivative is derivative
-            prog.AddConstraint(eq(dd_d_s_T, dd_d_g_T))
-            # d_N derivative is derivative
-            prog.AddConstraint(eq(dd_d_s_N, dd_d_g_N))
-            # No penetration
-            # prog.AddConstraint(eq(dd_d_N, 0))
-            # Friction relationship LT
-            prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T))
-            # Friction relationship LX
-            prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X))
-
-            # Relate manipulator and end effector with joint velocities in Y direction
-            prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))
-
-            # Manipulator equations
-            tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
-            tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
-            tau_contact = tau_contact_trn + tau_contact_rot
-            prog.AddConstraint(eq(np.matmul(M, ddq) + Cv, tau_g + tau_contact + tau_ctrl))
-
-            # Projection equations
-            prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
-            prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
-            prog.AddConstraint(eq(F_CT, np.cos(theta_L)*F_CY + np.sin(theta_L)*F_CZ))
-            prog.AddConstraint(eq(F_CN, -np.sin(theta_L)*F_CY + np.cos(theta_L)*F_CZ))
-            prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
-            prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
-
-            # Relate forces and torques
-            prog.AddConstraint(eq(tau_ctrl, np.matmul(J_translational.T,F_CXYZ)-tau_g))
-
-            # Desired quantities
-            prog.AddConstraint(eq(a_LNd, a_LN))
-            prog.AddConstraint(eq(dd_d_T, 0))
-            prog.AddConstraint(eq(a_MX, 0))
-            prog.AddConstraint(eq(alpha_MY, 0))
-            # Don't want to rotate around the u axis
-
-            ##
-            result = Solve(prog)
-            self.tau_ctrl_result = []
-            for i in range(self.nq_arm):
-                self.tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
-            F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
-            F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
-        F_CN = 0.01
-        F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
-        F_FMX = 0
-
-        s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
-        F_CX = -self.k*s_d_X# - F_FMX
-
-        F_M = F_CN*N_hat + F_CT*T_hat
-        F_M[0] = F_CX
+        
+        self.debug['F_OTs'].append(F_OT)
+        self.debug['F_ONs'].append(F_ON)
+        self.debug['tau_Os'].append(tau_O)
+        self.debug['mu_ests'].append(self.mu_hat)
+        # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
+        self.debug['v_LNds'].append(self.v_LNd)
+        self.debug['p_LEMTs'].append(p_LEMT)
+        self.debug["M"].append(M)
+        self.debug["C"].append(Cv)
 
 
-        if self.debug is not None:
-            self.debug['F_CNs'].append(F_CN)
-            self.debug['F_CTs'].append(F_CT)
-            self.debug['F_OTs'].append(F_OT)
-            self.debug['F_CXs'].append(F_CX)
-            self.debug['F_ONs'].append(F_ON)
-            self.debug['tau_Os'].append(tau_O)
-            self.debug['mu_ests'].append(self.mu_hat)
-            self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
-            self.debug['v_LNds'].append(self.v_LNd)
-
-        return F_M.flatten()
-
-
-    def get_pre_contact_F_CT(self, p_LEMT, v_LEMT):
-        # pre_contact_F = 
-
-        Kp = 0.01
-        Kd = 1000
-        return Kp*(self.d_Td - p_LEMT) - Kd*v_LEMT
+        X_PT = RigidTransform()
+        if contact_point is not None:
+            z_hat = np.array([[0, 0, 1]]).T
+            axis = np.cross(N_hat, z_hat, axis=0)
+            axis /= np.sqrt(axis.T@axis)
+            angle = np.arccos(np.matmul(N_hat.T, z_hat))
+            angle *= np.sign(N_hat.T@z_hat)
+            X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
+            X_PT.set_translation(contact_point)
+        if constants.USE_NEW_MESHCAT:
+            AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
+                        length=0.15, radius=0.006, X_PT=X_PT)
 
 
-    def latex_to_str(self, sym):
-        out = str(sym)
-        out = re.sub(r"\\ddot\{([^}]*)\}", r"dd_\1", out)
-        out = re.sub(r"\\dot\{([^}]*)\}", r"d_\1", out)
-        out = out.replace(r"\ddot", "dd_")
-        out = out.replace(r"\dot", "d_")
-        out = out.replace(r"{", "").replace(r"}", "").replace("\\", "")
-        return out
+    def get_pre_contact_control_torques(self, p_LE, p_M, v_M, J_translational):
+        Kpx = 100
+        Kdx = 20
+
+        Kpy = 100
+        Kdy = 20
+
+        Kpz = 10
+
+        self.v_MZd = 0.01
+
+        F_CX = -Kpx*p_M[0] - Kdx*v_M[0]
+        F_CY = Kpy*(self.d_Td - (p_M[1] - p_LE[1])) - Kdy*v_M[1]
+        F_CZ = Kpz*(self.v_MZd-v_M[2])
+
+        F_d = np.array([[F_CX, F_CY, F_CZ]]).T
+        tau_ctrl = (J_translational.T@F_d).flatten()
+
+        # %DEBUG_APPEND%
+        self.debug['F_CXs'].append(F_CX)
+        self.debug['F_CNs'].append(0)
+        self.debug['F_CTs'].append(0)
+
+        return tau_ctrl
+        
+
+        # F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
+        # tau_M = 0
+
+        # d_d_N_sqr_sum = np.nan
+
+        # d_X = p_M[0]
+        # d_d_X = v_M[0]
+        # F_FMX = 0
+        # self.tau_ctrl_result = None
+
+    def get_contact_control_torques(self, \
+            m_L, h_L, w_L, I_L, r, mu, 
+            d_theta_L, d_N, d_T, d_d_N, d_d_T, \
+            F_GT, F_GN, F_OT, F_ON, tau_O, 
+            p_CN, p_CT, p_LN, p_LT, p_MConM, theta_L,
+            mu_S, hats_T, s_hat_X,
+            Jdot_qdot, J_translational, J_rotational, J,
+            M, Cv, tau_g):
+        ## 1. Define an instance of MathematicalProgram
+        prog = MathematicalProgram()
+
+        ## 2. Add decision variables
+        # Contact values
+        tau_contact = prog.NewContinuousVariables(self.nq_arm, 1)
+        F_NM = prog.NewContinuousVariables(1, 1)
+        F_FMT = prog.NewContinuousVariables(1, 1)
+        F_FMX = prog.NewContinuousVariables(1, 1)
+        F_ContactMY = prog.NewContinuousVariables(1, 1)
+        F_ContactMZ = prog.NewContinuousVariables(1, 1)
+        F_NL = prog.NewContinuousVariables(1, 1)
+        F_FLT = prog.NewContinuousVariables(1, 1)
+        F_FLX = prog.NewContinuousVariables(1, 1)
+        F_ContactM_XYZ = np.array([F_FMX, F_ContactMY, F_ContactMZ])[:,:,0]
+
+        # Control values
+        tau_ctrl = prog.NewContinuousVariables(7, 1)
+        F_CX = prog.NewContinuousVariables(1, 1)
+        F_CY = prog.NewContinuousVariables(1, 1)
+        F_CZ = prog.NewContinuousVariables(1, 1)
+        F_CN = prog.NewContinuousVariables(1, 1)
+        F_CT = prog.NewContinuousVariables(1, 1)
+        F_CXYZ = np.array([F_CX, F_CY, F_CZ])[:,:,0]
+
+        # Object accelerations
+        a_MX = prog.NewContinuousVariables(1, 1)
+        a_MT = prog.NewContinuousVariables(1, 1)
+        a_MY = prog.NewContinuousVariables(1, 1)
+        a_MZ = prog.NewContinuousVariables(1, 1)
+        a_MN = prog.NewContinuousVariables(1, 1)
+        a_LT = prog.NewContinuousVariables(1, 1)
+        a_LN = prog.NewContinuousVariables(1, 1)
+        alpha_MX = prog.NewContinuousVariables(1, 1)
+        alpha_MY = prog.NewContinuousVariables(1, 1)
+        alpha_MZ = prog.NewContinuousVariables(1, 1)
+        alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
+
+        # Derived accelerations
+        dd_theta_L = prog.NewContinuousVariables(1, 1)
+        dd_d_N = prog.NewContinuousVariables(1, 1)
+        dd_d_T = prog.NewContinuousVariables(1, 1)
+        dd_d_s_T = -dd_theta_L*h_L/2 - dd_theta_L*r + d_theta_L**2 - a_LT + a_MT
+        dd_d_s_N = -dd_theta_L - (h_L*d_theta_L**2)/2 - r*d_theta_L**2 - a_LN + a_MN
+        dd_d_g_T = -dd_theta_L*d_N + dd_d_T - d_T*d_theta_L**2 - 2*d_theta_L*d_d_N
+        dd_d_g_N = dd_theta_L*d_T + dd_d_N - d_N*d_theta_L**2 + 2*d_theta_L*d_d_T
+
+        ddq = prog.NewContinuousVariables(7, 1)
+
+        prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
+
+        ## Constraints
+        # Link tangential force balance
+        prog.AddConstraint(eq(m_L*a_LT, F_FLT+F_GT+F_OT))
+        # Link normal force balance
+        prog.AddConstraint(eq(m_L*a_LN, F_NL + F_GN + F_ON))
+        # Link moment balance
+        prog.AddConstraint(eq(I_L*dd_theta_L, (-w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O))
+        # 3rd law normal forces
+        prog.AddConstraint(eq(F_NL, -F_NM))
+        # 3rd law friction forces
+        prog.AddConstraint(eq(F_FMT, -F_FLT))
+        # d_T derivative is derivative
+        prog.AddConstraint(eq(dd_d_s_T, dd_d_g_T))
+        # d_N derivative is derivative
+        prog.AddConstraint(eq(dd_d_s_N, dd_d_g_N))
+        # No penetration
+        # prog.AddConstraint(eq(dd_d_N, 0))
+        # Friction relationship LT
+        prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T))
+        # Friction relationship LX
+        prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X))
+
+        # Relate manipulator and end effector with joint velocities in Y direction
+        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))
+
+        # Manipulator equations
+        tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
+        tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
+        tau_contact = tau_contact_trn + tau_contact_rot
+        prog.AddConstraint(eq(np.matmul(M, ddq) + Cv, tau_g + tau_contact + tau_ctrl))
+        
+        # Projection equations
+        prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
+        prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
+        prog.AddConstraint(eq(F_CT, np.cos(theta_L)*F_CY + np.sin(theta_L)*F_CZ))
+        prog.AddConstraint(eq(F_CN, -np.sin(theta_L)*F_CY + np.cos(theta_L)*F_CZ))
+        prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
+        prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
+
+        # Relate forces and torques
+        prog.AddConstraint(eq(tau_ctrl, np.matmul(J_translational.T,F_CXYZ)-tau_g))
+
+        # Desired quantities
+        prog.AddConstraint(eq(self.a_LNd, a_LN))
+        prog.AddConstraint(eq(dd_d_T, 0))
+        prog.AddConstraint(eq(a_MX, 0))
+        prog.AddConstraint(eq(alpha_MY, 0))
+        # Don't want to rotate around the u axis
+
+        ##
+        result = Solve(prog)
+        # self.tau_ctrl_result = []
+        tau_ctrl_result = []
+        for i in range(self.nq_arm):
+            tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+
+        # F_CN = 0.01
+        # F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
+        # F_FMX = 0
+
+        F_CX = result.GetSolution()[prog.FindDecisionVariableIndex(F_CX[0,0])]
+        F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
+        F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
+        # %DEBUG_APPEND%
+        self.debug['F_CXs'].append(F_CX)
+        self.debug['F_CNs'].append(F_CN)
+        self.debug['F_CTs'].append(F_CT)
+
+        return tau_ctrl_result
+
+        # s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
+        # F_CX = -self.k*s_d_X# - F_FMX
+
+        # F_M = F_CN*N_hat + F_CT*T_hat
+        # F_M[0] = F_CX
+
+        # return F_M.flatten()
