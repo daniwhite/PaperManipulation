@@ -16,7 +16,7 @@ from common import get_contact_point_from_results
 # Drake imports
 import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
-from pydrake.all import BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, SpatialForce, FindResourceOrThrow, RigidTransform, RotationMatrix, AngleAxis
+from pydrake.all import BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, SpatialForce, FindResourceOrThrow, RigidTransform, RotationMatrix, AngleAxis, RollPitchYaw
 from pydrake.all import (
     MathematicalProgram, Solve, eq, le, ge,
 )
@@ -297,6 +297,14 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         p_M = np.array([poses[self.finger_idx].translation()[0:3]]).T
         p_MN = get_N_proj(p_M)
 
+        pose_M_obj = poses[self.finger_idx]
+        rot_vec = RollPitchYaw(pose_M_obj.rotation()).vector()
+        # AngleAxis is more convenient because of where it wraps around
+        rot_vec[1] = pose_M_obj.rotation().ToAngleAxis().angle()
+        if sum(pose_M_obj.rotation().ToAngleAxis().axis()) < 0:
+            rot_vec[1] *= -1
+        pose_M = np.array([list(rot_vec) + list(poses[self.finger_idx].translation())]).T
+
         angle_axis = poses[self.ll_idx].rotation().ToAngleAxis()
         theta_L = angle_axis.angle()
         if sum(angle_axis.axis()) < 0:
@@ -322,6 +330,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         v_M = np.array([vels[self.finger_idx].translational()[0:3]]).T
         v_MN = get_N_proj(v_M)
         v_MT = get_T_proj(v_M)
+        vel_M = np.array([list(vels[self.finger_idx].rotational()) + \
+                          list(vels[self.finger_idx].translational())]).T
 
         # Assume for now that link edge is not moving
         # PROGRAMMING: Get rid of this assumption
@@ -333,7 +343,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         return m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
             p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M
 
     def calc_inputs_contact(self, pen_depth, N_hat, contact_point, slip_speed, p_LE, p_M, p_L, \
             N_proj_mat, d_theta_L, v_L, v_M, omega_vec_L, omega_vec_M, h_L, w_L, \
@@ -463,7 +473,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         # Precompute other inputs
         m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
             p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX \
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M \
             = self.calc_inputs(poses, vels, raw_in_contact, N_hat)
         if in_contact:
             r, mu, d_N, d_T, d_d_N, d_d_T, F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, hats_T, s_hat_X, \
@@ -485,7 +495,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                 theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
                 Cv, tau_g)
         else:
-            tau_ctrl = self.get_pre_contact_control_torques(p_LE, p_M, v_M, J_translational)
+            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J)
 
         J_plus = np.linalg.pinv(J)
         nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
@@ -534,26 +544,38 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                         length=0.15, radius=0.006, X_PT=X_PT)
 
 
-    def get_pre_contact_control_torques(self, p_LE, p_M, v_M, J_translational):
+    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J):
+        K = np.diag([100, 100, 100, 100, 100, 100])
+        D = np.diag([30,  30,  30,  50, 30, 30])
+
+        self.desired_xyz = [0, p_LE[1] + self.d_Td, 0.1]
+        self.desired_rpy = [np.pi/2, np.pi/2, 0]
+        desired_pose = np.array([self.desired_rpy + self.desired_xyz]).T
+
+        # print(vel_M)
+        # print(pose_M)
+        F_d = K@(desired_pose-pose_M) - D@vel_M
+
+
         Kpx = 100
-        Kdx = 20
+        # # Kdx = 20
 
-        Kpy = 100
-        Kdy = 20
+        # # Kpy = 100
+        # # Kdy = 20
 
-        Kpz = 10
+        # # Kpz = 10
 
-        self.v_MZd = 0.01
+        # # self.v_MZd = 0.01
 
-        F_CX = -Kpx*p_M[0] - Kdx*v_M[0]
-        F_CY = Kpy*(self.d_Td - (p_M[1] - p_LE[1])) - Kdy*v_M[1]
-        F_CZ = Kpz*(self.v_MZd-v_M[2])
+        # # F_CX = -Kpx*p_M[0] - Kdx*v_M[0]
+        # # F_CY = Kpy*(self.d_Td - (p_M[1] - p_LE[1])) - Kdy*v_M[1]
+        # # F_CZ = Kpz*(self.v_MZd-v_M[2])
 
-        F_d = np.array([[F_CX, F_CY, F_CZ]]).T
-        tau_ctrl = (J_translational.T@F_d).flatten()
+        # F_d = np.array([[F_CX, F_CY, F_CZ]]).T
+        tau_ctrl = (J.T@F_d).flatten()
 
         # %DEBUG_APPEND%
-        self.debug['F_CXs'].append(F_CX)
+        self.debug['F_CXs'].append(0)
         self.debug['F_CNs'].append(0)
         self.debug['F_CTs'].append(0)
 
