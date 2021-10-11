@@ -11,7 +11,7 @@ from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, Revol
 # Imports of other project files
 import constants
 
-PAPER_WIDTH = 11*constants.IN_TO_M
+PAPER_WIDTH = 20*constants.IN_TO_M
 PAPER_DEPTH = 8.5*constants.IN_TO_M
 PAPER_HEIGHT = 0.01
 

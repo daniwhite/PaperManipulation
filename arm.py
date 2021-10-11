@@ -40,7 +40,7 @@ def AddArm(plant, scene_graph=None):
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0.85, 0])
+        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.65, 0])
     )
     # Weld fingers (offset matches original urdf)
     plant.WeldFrames(
@@ -523,7 +523,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['F_ONs'].append(F_ON)
         self.debug['tau_Os'].append(tau_O)
         self.debug['mu_ests'].append(self.mu_hat)
-        # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
+        self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
         self.debug['p_LEMTs'].append(p_LEMT)
         self.debug["M"].append(M)
@@ -544,39 +544,17 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
                         length=0.15, radius=0.006, X_PT=X_PT)
 
 
-    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J):
-        K = np.diag([100, 100, 100, 100, 100, 100])
-        D = np.diag([30,  30,  30,  50, 30, 30])
-
-        self.desired_xyz = [0, p_LE[1] + self.d_Td, 0.1]
-        self.desired_rpy = [np.pi/2, np.pi/2, 0]
-        desired_pose = np.array([self.desired_rpy + self.desired_xyz]).T
-
-        # print(vel_M)
-        # print(pose_M)
-        F_d = K@(desired_pose-pose_M) - D@vel_M
+    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J, N_hat):
 
 
-        Kpx = 100
-        # # Kdx = 20
+        F_d = np.zeros((6,1))
+        F_d[3:] += N_hat * 5
 
-        # # Kpy = 100
-        # # Kdy = 20
-
-        # # Kpz = 10
-
-        # # self.v_MZd = 0.01
-
-        # # F_CX = -Kpx*p_M[0] - Kdx*v_M[0]
-        # # F_CY = Kpy*(self.d_Td - (p_M[1] - p_LE[1])) - Kdy*v_M[1]
-        # # F_CZ = Kpz*(self.v_MZd-v_M[2])
-
-        # F_d = np.array([[F_CX, F_CY, F_CZ]]).T
         tau_ctrl = (J.T@F_d).flatten()
 
         # %DEBUG_APPEND%
         self.debug['F_CXs'].append(0)
-        self.debug['F_CNs'].append(0)
+        self.debug['F_CNs'].append(5)
         self.debug['F_CTs'].append(0)
 
         return tau_ctrl

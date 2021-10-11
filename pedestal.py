@@ -4,7 +4,7 @@ import pydrake
 from pydrake.all import RigidTransform, RotationMatrix
 
 PEDESTAL_WIDTH = 0.15
-PEDESTAL_HEIGHT = 0.4
+PEDESTAL_HEIGHT = 0.8
 PEDESTAL_DEPTH = 0.3
 # TODO: these should actually be reflected in the box
 
