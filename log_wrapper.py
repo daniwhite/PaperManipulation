@@ -11,17 +11,22 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
 
     # PROGRAMMING: Clean up passed around references
-    def __init__(self, num_bodies, finger_idx, paper, jnt_frc_log, arm_acc_log):
+    def __init__(self, num_bodies, bot_finger_idx, top_finger_idx, paper, jnt_frc_log, arm_acc_log):
+        self.max_contacts = 10
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
-        self.contact_entries = 18
+        self.entries_per_contact = 18
+        self.bot_contact_entries = self.entries_per_contact*self.max_contacts
+        self.top_contact_entries = self.entries_per_contact*self.max_contacts
         self.joint_entries = len(paper.joints)*6
         self.nq_arm = 7
         self.ctrl_forces_entries = 3
 
-        self.contact_entry_start_idx = num_bodies*self.entries_per_body
-        self.joint_entry_start_idx = num_bodies * \
-            self.entries_per_body + self.contact_entries
+        self.bot_contact_entry_start_idx = num_bodies*self.entries_per_body
+        self.top_contact_entry_start_idx = self.bot_contact_entry_start_idx \
+            + self.bot_contact_entries
+        self.joint_entry_start_idx = self.top_contact_entry_start_idx \
+            + self.top_contact_entries
 
         self.gen_accs_start_idx = self.joint_entry_start_idx + self.joint_entries
         self.gen_accs_entries = self.nq_arm
@@ -32,7 +37,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         # self.ctrl_forces_start_idx = self.state_start_idx + self.state_entries
 
         self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries + self.state_entries # + self.ctrl_forces_entries
+            self.bot_contact_entries + self.top_contact_entries + self.joint_entries + self.state_entries # + self.ctrl_forces_entries
 
         self.paper = paper
         self.jnt_frc_log = jnt_frc_log
@@ -57,7 +62,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 self._size),
             self.CalcOutput)
 
-        self.finger_idx = finger_idx
+        self.top_finger_idx = top_finger_idx
+        self.bot_finger_idx = bot_finger_idx
         self.ll_idx = paper.link_idxs[-1]
 
     def CalcOutput(self, context, output):
@@ -88,7 +94,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += list(vel.rotational())
             out += list(acc.translational())
             out += list(acc.rotational())
-        force_found = False
+
+        # Bottom contacts
         forces_found = 0
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
@@ -96,35 +103,70 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
             use_this_contact = False
             # Always take contact forces on manipulator
-            if int(point_pair_contact_info.bodyA_index()) == self.finger_idx \
+            if int(point_pair_contact_info.bodyA_index()) == self.bot_finger_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
-                forces_found += 1
                 # PROGRAMMING: Move sparation speed back into this section with correct signs
-                if not force_found:
-                    out += list(-point_pair_contact_info.contact_force())
-                    out += list(point_pair_contact_info.point_pair().p_WCa)
-                    out += list(point_pair_contact_info.point_pair().p_WCb)
-                    use_this_contact = True
-                    force_found = True
+                out += list(-point_pair_contact_info.contact_force())
+                out += list(point_pair_contact_info.point_pair().p_WCa)
+                out += list(point_pair_contact_info.point_pair().p_WCb)
+                use_this_contact = True
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
-                    and int(point_pair_contact_info.bodyB_index()) == self.finger_idx:
-                forces_found += 1
-                if not force_found:
-                    out += list(point_pair_contact_info.contact_force())
-                    out += list(point_pair_contact_info.point_pair().p_WCb)
-                    out += list(point_pair_contact_info.point_pair().p_WCa)
-                    force_found = True
-                    use_this_contact = True
+                    and int(point_pair_contact_info.bodyB_index()) == self.bot_finger_idx:
+                out += list(point_pair_contact_info.contact_force())
+                out += list(point_pair_contact_info.point_pair().p_WCb)
+                out += list(point_pair_contact_info.point_pair().p_WCa)
+                use_this_contact = True
             if use_this_contact:
+                forces_found += 1
+                assert  self.max_contacts >= forces_found
                 out += [point_pair_contact_info.separation_speed(),
                         point_pair_contact_info.slip_speed()]
                 out += list(point_pair_contact_info.contact_point())
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(pen_point_pair.nhat_BA_W)
                 out += [pen_point_pair.depth]
-            # TODO: support multiple contacts
-        if not force_found:
-            out += [np.nan]*self.contact_entries
+        forces_found_idx = forces_found
+        while forces_found_idx < self.max_contacts:
+            # print("forces_found_idx", forces_found_idx)
+            out += [np.nan]*self.entries_per_contact
+            forces_found_idx += 1
+
+        # Top contacts
+        forces_found = 0
+        for i in range(contact_results.num_point_pair_contacts()):
+            point_pair_contact_info = \
+                contact_results.point_pair_contact_info(i)
+
+            use_this_contact = False
+            # Always take contact forces on manipulator
+            if int(point_pair_contact_info.bodyA_index()) == self.top_finger_idx \
+                    and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
+                # PROGRAMMING: Move sparation speed back into this section with correct signs
+                out += list(-point_pair_contact_info.contact_force())
+                out += list(point_pair_contact_info.point_pair().p_WCa)
+                out += list(point_pair_contact_info.point_pair().p_WCb)
+                use_this_contact = True
+            elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
+                    and int(point_pair_contact_info.bodyB_index()) == self.top_finger_idx:
+                out += list(point_pair_contact_info.contact_force())
+                out += list(point_pair_contact_info.point_pair().p_WCb)
+                out += list(point_pair_contact_info.point_pair().p_WCa)
+                use_this_contact = True
+            if use_this_contact:
+                forces_found += 1
+                assert  self.max_contacts >= forces_found
+                out += [point_pair_contact_info.separation_speed(),
+                        point_pair_contact_info.slip_speed()]
+                out += list(point_pair_contact_info.contact_point())
+                pen_point_pair = point_pair_contact_info.point_pair()
+                out += list(pen_point_pair.nhat_BA_W)
+                out += [pen_point_pair.depth]
+        forces_found_idx = forces_found
+        while forces_found_idx < self.max_contacts:
+            # print("forces_found_idx", forces_found_idx)
+            out += [np.nan]*self.entries_per_contact
+            forces_found_idx += 1
+
         for j in self.paper.joints:
             out += list(joint_forces[int(j.index())].translational())
             out += list(joint_forces[int(j.index())].rotational())
