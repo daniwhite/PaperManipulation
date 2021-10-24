@@ -94,9 +94,9 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.g = sys_params['g']
 
         # Initialize control targets
-        self.d_Td = -0.03
+        self.d_Td = -0.12
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
-        self.a_LNd = 0.1
+        self.a_LNd = 0.5
         self.d_Xd = 0
         self.v_LNd = 0
 
@@ -310,6 +310,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         rot_vec = RollPitchYaw(pose_M_obj.rotation()).vector()
         # AngleAxis is more convenient because of where it wraps around
         rot_vec[1] = pose_M_obj.rotation().ToAngleAxis().angle()
+        theta_M = rot_vec[1]
         if sum(pose_M_obj.rotation().ToAngleAxis().axis()) < 0:
             rot_vec[1] *= -1
         pose_M = np.array([list(rot_vec) + list(poses[self.top_finger_idx].translation())]).T
@@ -352,7 +353,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         return m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
             p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M, theta_M, d_theta_M
 
     def calc_inputs_contact(self, pen_depth, N_hat, contact_point, slip_speed, p_LE, p_M, p_L, \
             N_proj_mat, d_theta_L, v_L, v_M, omega_vec_L, omega_vec_M, h_L, w_L, \
@@ -483,7 +484,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         # Precompute other inputs
         m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
             p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M \
+            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M, theta_M, d_theta_M \
             = self.calc_inputs(poses, vels, raw_in_contact, N_hat)
         if in_contact:
             r, mu, d_N, d_T, d_d_N, d_d_T, F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, hats_T, s_hat_X, \
@@ -501,19 +502,19 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             d_d_N_sqr_sum = 0
 
         # Get torques
-        if in_contact:
-            tau_ctrl = self.get_contact_control_torques( m_L, h_L, w_L, I_L, r, mu,  d_theta_L, d_N, d_T, \
-                d_d_N, d_d_T, F_GT, F_GN, F_OT, F_ON, tau_O,  p_CN, p_CT, p_LN, p_LT, p_MConM, \
-                theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
-                Cv, tau_g)
-        else:
-            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J, N_hat)
-
         J_plus = np.linalg.pinv(J)
         nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
 
         # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
+
+        if in_contact:
+            tau_ctrl = self.get_contact_control_torques( m_L, h_L, w_L, I_L, r, mu,  d_theta_L, d_N, d_T, \
+                d_d_N, d_d_T, F_GT, F_GN, F_OT, F_ON, tau_O,  p_CN, p_CT, p_LN, p_LT, p_MConM, \
+                theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
+                Cv, tau_g, joint_centering_torque, theta_M, d_theta_M)
+        else:
+            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J, N_hat)
 
         tau_out = tau_ctrl - tau_g + joint_centering_torque
         output.SetFromVector(tau_out)
@@ -571,17 +572,6 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['F_CTs'].append(0)
 
         return tau_ctrl
-        
-
-        # F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
-        # tau_M = 0
-
-        # d_d_N_sqr_sum = np.nan
-
-        # d_X = p_M[0]
-        # d_d_X = v_M[0]
-        # F_FMX = 0
-        # self.tau_ctrl_result = None
 
     def get_contact_control_torques(self, \
             m_L, h_L, w_L, I_L, r, mu, 
@@ -590,7 +580,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             p_CN, p_CT, p_LN, p_LT, p_MConM, theta_L,
             mu_S, hats_T, s_hat_X,
             Jdot_qdot, J_translational, J_rotational, J,
-            M, Cv, tau_g):
+            M, Cv, tau_g, joint_centering_torque, theta_M, d_theta_M):
         ## 1. Define an instance of MathematicalProgram
         prog = MathematicalProgram()
 
@@ -665,13 +655,14 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X))
 
         # Relate manipulator and end effector with joint velocities in Y direction
-        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))
+        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))#joint_centering_torque
 
         # Manipulator equations
         tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
         tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
         tau_contact = tau_contact_trn + tau_contact_rot
-        prog.AddConstraint(eq(np.matmul(M, ddq) + Cv, tau_g + tau_contact + tau_ctrl))
+        tau_out = tau_ctrl - tau_g + joint_centering_torque
+        prog.AddConstraint(eq(np.matmul(M, ddq) + Cv, tau_g + tau_contact + tau_out))
         
         # Projection equations
         prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
@@ -682,13 +673,24 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
         # Relate forces and torques
-        prog.AddConstraint(eq(tau_ctrl, np.matmul(J_translational.T,F_CXYZ)-tau_g))
+        prog.AddConstraint(eq(tau_out, np.matmul(J_translational.T,F_CXYZ)))
 
-        # Desired quantities
-        prog.AddConstraint(eq(self.a_LNd, a_LN))
-        prog.AddConstraint(eq(dd_d_T, 0))
-        prog.AddConstraint(eq(a_MX, 0))
-        prog.AddConstraint(eq(alpha_MY, 0))
+        # # Desired quantities
+        # prog.AddConstraint(eq(self.a_LNd, a_LN))
+        # prog.AddConstraint(eq(dd_d_T, 0))
+        # prog.AddConstraint(eq(a_MX, 0))
+        # prog.AddConstraint(eq(alpha_MY, 0))
+
+        # Calculate desired values
+        dd_d_Td = 10000*(self.d_Td - d_T) - 10*d_d_T
+        # dd_d_Xd = 10*(0 - d_X) - 1*d_d_X
+        theta_Md = theta_L #+ np.pi/2
+        d_theta_Md = d_theta_L
+        alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
+
+        prog.AddConstraint(eq(dd_d_T, dd_d_Td))
+        prog.AddConstraint(eq(a_LN, self.a_LNd))
+        prog.AddConstraint(eq(alpha_MX, d_theta_Md))
         # Don't want to rotate around the u axis
 
         ##
