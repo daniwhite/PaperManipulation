@@ -8,7 +8,7 @@ from collections import defaultdict
 
 # Local imports
 import constants
-import finger
+import manipulator
 import paper
 import pedestal
 from common import get_contact_point_from_results
@@ -25,36 +25,6 @@ if constants.USE_NEW_MESHCAT:
     import sys
     sys.path.append("manipulation/")
     from manipulation.meshcat_cpp_utils import StartMeshcat, AddMeshcatTriad
-
-TOP_FINGER_NAME = "panda_leftfinger"
-BOT_FINGER_NAME = "panda_rightfinger"
-
-def AddArm(plant, scene_graph=None):
-    """
-    Creates the panda arm.
-    """
-    parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile("panda_arm_hand.urdf")
-
-    # Weld pedestal to world
-    jnt = plant.WeldFrames(
-        plant.world_frame(),
-        plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.65, 0])
-    )
-    # Weld fingers (offset matches original urdf)
-    plant.WeldFrames(
-        plant.GetFrameByName("panda_hand", arm_instance),
-        plant.GetFrameByName("panda_leftfinger", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
-    )
-    plant.WeldFrames(
-        plant.GetFrameByName("panda_hand", arm_instance),
-        plant.GetFrameByName("panda_rightfinger", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
-    )
-
-    return arm_instance
 
 
 def stribeck(us, uk, v):
@@ -77,11 +47,10 @@ def step5(x):
     x3 = x * x * x
     return x3 * (10 + x * (6 * x - 15))
 
+class FoldingController(pydrake.systems.framework.LeafSystem):
+    """Base class for implementing a controller for whatever."""
 
-class ArmFoldingController(pydrake.systems.framework.LeafSystem):
-    """Base class for implementing a controller at the finger."""
-
-    def __init__(self, arm_acc_log, ll_idx, options, sys_params, jnt_frc_log):
+    def __init__(self, manipulator_acc_log, ll_idx, options, sys_params, jnt_frc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # Initialize system parameters
@@ -112,7 +81,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.P = 10000 # Adapatation law gain
 
         # Initialize logs
-        self.arm_acc_log = arm_acc_log
+        self.manipulator_acc_log = manipulator_acc_log
         # %DEBUG_APPEND%
         self.debug = defaultdict(list)
         self.debug['times'] = []
@@ -126,24 +95,23 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         self.t_contact_start =  None
         self.last_Jdot_qdot = np.zeros((6, 1))
 
-        self.arm_plant = MultibodyPlant(constants.DT)
-        AddArm(self.arm_plant)
-        self.arm_plant.Finalize()
-        self.arm_plant_context = self.arm_plant.CreateDefaultContext()
+        self.manipulator_plant = MultibodyPlant(constants.DT)
+        manipulator.data["add_plant_function"](self.manipulator_plant)
+        self.manipulator_plant.Finalize()
+        self.manipulator_plant_context = self.manipulator_plant.CreateDefaultContext()
 
         # Other parameters
         self.ll_idx = ll_idx
-        self.bot_finger_idx = int(self.arm_plant.GetBodyByName(BOT_FINGER_NAME).index())
-        self.top_finger_idx = int(self.arm_plant.GetBodyByName(TOP_FINGER_NAME).index())
+        self.contact_body_idx = int(self.manipulator_plant.GetBodyByName(manipulator.data["contact_body_name"]).index())
         self.use_friction_adaptive_ctrl = options['use_friction_adaptive_ctrl']
         self.use_friction_robust_adaptive_ctrl = options['use_friction_robust_adaptive_ctrl']
         self.d_d_N_sqr_log_len = 100
         self.d_d_N_sqr_lim = 2e-4
 
-        self.nq_arm = self.arm_plant.get_actuation_input_port().size()
+        self.nq_manipulator = self.manipulator_plant.get_actuation_input_port().size()
 
         # Input ports
-        self.DeclareVectorInputPort("q", BasicVector(self.nq_arm*2))
+        self.DeclareVectorInputPort("q", BasicVector(self.nq_manipulator*2))
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
         self.DeclareAbstractInputPort(
@@ -154,8 +122,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         # Output ports
         self.DeclareVectorOutputPort(
-            "arm_actuation", pydrake.systems.framework.BasicVector(
-                self.nq_arm),
+            "actuation", pydrake.systems.framework.BasicVector(
+                self.nq_manipulator),
             self.CalcOutput)
 
 
@@ -177,8 +145,8 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             b_idx = int(point_pair_contact_info.bodyB_index())
             self.contacts.append([a_idx, b_idx])
 
-            if ((a_idx == self.ll_idx) and (b_idx == self.top_finger_idx) or
-                    (a_idx == self.top_finger_idx) and (b_idx == self.ll_idx)):
+            if ((a_idx == self.ll_idx) and (b_idx == self.contact_body_idx) or
+                    (a_idx == self.contact_body_idx) and (b_idx == self.ll_idx)):
                 contact_point = point_pair_contact_info.contact_point()
                 slip_speed = point_pair_contact_info.slip_speed()
                 pen_point_pair = point_pair_contact_info.point_pair()
@@ -198,34 +166,26 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         return contact_point, slip_speed, pen_depth, N_hat, raw_in_contact, in_contact
 
 
-    def evaluate_arm(self, state):
-        q = state[:self.nq_arm]
-        v = state[self.nq_arm:]
-        self.arm_plant.SetPositions(self.arm_plant_context, q)
-        self.arm_plant.SetVelocities(self.arm_plant_context, v)
+    def evaluate_manipulator(self, state):
+        q = state[:self.nq_manipulator]
+        v = state[self.nq_manipulator:]
+        self.manipulator_plant.SetPositions(self.manipulator_plant_context, q)
+        self.manipulator_plant.SetVelocities(self.manipulator_plant_context, v)
 
-        M = self.arm_plant.CalcMassMatrixViaInverseDynamics(self.arm_plant_context)
-        Cv = self.arm_plant.CalcBiasTerm(self.arm_plant_context)
+        M = self.manipulator_plant.CalcMassMatrixViaInverseDynamics(self.manipulator_plant_context)
+        Cv = self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context)
 
-        tau_g = self.arm_plant.CalcGravityGeneralizedForces(self.arm_plant_context)
+        tau_g = self.manipulator_plant.CalcGravityGeneralizedForces(self.manipulator_plant_context)
 
-        # TODO: account for both fingers
-        finger_body = self.arm_plant.GetBodyByName(TOP_FINGER_NAME)
-        J = self.arm_plant.CalcJacobianSpatialVelocity(
-            self.arm_plant_context,
-            JacobianWrtVariable.kQDot,
-            finger_body.body_frame(),
+        contact_body = self.manipulator_plant.GetBodyByName(
+            manipulator.data["contact_body_name"])
+        J = self.manipulator_plant.CalcJacobianSpatialVelocity(
+            self.manipulator_plant_context,
+            JacobianWrtVariable.kV,
+            contact_body.body_frame(),
             [0, 0, 0],
-            self.arm_plant.world_frame(),
-            self.arm_plant.world_frame())
-        bottom_finger_body = self.arm_plant.GetBodyByName(BOT_FINGER_NAME)
-        J_bot = self.arm_plant.CalcJacobianSpatialVelocity(
-            self.arm_plant_context,
-            JacobianWrtVariable.kQDot,
-            bottom_finger_body.body_frame(),
-            [0, 0, 0],
-            self.arm_plant.world_frame(),
-            self.arm_plant.world_frame())
+            self.manipulator_plant.world_frame(),
+            self.manipulator_plant.world_frame())
         
         Jdot_qdot = self.last_Jdot_qdot
         if len(self.debug['times']) > 1:
@@ -238,7 +198,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
 
-        return q, v, tau_g, M, Cv, J, J_bot, Jdot_qdot, J_translational, J_rotational
+        return q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational
 
 
     def calc_inputs(self, poses, vels, in_contact, N_hat):
@@ -303,17 +263,17 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         p_LT = get_T_proj(p_L)
         p_LN = get_N_proj(p_L)
 
-        p_M = np.array([poses[self.top_finger_idx].translation()[0:3]]).T
+        p_M = np.array([poses[self.contact_body_idx].translation()[0:3]]).T
         p_MN = get_N_proj(p_M)
 
-        pose_M_obj = poses[self.top_finger_idx]
+        pose_M_obj = poses[self.contact_body_idx]
         rot_vec = RollPitchYaw(pose_M_obj.rotation()).vector()
         # AngleAxis is more convenient because of where it wraps around
         rot_vec[1] = pose_M_obj.rotation().ToAngleAxis().angle()
         theta_M = rot_vec[1]
         if sum(pose_M_obj.rotation().ToAngleAxis().axis()) < 0:
             rot_vec[1] *= -1
-        pose_M = np.array([list(rot_vec) + list(poses[self.top_finger_idx].translation())]).T
+        pose_M = np.array([list(rot_vec) + list(poses[self.contact_body_idx].translation())]).T
 
         angle_axis = poses[self.ll_idx].rotation().ToAngleAxis()
         theta_L = angle_axis.angle()
@@ -329,7 +289,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         # Velocities
         d_theta_L = vels[self.ll_idx].rotational()[0]
-        d_theta_M = vels[self.top_finger_idx].rotational()[0]
+        d_theta_M = vels[self.contact_body_idx].rotational()[0]
         omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
         omega_vec_M = np.array([[d_theta_M, 0, 0]]).T
 
@@ -337,11 +297,11 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         v_LN = get_N_proj(v_L)
         v_LT = get_T_proj(v_L)
 
-        v_M = np.array([vels[self.top_finger_idx].translational()[0:3]]).T
+        v_M = np.array([vels[self.contact_body_idx].translational()[0:3]]).T
         v_MN = get_N_proj(v_M)
         v_MT = get_T_proj(v_M)
-        vel_M = np.array([list(vels[self.top_finger_idx].rotational()) + \
-                          list(vels[self.top_finger_idx].translational())]).T
+        vel_M = np.array([list(vels[self.contact_body_idx].rotational()) + \
+                          list(vels[self.contact_body_idx].translational())]).T
 
         # Assume for now that link edge is not moving
         # PROGRAMMING: Get rid of this assumption
@@ -455,7 +415,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
     def CalcOutput(self, context, output):
         ## Load inputs
-        # This input put is already restricted to the arm, but it includes both q and v
+        # This input put is already restricted to the manipulator, but it includes both q and v
         state = self.get_input_port(0).Eval(context)
         poses = self.get_input_port(1).Eval(context)
         vels = self.get_input_port(2).Eval(context)
@@ -470,8 +430,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
             self.process_contact_results(contact_results)
 
         # Process state
-        q, v, tau_g, M, Cv, J_top, J_bot, Jdot_qdot, J_translational, J_rotational = self.evaluate_arm(state)
-        J = J_top
+        q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational = self.evaluate_manipulator(state)
 
         # Book keeping
         if self.init_q is None:
@@ -503,7 +462,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         # Get torques
         J_plus = np.linalg.pinv(J)
-        nullspace_basis = np.eye(self.nq_arm) - np.matmul(J_plus, J)
+        nullspace_basis = np.eye(self.nq_manipulator) - np.matmul(J_plus, J)
 
         # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
@@ -526,8 +485,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         # self.debug['F_d'].append(F_d)
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
-        self.debug['J_top'].append(J_top)
-        self.debug['J_bot'].append(J_bot)
+        self.debug['J'].append(J)
 
         self.debug['raw_in_contact'].append(raw_in_contact)
         self.debug['in_contact'].append(in_contact)
@@ -586,7 +544,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
 
         ## 2. Add decision variables
         # Contact values
-        tau_contact = prog.NewContinuousVariables(self.nq_arm, 1)
+        tau_contact = prog.NewContinuousVariables(self.nq_manipulator, 1)
         F_NM = prog.NewContinuousVariables(1, 1)
         F_FMT = prog.NewContinuousVariables(1, 1)
         F_FMX = prog.NewContinuousVariables(1, 1)
@@ -697,7 +655,7 @@ class ArmFoldingController(pydrake.systems.framework.LeafSystem):
         result = Solve(prog)
         # self.tau_ctrl_result = []
         tau_ctrl_result = []
-        for i in range(self.nq_arm):
+        for i in range(self.nq_manipulator):
             tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
 
         # F_CN = 0.01
