@@ -50,7 +50,7 @@ def step5(x):
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
 
-    def __init__(self, manipulator_acc_log, ll_idx, options, sys_params, jnt_frc_log):
+    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, options, sys_params, jnt_frc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # Initialize system parameters
@@ -65,9 +65,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Initialize control targets
         self.d_Td = -0.12
         self.d_theta_Ld = 2*np.pi / 5  # 1 rotation per 5 secs
-        self.a_LNd = 0.5
+        self.a_LNd = 2
         self.d_Xd = 0
         self.v_LNd = 0
+        self.pre_contact_v_MNd = 0.1
 
         # Initialize estimates
         self.mu_hat = 0.8
@@ -79,6 +80,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.D_centering = 0.1
         self.lamda = 100 # Sliding surface time constant
         self.P = 10000 # Adapatation law gain
+        self.pre_contact_Kp = 10
 
         # Initialize logs
         self.manipulator_acc_log = manipulator_acc_log
@@ -102,7 +104,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Other parameters
         self.ll_idx = ll_idx
-        self.contact_body_idx = int(self.manipulator_plant.GetBodyByName(manipulator.data["contact_body_name"]).index())
+        self.contact_body_idx = contact_body_idx
         self.use_friction_adaptive_ctrl = options['use_friction_adaptive_ctrl']
         self.use_friction_robust_adaptive_ctrl = options['use_friction_robust_adaptive_ctrl']
         self.d_d_N_sqr_log_len = 100
@@ -473,7 +475,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
                 Cv, tau_g, joint_centering_torque, theta_M, d_theta_M)
         else:
-            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J, N_hat)
+            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J, N_hat, v_MN)
 
         tau_out = tau_ctrl - tau_g + joint_centering_torque
         output.SetFromVector(tau_out)
@@ -516,17 +518,22 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                         length=0.15, radius=0.006, X_PT=X_PT)
 
 
-    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J, N_hat):
-        F_CN_ff = 0.001
+    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J, N_hat, v_MN):
+        # TODO: add controller for hitting correct orientation
+        # Proportional control for moving towards the link
+        v_MNd = self.pre_contact_v_MNd
+        Kp = self.pre_contact_Kp
+        F_CN = (v_MNd - v_MN)*Kp
+
         F_d = np.zeros((6,1))
         if self.debug['times'][-1] > paper.settling_time:
-            F_d[3:] += N_hat * F_CN_ff
+            F_d[3:] += N_hat * F_CN
 
         tau_ctrl = (J.T@F_d).flatten()
 
         # %DEBUG_APPEND%
         self.debug['F_CXs'].append(0)
-        self.debug['F_CNs'].append(F_CN_ff)
+        self.debug['F_CNs'].append(F_CN)
         self.debug['F_CTs'].append(0)
 
         return tau_ctrl
