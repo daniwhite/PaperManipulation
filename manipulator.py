@@ -15,7 +15,7 @@ VOLUME = (4/3)*RADIUS**3*np.pi
 MASS = VOLUME*1e3  # Assume finger is made of water
 
 INIT_Y = pedestal.PEDESTAL_WIDTH/2 + RADIUS + constants.EPSILON
-INIT_Z = 0
+INIT_Z = 0.5
 
 
 # class ManipulatorPlant:

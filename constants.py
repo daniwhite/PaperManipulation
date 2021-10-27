@@ -14,7 +14,7 @@ FRICTION = 0.2
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 0.2
+TSPAN = 10
 
 # Other config
 USE_NEW_MESHCAT = False

@@ -517,16 +517,16 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
 
     def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J, N_hat):
-
-
+        F_CN_ff = 0.001
         F_d = np.zeros((6,1))
-        F_d[3:] += N_hat * 5
+        if self.debug['times'][-1] > paper.settling_time:
+            F_d[3:] += N_hat * F_CN_ff
 
         tau_ctrl = (J.T@F_d).flatten()
 
         # %DEBUG_APPEND%
         self.debug['F_CXs'].append(0)
-        self.debug['F_CNs'].append(5)
+        self.debug['F_CNs'].append(F_CN_ff)
         self.debug['F_CTs'].append(0)
 
         return tau_ctrl
@@ -556,7 +556,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         F_ContactM_XYZ = np.array([F_FMX, F_ContactMY, F_ContactMZ])[:,:,0]
 
         # Control values
-        tau_ctrl = prog.NewContinuousVariables(7, 1)
+        tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1)
         F_CX = prog.NewContinuousVariables(1, 1)
         F_CY = prog.NewContinuousVariables(1, 1)
         F_CZ = prog.NewContinuousVariables(1, 1)
@@ -586,7 +586,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         dd_d_g_T = -dd_theta_L*d_N + dd_d_T - d_T*d_theta_L**2 - 2*d_theta_L*d_d_N
         dd_d_g_N = dd_theta_L*d_T + dd_d_N - d_N*d_theta_L**2 + 2*d_theta_L*d_d_T
 
-        ddq = prog.NewContinuousVariables(7, 1)
+        ddq = prog.NewContinuousVariables(self.nq_manipulator, 1)
 
         prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
 
@@ -653,6 +653,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         ##
         result = Solve(prog)
+        assert result.is_success
         # self.tau_ctrl_result = []
         tau_ctrl_result = []
         for i in range(self.nq_manipulator):

@@ -15,7 +15,7 @@ PAPER_WIDTH = 20*constants.IN_TO_M
 PAPER_DEPTH = 8.5*constants.IN_TO_M
 PAPER_HEIGHT = 0.01
 
-
+settling_time = 2
 class Paper:
     """Model of paper dynamics."""
     name = "paper"
