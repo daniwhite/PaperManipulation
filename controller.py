@@ -52,6 +52,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
     def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, options, sys_params, jnt_frc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
+        self.contacts = []
 
         # Initialize system parameters
         self.v_stiction = sys_params['v_stiction']
@@ -138,14 +139,14 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         slip_speed = None
         pen_depth = None
         N_hat = None
-        self.contacts = []
+        self.contacts.append([])
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
 
             a_idx = int(point_pair_contact_info.bodyA_index())
             b_idx = int(point_pair_contact_info.bodyB_index())
-            self.contacts.append([a_idx, b_idx])
+            self.contacts[-1].append([a_idx, b_idx])
 
             if ((a_idx == self.ll_idx) and (b_idx == self.contact_body_idx) or
                     (a_idx == self.contact_body_idx) and (b_idx == self.ll_idx)):
@@ -163,9 +164,14 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 self.t_contact_start = self.debug['times'][-1]
         else:
             self.t_contact_start =  None
-        in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.002
+        in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.5
 
-        return contact_point, slip_speed, pen_depth, N_hat, raw_in_contact, in_contact
+        ret = {
+            "contact_point": contact_point, "slip_speed": slip_speed,
+            "pen_depth": pen_depth, "N_hat": N_hat,
+            "raw_in_contact": raw_in_contact, "in_contact": in_contact,
+        }
+        return ret
 
 
     def evaluate_manipulator(self, state):
@@ -200,7 +206,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
 
-        return q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational
+        ret = {
+            "q": q, "v": v, "tau_g": tau_g, "M": M, "Cv": Cv, "J": J,
+            "Jdot_qdot": Jdot_qdot, "J_translational": J_translational,
+            "J_rotational": J_rotational
+        }
+        return ret
 
 
     def calc_inputs(self, poses, vels, in_contact, N_hat):
@@ -227,7 +238,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         T_hat_geo = R@y_hat
         N_hat_geo = R@z_hat
         # %DEBUG_APPEND%
+        self.debug['T_hat'].append(T_hat)
         self.debug['T_hat_geos'].append(T_hat_geo)
+        self.debug['N_hat'].append(N_hat)
         self.debug['N_hat_geos'].append(N_hat_geo)
 
         T_proj_mat = T_hat@(T_hat.T)
@@ -262,25 +275,20 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Positions
         p_L = np.array([poses[self.ll_idx].translation()[0:3]]).T
+        self.debug['p_L'].append(p_L)
         p_LT = get_T_proj(p_L)
         p_LN = get_N_proj(p_L)
 
         p_M = np.array([poses[self.contact_body_idx].translation()[0:3]]).T
         p_MN = get_N_proj(p_M)
 
-        pose_M_obj = poses[self.contact_body_idx]
-        rot_vec = RollPitchYaw(pose_M_obj.rotation()).vector()
-        # AngleAxis is more convenient because of where it wraps around
-        rot_vec[1] = pose_M_obj.rotation().ToAngleAxis().angle()
-        theta_M = rot_vec[1]
-        if sum(pose_M_obj.rotation().ToAngleAxis().axis()) < 0:
-            rot_vec[1] *= -1
-        pose_M = np.array([list(rot_vec) + list(poses[self.contact_body_idx].translation())]).T
+        pose_M = poses[self.contact_body_idx]
+        rot_vec_M = RollPitchYaw(pose_M.rotation()).vector()
+        theta_M = rot_vec_M[0]
 
-        angle_axis = poses[self.ll_idx].rotation().ToAngleAxis()
-        theta_L = angle_axis.angle()
-        if sum(angle_axis.axis()) < 0:
-            theta_L *= -1
+        pose_L = poses[self.ll_idx]
+        rot_vec_L = RollPitchYaw(pose_L.rotation()).vector()
+        theta_L = rot_vec_L[0]
 
         p_LLE = N_hat * -h_L/2 + T_hat * w_L/2
         p_LE = p_L + p_LLE
@@ -313,9 +321,24 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         p_LEMX = p_LEM[0]
         v_LEMX = v_LEM[0]
 
-        return m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
-            p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M, theta_M, d_theta_M
+        # Gravity
+        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
+        F_GT = self.get_T_proj(F_G)
+        F_GN = self.get_N_proj(F_G)
+
+        ret = {
+            "m_L": m_L, "h_L": h_L, "w_L": w_L, "I_L": I_L,
+            "d_theta_L": d_theta_L, "F_OT": F_OT, "F_ON": F_ON, "tau_O": tau_O,
+            "p_LN": p_LN, "p_LT": p_LT, "theta_L": theta_L, "p_LE": p_LE,
+            "p_M": p_M, "p_L": p_L, "N_proj_mat": N_proj_mat, "v_L": v_L,
+            "v_M": v_M, "omega_vec_L": omega_vec_L, "omega_vec_M": omega_vec_M,
+            "v_LT": v_LT, "v_LN": v_LN, "v_MT": v_MT, "v_MN": v_MN,
+            "p_LEMT": p_LEMT, "v_LEMT": v_LEMT, "T_hat": T_hat,
+            "N_hat": N_hat, "p_LEMX": p_LEMX, "v_LEMX": v_LEMX, "pose_M": pose_M,
+            "vel_M": vel_M, "theta_M": theta_M, "d_theta_M": d_theta_M,
+            "F_GT": F_GT, "F_GN": F_GN
+        }
+        return ret
 
     def calc_inputs_contact(self, pen_depth, N_hat, contact_point, slip_speed, p_LE, p_M, p_L, \
             N_proj_mat, d_theta_L, v_L, v_M, omega_vec_L, omega_vec_M, h_L, w_L, \
@@ -329,7 +352,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         r = np.linalg.norm(p_C-p_M) # TODO: make this support multiple directions
 
 
-        d = p_C - p_LE + pen_vec/2
+        d = p_C - p_LE
         d_T = self.get_T_proj(d)
         d_N = self.get_N_proj(d)
         d_X = d[0]
@@ -365,10 +388,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)
         mu_S = stribeck_mu
 
-        # Gravity
-        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
-        F_GT = self.get_T_proj(F_G)
-        F_GN = self.get_N_proj(F_G)
 
         # def sat(phi):
         #     if phi > 0:
@@ -410,10 +429,15 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # else:
         #     F_CT += -self.k*s_d_T
         # F_CN = self.get_F_CN(inps_) - self.k*s_F
+        ret = {
+            "r": r, "mu": mu, "d_N": d_N, "d_T": d_T, "d_d_N": d_d_N,
+            "d_d_T": d_d_T, "p_CN": p_CN,
+            "p_CT": p_CT,"p_MConM": p_MConM, "mu_S": mu_S,
+            "hats_T": hats_T, "s_hat_X": s_hat_X, "d_X": d_X,
+            "d_d_X": d_d_X
+        }
 
-        return r, mu, d_N, d_T, d_d_N, d_d_T, \
-            F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, \
-            hats_T, s_hat_X, d_X, d_d_X
+        return ret
 
     def CalcOutput(self, context, output):
         ## Load inputs
@@ -428,11 +452,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['times'].append(context.get_time())
 
         # Process contact
-        contact_point, slip_speed, pen_depth, N_hat, raw_in_contact, in_contact = \
-            self.process_contact_results(contact_results)
+        contact_values = self.process_contact_results(contact_results)
 
         # Process state
-        q, v, tau_g, M, Cv, J, Jdot_qdot, J_translational, J_rotational = self.evaluate_manipulator(state)
+        manipulator_values = self.evaluate_manipulator(state)
+        q = manipulator_values['q']
+        v = manipulator_values['v']
+        J = manipulator_values['J']
 
         # Book keeping
         if self.init_q is None:
@@ -443,24 +469,22 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.v_LNd += self.a_LNd * dt
 
         # Precompute other inputs
-        m_L, h_L, w_L, I_L,  d_theta_L, F_OT, F_ON, tau_O, p_LN, p_LT, theta_L, p_LE, p_M, \
-            p_L, N_proj_mat, v_L, v_M, omega_vec_L, omega_vec_M, v_LT, v_LN, v_MT, v_MN, p_LEMT, \
-            v_LEMT, T_hat, N_hat, p_LEMX, v_LEMX, pose_M, vel_M, theta_M, d_theta_M \
-            = self.calc_inputs(poses, vels, raw_in_contact, N_hat)
+        inputs = self.calc_inputs(poses, vels,
+            contact_values['raw_in_contact'], contact_values['N_hat'])
+        del(contact_values['N_hat'])
+        in_contact = contact_values['in_contact']
         if in_contact:
-            r, mu, d_N, d_T, d_d_N, d_d_T, F_GT, F_GN, p_CN, p_CT, p_MConM, mu_S, hats_T, s_hat_X, \
-                d_X, d_d_X = self.calc_inputs_contact(pen_depth, N_hat, \
-                    contact_point, slip_speed, p_LE, p_M, p_L, N_proj_mat, d_theta_L, v_L, v_M, \
-                        omega_vec_L, omega_vec_M, h_L, w_L, v_LT, v_LN, v_MT, v_MN)
+            contact_inputs = self.calc_inputs_contact(pen_depth=contact_values["pen_depth"], N_hat=inputs["N_hat"], contact_point = contact_values["contact_point"], slip_speed = contact_values["slip_speed"], p_LE = inputs["p_LE"], p_M = inputs["p_M"], p_L = inputs["p_L"], N_proj_mat = inputs["N_proj_mat"], d_theta_L = inputs["d_theta_L"], v_L = inputs["v_L"], v_M = inputs["v_M"], omega_vec_L = inputs["omega_vec_L"], omega_vec_M = inputs["omega_vec_M"], h_L = inputs["h_L"], w_L = inputs["w_L"],  v_LT = inputs["v_LT"], v_LN = inputs["v_LN"], v_MT = inputs["v_MT"], v_MN = inputs["v_MN"], )
         
-            # Calculate metric used to tell whether or not contact transients have passed
-            if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
-                self.d_d_N_sqr_log.append(d_d_N**2)
-            else:
-                self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
-            d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
+            # # Calculate metric used to tell whether or not contact transients have passed
+            # if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
+            #     self.d_d_N_sqr_log.append(d_d_N**2)
+            # else:
+            #     self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
+            # d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
         else:
-            d_d_N_sqr_sum = 0
+            pass
+            # d_d_N_sqr_sum = 0
 
         # Get torques
         J_plus = np.linalg.pinv(J)
@@ -469,56 +493,78 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
-        if in_contact:
-            tau_ctrl = self.get_contact_control_torques( m_L, h_L, w_L, I_L, r, mu,  d_theta_L, d_N, d_T, \
-                d_d_N, d_d_T, F_GT, F_GN, F_OT, F_ON, tau_O,  p_CN, p_CT, p_LN, p_LT, p_MConM, \
-                theta_L, mu_S, hats_T, s_hat_X, Jdot_qdot, J_translational, J_rotational, J, M, \
-                Cv, tau_g, joint_centering_torque, theta_M, d_theta_M)
+        if contact_values['in_contact']:
+            tau_ctrl = self.get_contact_control_torques( m_L = inputs["m_L"], h_L = inputs["h_L"], w_L = inputs["w_L"], I_L = inputs["I_L"], r = contact_inputs["r"], mu = contact_inputs["mu"], d_theta_L = inputs["d_theta_L"], d_N = contact_inputs["d_N"], d_T = contact_inputs["d_T"], d_d_N = contact_inputs["d_d_N"], d_d_T = contact_inputs["d_d_T"], F_GT = inputs["F_GT"], F_GN = inputs["F_GN"], F_OT = inputs["F_OT"], F_ON = inputs["F_ON"], tau_O = inputs["tau_O"],  p_CN = contact_inputs["p_CN"], p_CT = contact_inputs["p_CT"], p_LN = inputs["p_LN"], p_LT = inputs["p_LT"], p_MConM = contact_inputs["p_MConM"], theta_L = inputs["theta_L"], mu_S = contact_inputs["mu_S"], hats_T = contact_inputs["hats_T"], s_hat_X = contact_inputs["s_hat_X"], Jdot_qdot = manipulator_values["Jdot_qdot"], J_translational = manipulator_values["J_translational"], J_rotational = manipulator_values["J_rotational"], J = manipulator_values["J"], M = manipulator_values["M"], Cv = manipulator_values["Cv"], tau_g = manipulator_values["tau_g"], joint_centering_torque=joint_centering_torque, theta_M = inputs["theta_M"], d_theta_M = inputs["d_theta_M"], )
         else:
-            tau_ctrl = self.get_pre_contact_control_torques(p_LE, pose_M, vel_M, J, N_hat, v_MN)
+            tau_ctrl = self.get_pre_contact_control_torques(
+                J, inputs['N_hat'], inputs['v_MN'])
 
-        tau_out = tau_ctrl - tau_g + joint_centering_torque
+        tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
         output.SetFromVector(tau_out)
 
         # Debug
         # %DEBUG_APPEND%
-        self.debug["tau_g"].append(tau_g)
+        self.debug["tau_g"].append(manipulator_values['tau_g'])
 
         # self.debug['F_d'].append(F_d)
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
         self.debug['J'].append(J)
 
-        self.debug['raw_in_contact'].append(raw_in_contact)
+        self.debug['raw_in_contact'].append(contact_values['raw_in_contact'])
         self.debug['in_contact'].append(in_contact)
 
         
-        self.debug['F_OTs'].append(F_OT)
-        self.debug['F_ONs'].append(F_ON)
-        self.debug['tau_Os'].append(tau_O)
+        self.debug['F_OTs'].append(inputs['F_OT'])
+        self.debug['F_ONs'].append(inputs['F_ON'])
+        self.debug['tau_Os'].append(inputs['tau_O'])
         self.debug['mu_ests'].append(self.mu_hat)
-        self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
+        # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
-        self.debug['p_LEMTs'].append(p_LEMT)
-        self.debug["M"].append(M)
-        self.debug["C"].append(Cv)
+        # self.debug['p_LEMTs'].append(p_LEMT)
+        self.debug["M"].append(manipulator_values['M'])
+        self.debug["C"].append(manipulator_values['Cv'])
+        self.debug["joint_centering_torque"].append(joint_centering_torque)
+
+        # X_PT = RigidTransform()
+        # if contact_point is not None:
+        #     z_hat = np.array([[0, 0, 1]]).T
+        #     axis = np.cross(N_hat, z_hat, axis=0)
+        #     axis /= np.sqrt(axis.T@axis)
+        #     angle = np.arccos(np.matmul(N_hat.T, z_hat))
+        #     angle *= np.sign(N_hat.T@z_hat)
+        #     X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
+        #     X_PT.set_translation(contact_point)
+        # if constants.USE_NEW_MESHCAT:
+        #     AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
+        #                 length=0.15, radius=0.006, X_PT=X_PT)
 
 
-        X_PT = RigidTransform()
-        if contact_point is not None:
-            z_hat = np.array([[0, 0, 1]]).T
-            axis = np.cross(N_hat, z_hat, axis=0)
-            axis /= np.sqrt(axis.T@axis)
-            angle = np.arccos(np.matmul(N_hat.T, z_hat))
-            angle *= np.sign(N_hat.T@z_hat)
-            X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
-            X_PT.set_translation(contact_point)
-        if constants.USE_NEW_MESHCAT:
-            AddMeshcatTriad(self.meshcat, "painter/" + "contact_point",
-                        length=0.15, radius=0.006, X_PT=X_PT)
+    def get_pre_contact_control_torques(self, J, N_hat, v_MN):
+        self.debug['d_theta_L'].append(np.nan)
+        self.debug['d_N'].append(np.nan)
+        self.debug['d_T'].append(np.nan)
+        self.debug['d_d_N'].append(np.nan)
+        self.debug['d_d_T'].append(np.nan)
+        self.debug['F_GT'].append(np.nan)
+        self.debug['F_GN'].append(np.nan)
+        self.debug['F_OT'].append(np.nan)
+        self.debug['F_ON'].append(np.nan)
+        self.debug['tau_O'].append(np.nan)
+        self.debug['p_CN'].append(np.nan)
+        self.debug['p_CT'].append(np.nan)
+        self.debug['p_LN'].append(np.nan)
+        self.debug['p_LT'].append(np.nan)
+        self.debug['p_MConM'].append([[np.nan]]*3)
+        self.debug['theta_L'].append(np.nan)
+        self.debug['mu_S'].append(np.nan)
+        self.debug['hats_T'].append(np.nan)
+        self.debug['s_hat_X'].append(np.nan)
+        self.debug['Jdot_qdot'].append([[np.nan]]*manipulator.data['nq'])
+        self.debug['theta_M'].append(np.nan)
+        self.debug['d_theta_M'].append(np.nan)
 
 
-    def get_pre_contact_control_torques(self, p_LE, pose_M, vel_M, J, N_hat, v_MN):
         # TODO: add controller for hitting correct orientation
         # Proportional control for moving towards the link
         v_MNd = self.pre_contact_v_MNd
@@ -546,6 +592,30 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             mu_S, hats_T, s_hat_X,
             Jdot_qdot, J_translational, J_rotational, J,
             M, Cv, tau_g, joint_centering_torque, theta_M, d_theta_M):
+        
+        self.debug['d_theta_L'].append(d_theta_L)
+        self.debug['d_N'].append(d_N)
+        self.debug['d_T'].append(d_T)
+        self.debug['d_d_N'].append(d_d_N)
+        self.debug['d_d_T'].append(d_d_T)
+        self.debug['F_GT'].append(F_GT)
+        self.debug['F_GN'].append(F_GN)
+        self.debug['F_OT'].append(F_OT)
+        self.debug['F_ON'].append(F_ON)
+        self.debug['tau_O'].append(tau_O)
+        self.debug['p_CN'].append(p_CN)
+        self.debug['p_CT'].append(p_CT)
+        self.debug['p_LN'].append(p_LN)
+        self.debug['p_LT'].append(p_LT)
+        self.debug['p_MConM'].append(p_MConM)
+        self.debug['theta_L'].append(theta_L)
+        self.debug['mu_S'].append(mu_S)
+        self.debug['hats_T'].append(hats_T)
+        self.debug['s_hat_X'].append(s_hat_X)
+        self.debug['Jdot_qdot'].append(Jdot_qdot)
+        self.debug['theta_M'].append(theta_M)
+        self.debug['d_theta_M'].append(d_theta_M)
+
         ## 1. Define an instance of MathematicalProgram
         prog = MathematicalProgram()
 
@@ -655,7 +725,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         prog.AddConstraint(eq(dd_d_T, dd_d_Td))
         prog.AddConstraint(eq(a_LN, self.a_LNd))
-        prog.AddConstraint(eq(alpha_MX, d_theta_Md))
+        # TODO: add back
+        # prog.AddConstraint(eq(alpha_MX, d_theta_Md))
         # Don't want to rotate around the u axis
 
         ##

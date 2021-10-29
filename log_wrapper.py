@@ -22,6 +22,20 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.nq_manipulator = manipulator.data['nq']
         self.ctrl_forces_entries = 3
 
+        self.type_strs_to_offsets = {
+            "pos": 0,
+            "vel": 6,
+            "acc": 12,
+        }
+
+        self.direction_to_offset = {
+            "trn": 0,
+            "rot": 3
+        }
+
+        self.translational_offset = 0
+        self.rotational_offset = 3
+
         self.contact_entry_start_idx = num_bodies*self.entries_per_body
         self.joint_entry_start_idx = self.contact_entry_start_idx \
             + self.contact_entries
@@ -77,19 +91,26 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.jnt_frc_log.append(
             joint_forces[int(self.paper.joints[-1].index())])
         self.manipulator_acc_log.append(manipulator_accs)
-        for pose, vel, acc in zip(poses, vels, accs):
+        for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
+            assert len(out) == self.get_idx("pos", "trn", i)
             out += list(pose.translation())
+
             rot_vec = RollPitchYaw(pose.rotation()).vector()
 
-            # AngleAxis is more convenient because of where it wraps around
-            rot_vec[1] = pose.rotation().ToAngleAxis().angle()
-            if sum(pose.rotation().ToAngleAxis().axis()) < 0:
-                rot_vec[1] *= -1
-
+            assert len(out) == self.get_idx("pos", "rot", i)
             out += list(rot_vec)
+
+            assert len(out) == self.get_idx("vel", "trn", i)
             out += list(vel.translational())
+            assert len(out) == self.get_idx("vel", "rot", i)
             out += list(vel.rotational())
+            # if (context.get_time()) > 7.15 and (context.get_time() < 7.3):
+            #     if (i == self.ll_idx):
+            #         print("Kength of out:", len(out))
+            #         print(acc.translational())
+            assert len(out) == self.get_idx("acc", "trn", i)
             out += list(acc.translational())
+            assert len(out) == self.get_idx("acc", "rot", i)
             out += list(acc.rotational())
 
 
@@ -136,3 +157,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += [forces_found]
         # out += list(ctrl_forces)
         output.SetFromVector(out)
+
+    def get_idx(self, type_str, direction, body_idx):
+        return body_idx*self.entries_per_body + self.type_strs_to_offsets[type_str] + \
+            self.direction_to_offset[direction]
