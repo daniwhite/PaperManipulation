@@ -104,10 +104,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += list(vel.translational())
             assert len(out) == self.get_idx("vel", "rot", i)
             out += list(vel.rotational())
-            # if (context.get_time()) > 7.15 and (context.get_time() < 7.3):
-            #     if (i == self.ll_idx):
-            #         print("Kength of out:", len(out))
-            #         print(acc.translational())
             assert len(out) == self.get_idx("acc", "trn", i)
             out += list(acc.translational())
             assert len(out) == self.get_idx("acc", "rot", i)
@@ -145,12 +141,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 out += [pen_point_pair.depth]
         forces_found_idx = forces_found
         while forces_found_idx < self.max_contacts:
-            # print("forces_found_idx", forces_found_idx)
             out += [np.nan]*self.entries_per_contact
             forces_found_idx += 1
 
-        for j in self.paper.joints:
+        for i, j in enumerate(self.paper.joints):
+            if i == len(self.paper.joints) - 1:
+                assert self.get_last_jnt_idx("trn") == len(out) 
             out += list(joint_forces[int(j.index())].translational())
+            if i == len(self.paper.joints) - 1:
+                assert self.get_last_jnt_idx("rot") == len(out) 
             out += list(joint_forces[int(j.index())].rotational())
         out += list(manipulator_accs)
         out += list(state)
@@ -161,3 +160,13 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     def get_idx(self, type_str, direction, body_idx):
         return body_idx*self.entries_per_body + self.type_strs_to_offsets[type_str] + \
             self.direction_to_offset[direction]
+    
+    def get_last_jnt_idx(self, direction):
+        idx = (len(self.paper.joints)-1)*6 + self.joint_entry_start_idx
+        if direction == "trn":
+            idx += 0
+        elif direction == "rot":
+            idx += 3
+        else:
+            raise ValueError
+        return idx
