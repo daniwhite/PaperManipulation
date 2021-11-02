@@ -108,7 +108,7 @@ def addSphere(plant, scene_graph=None):
             sphere_body, RigidTransform(),
             pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
-            pydrake.multibody.plant.CoulombFriction(constants.FRICTION, constants.FRICTION))
+            pydrake.multibody.plant.CoulombFriction(1, 1))
         plant.RegisterVisualGeometry(
             sphere_body,
             RigidTransform(),
