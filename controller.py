@@ -578,9 +578,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         tau_ctrl = (J.T@F_d).flatten()
 
         # %DEBUG_APPEND%
-        self.debug['F_CXs'].append(0)
-        self.debug['F_CNs'].append(F_CN)
-        self.debug['F_CTs'].append(0)
+        # self.debug['F_CXs'].append(0)
+        # self.debug['F_CNs'].append(F_CN)
+        # self.debug['F_CTs'].append(0)
 
         return tau_ctrl
 
@@ -634,12 +634,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Control values
         tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1)
-        F_CX = prog.NewContinuousVariables(1, 1)
-        F_CY = prog.NewContinuousVariables(1, 1)
-        F_CZ = prog.NewContinuousVariables(1, 1)
-        F_CN = prog.NewContinuousVariables(1, 1)
-        F_CT = prog.NewContinuousVariables(1, 1)
-        F_CXYZ = np.array([F_CX, F_CY, F_CZ])[:,:,0]
+        # F_CX = prog.NewContinuousVariables(1, 1)
+        # F_CY = prog.NewContinuousVariables(1, 1)
+        # F_CZ = prog.NewContinuousVariables(1, 1)
+        # F_CN = prog.NewContinuousVariables(1, 1)
+        # F_CT = prog.NewContinuousVariables(1, 1)
+        # F_CXYZ = np.array([F_CX, F_CY, F_CZ])[:,:,0]
 
         # Object accelerations
         a_MX = prog.NewContinuousVariables(1, 1)
@@ -658,10 +658,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         dd_theta_L = prog.NewContinuousVariables(1, 1)
         dd_d_N = prog.NewContinuousVariables(1, 1)
         dd_d_T = prog.NewContinuousVariables(1, 1)
-        dd_d_s_T = -dd_theta_L*h_L/2 - dd_theta_L*r + d_theta_L**2 - a_LT + a_MT
-        dd_d_s_N = -dd_theta_L - (h_L*d_theta_L**2)/2 - r*d_theta_L**2 - a_LN + a_MN
-        dd_d_g_T = -dd_theta_L*d_N + dd_d_T - d_T*d_theta_L**2 - 2*d_theta_L*d_d_N
-        dd_d_g_N = dd_theta_L*d_T + dd_d_N - d_N*d_theta_L**2 + 2*d_theta_L*d_d_T
 
         ddq = prog.NewContinuousVariables(self.nq_manipulator, 1)
 
@@ -679,11 +675,17 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # 3rd law friction forces
         prog.AddConstraint(eq(F_FMT, -F_FLT))
         # d_T derivative is derivative
-        prog.AddConstraint(eq(dd_d_s_T, dd_d_g_T))
+        prog.AddConstraint(eq(
+            -dd_theta_L*(h_L/2+r) + d_theta_L**2*w_L/2 - a_LT + a_MT,
+            -dd_theta_L*d_N + dd_d_T - d_theta_L**2*d_T - 2*d_theta_L*d_d_N
+        ))
         # d_N derivative is derivative
-        prog.AddConstraint(eq(dd_d_s_N, dd_d_g_N))
+        prog.AddConstraint(eq(
+            -dd_theta_L*w_L/2 - d_theta_L**2*h_L/2 - d_theta_L**2*r - a_LN + a_MN,
+            dd_theta_L*d_T + dd_d_N - d_theta_L**2*d_N + 2*d_theta_L*d_d_T
+        ))
         # No penetration
-        # prog.AddConstraint(eq(dd_d_N, 0))
+        prog.AddConstraint(eq(dd_d_N, 0))
         # Friction relationship LT
         prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T))
         # Friction relationship LX
@@ -702,13 +704,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Projection equations
         prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
         prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
-        prog.AddConstraint(eq(F_CT, np.cos(theta_L)*F_CY + np.sin(theta_L)*F_CZ))
-        prog.AddConstraint(eq(F_CN, -np.sin(theta_L)*F_CY + np.cos(theta_L)*F_CZ))
+        # prog.AddConstraint(eq(F_CT, np.cos(theta_L)*F_CY + np.sin(theta_L)*F_CZ))
+        # prog.AddConstraint(eq(F_CN, -np.sin(theta_L)*F_CY + np.cos(theta_L)*F_CZ))
         prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
         # Relate forces and torques
-        prog.AddConstraint(eq(tau_out, np.matmul(J_translational.T,F_CXYZ)))
+        # prog.AddConstraint(eq(tau_out, np.matmul(J_translational.T,F_CXYZ)))
 
         # # Desired quantities
         # prog.AddConstraint(eq(self.a_LNd, a_LN))
@@ -723,8 +725,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         d_theta_Md = d_theta_L
         alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
 
-        prog.AddConstraint(eq(dd_d_T, dd_d_Td))
-        prog.AddConstraint(eq(a_LN, self.a_LNd))
+        # prog.AddConstraint(eq(dd_d_T, dd_d_Td))
+        # prog.AddConstraint(eq(a_LN, self.a_LNd))
         # TODO: add back
         # prog.AddConstraint(eq(alpha_MX, d_theta_Md))
         # Don't want to rotate around the u axis
@@ -741,13 +743,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
         # F_FMX = 0
 
-        F_CX = result.GetSolution()[prog.FindDecisionVariableIndex(F_CX[0,0])]
-        F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
-        F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
+        # F_CX = result.GetSolution()[prog.FindDecisionVariableIndex(F_CX[0,0])]
+        # F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
+        # F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
         # %DEBUG_APPEND%
-        self.debug['F_CXs'].append(F_CX)
-        self.debug['F_CNs'].append(F_CN)
-        self.debug['F_CTs'].append(F_CT)
+        # self.debug['F_CXs'].append(F_CX)
+        # self.debug['F_CNs'].append(F_CN)
+        # self.debug['F_CTs'].append(F_CT)
 
         return tau_ctrl_result
 
