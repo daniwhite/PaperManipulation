@@ -18,7 +18,7 @@ import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
 from pydrake.all import BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, SpatialForce, FindResourceOrThrow, RigidTransform, RotationMatrix, AngleAxis, RollPitchYaw
 from pydrake.all import (
-    MathematicalProgram, Solve, eq, le, ge,
+    MathematicalProgram, Solve, eq, le, ge
 )
 
 if constants.USE_NEW_MESHCAT:
@@ -96,7 +96,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.last_v_LN = 0
         self.init_q = None
         self.t_contact_start =  None
-        self.last_Jdot_qdot = np.zeros((6, 1))
 
         self.manipulator_plant = MultibodyPlant(constants.DT)
         manipulator.data["add_plant_function"](self.manipulator_plant)
@@ -181,7 +180,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.manipulator_plant.SetVelocities(self.manipulator_plant_context, v)
 
         M = self.manipulator_plant.CalcMassMatrixViaInverseDynamics(self.manipulator_plant_context)
-        Cv = self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context)
+        Cv = np.expand_dims(self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context), 1)
 
         tau_g = self.manipulator_plant.CalcGravityGeneralizedForces(self.manipulator_plant_context)
 
@@ -194,14 +193,15 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             [0, 0, 0],
             self.manipulator_plant.world_frame(),
             self.manipulator_plant.world_frame())
-        
-        Jdot_qdot = self.last_Jdot_qdot
-        if len(self.debug['times']) > 1:
-            dt_for_Jdot = self.debug['times'][-1] - self.debug['times'][-2]
-            if dt_for_Jdot > 0 and len(self.debug['J']) > 0:
-                Jdot = (J - self.debug['J'][-1])/(dt_for_Jdot)
-                Jdot_qdot = np.expand_dims(np.matmul(Jdot, v), 1)
-        self.last_Jdot_qdot = Jdot_qdot
+        Jdot_qdot_raw = self.manipulator_plant.CalcBiasSpatialAcceleration(
+            self.manipulator_plant_context,
+            JacobianWrtVariable.kV,
+            contact_body.body_frame(),
+            [0, 0, 0],
+            self.manipulator_plant.world_frame(),
+            self.manipulator_plant.world_frame())
+
+        Jdot_qdot = np.expand_dims(np.array(list(Jdot_qdot_raw.rotational()) + list(Jdot_qdot_raw.translational())), 1)
 
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
@@ -472,7 +472,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         inputs = self.calc_inputs(poses, vels,
             contact_values['raw_in_contact'], contact_values['N_hat'])
         del(contact_values['N_hat'])
-        in_contact = contact_values['in_contact']
+        in_contact = contact_values['raw_in_contact']
         if in_contact:
             contact_inputs = self.calc_inputs_contact(pen_depth=contact_values["pen_depth"], N_hat=inputs["N_hat"], contact_point = contact_values["contact_point"], slip_speed = contact_values["slip_speed"], p_LE = inputs["p_LE"], p_M = inputs["p_M"], p_L = inputs["p_L"], N_proj_mat = inputs["N_proj_mat"], d_theta_L = inputs["d_theta_L"], v_L = inputs["v_L"], v_M = inputs["v_M"], omega_vec_L = inputs["omega_vec_L"], omega_vec_M = inputs["omega_vec_M"], h_L = inputs["h_L"], w_L = inputs["w_L"],  v_LT = inputs["v_LT"], v_LN = inputs["v_LN"], v_MT = inputs["v_MT"], v_MN = inputs["v_MN"], )
         
@@ -493,11 +493,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
-        if contact_values['in_contact']:
+        if in_contact:
             tau_ctrl = self.get_contact_control_torques( m_L = inputs["m_L"], h_L = inputs["h_L"], w_L = inputs["w_L"], I_L = inputs["I_L"], r = contact_inputs["r"], mu = contact_inputs["mu"], d_theta_L = inputs["d_theta_L"], d_N = contact_inputs["d_N"], d_T = contact_inputs["d_T"], d_d_N = contact_inputs["d_d_N"], d_d_T = contact_inputs["d_d_T"], F_GT = inputs["F_GT"], F_GN = inputs["F_GN"], F_OT = inputs["F_OT"], F_ON = inputs["F_ON"], tau_O = inputs["tau_O"],  p_CN = contact_inputs["p_CN"], p_CT = contact_inputs["p_CT"], p_LN = inputs["p_LN"], p_LT = inputs["p_LT"], p_MConM = contact_inputs["p_MConM"], theta_L = inputs["theta_L"], mu_S = contact_inputs["mu_S"], hats_T = contact_inputs["hats_T"], s_hat_X = contact_inputs["s_hat_X"], Jdot_qdot = manipulator_values["Jdot_qdot"], J_translational = manipulator_values["J_translational"], J_rotational = manipulator_values["J_rotational"], J = manipulator_values["J"], M = manipulator_values["M"], Cv = manipulator_values["Cv"], tau_g = manipulator_values["tau_g"], joint_centering_torque=joint_centering_torque, theta_M = inputs["theta_M"], d_theta_M = inputs["d_theta_M"], )
         else:
             tau_ctrl = self.get_pre_contact_control_torques(
                 J, inputs['N_hat'], inputs['v_MN'])
+            self.debug["F_NM"].append(0)
 
         tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
         output.SetFromVector(tau_out)
@@ -560,7 +561,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['mu_S'].append(np.nan)
         self.debug['hats_T'].append(np.nan)
         self.debug['s_hat_X'].append(np.nan)
-        self.debug['Jdot_qdot'].append([[np.nan]]*manipulator.data['nq'])
+        self.debug['Jdot_qdot'].append([np.nan]*manipulator.data['nq'])
         self.debug['theta_M'].append(np.nan)
         self.debug['d_theta_M'].append(np.nan)
 
@@ -593,6 +594,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             Jdot_qdot, J_translational, J_rotational, J,
             M, Cv, tau_g, joint_centering_torque, theta_M, d_theta_M):
         
+        tau_g = np.expand_dims(tau_g, 1)
+        assert tau_g.shape == (self.nq_manipulator, 1)
+        joint_centering_torque = np.expand_dims(joint_centering_torque, 1)
+        assert joint_centering_torque.shape == (self.nq_manipulator, 1)
+
         self.debug['d_theta_L'].append(d_theta_L)
         self.debug['d_N'].append(d_N)
         self.debug['d_T'].append(d_T)
@@ -621,102 +627,87 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         ## 2. Add decision variables
         # Contact values
-        tau_contact = prog.NewContinuousVariables(self.nq_manipulator, 1)
-        F_NM = prog.NewContinuousVariables(1, 1)
-        F_FMT = prog.NewContinuousVariables(1, 1)
-        F_FMX = prog.NewContinuousVariables(1, 1)
-        F_ContactMY = prog.NewContinuousVariables(1, 1)
-        F_ContactMZ = prog.NewContinuousVariables(1, 1)
-        F_NL = prog.NewContinuousVariables(1, 1)
-        F_FLT = prog.NewContinuousVariables(1, 1)
-        F_FLX = prog.NewContinuousVariables(1, 1)
+        F_NM = prog.NewContinuousVariables(1, 1, name="F_NM")
+        F_FMT = prog.NewContinuousVariables(1, 1, name="F_FMT")
+        F_FMX = prog.NewContinuousVariables(1, 1, name="F_FMX")
+        F_ContactMY = prog.NewContinuousVariables(1, 1, name="F_ContactMY")
+        F_ContactMZ = prog.NewContinuousVariables(1, 1, name="F_ContactMZ")
+        F_NL = prog.NewContinuousVariables(1, 1, name="F_NL")
+        F_FLT = prog.NewContinuousVariables(1, 1, name="F_FLT")
+        F_FLX = prog.NewContinuousVariables(1, 1, name="F_FLX")
         F_ContactM_XYZ = np.array([F_FMX, F_ContactMY, F_ContactMZ])[:,:,0]
 
         # Control values
-        tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1)
-        # F_CX = prog.NewContinuousVariables(1, 1)
-        # F_CY = prog.NewContinuousVariables(1, 1)
-        # F_CZ = prog.NewContinuousVariables(1, 1)
-        # F_CN = prog.NewContinuousVariables(1, 1)
-        # F_CT = prog.NewContinuousVariables(1, 1)
-        # F_CXYZ = np.array([F_CX, F_CY, F_CZ])[:,:,0]
+        tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1, name="tau_ctrl")
 
         # Object accelerations
-        a_MX = prog.NewContinuousVariables(1, 1)
-        a_MT = prog.NewContinuousVariables(1, 1)
-        a_MY = prog.NewContinuousVariables(1, 1)
-        a_MZ = prog.NewContinuousVariables(1, 1)
-        a_MN = prog.NewContinuousVariables(1, 1)
-        a_LT = prog.NewContinuousVariables(1, 1)
-        a_LN = prog.NewContinuousVariables(1, 1)
-        alpha_MX = prog.NewContinuousVariables(1, 1)
-        alpha_MY = prog.NewContinuousVariables(1, 1)
-        alpha_MZ = prog.NewContinuousVariables(1, 1)
+        a_MX = prog.NewContinuousVariables(1, 1, name="a_MX")
+        a_MT = prog.NewContinuousVariables(1, 1, name="a_MT")
+        a_MY = prog.NewContinuousVariables(1, 1, name="a_MY")
+        a_MZ = prog.NewContinuousVariables(1, 1, name="a_MZ")
+        a_MN = prog.NewContinuousVariables(1, 1, name="a_MN")
+        a_LT = prog.NewContinuousVariables(1, 1, name="a_LT")
+        a_LN = prog.NewContinuousVariables(1, 1, name="a_LN")
+        alpha_MX = prog.NewContinuousVariables(1, 1, name="alpha_MX")
+        alpha_MY = prog.NewContinuousVariables(1, 1, name="alpha_MY")
+        alpha_MZ = prog.NewContinuousVariables(1, 1, name="alpha_MZ")
         alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
 
         # Derived accelerations
-        dd_theta_L = prog.NewContinuousVariables(1, 1)
-        dd_d_N = prog.NewContinuousVariables(1, 1)
-        dd_d_T = prog.NewContinuousVariables(1, 1)
+        dd_theta_L = prog.NewContinuousVariables(1, 1, name="dd_theta_L")
+        dd_d_N = prog.NewContinuousVariables(1, 1, name="dd_d_N")
+        dd_d_T = prog.NewContinuousVariables(1, 1, name="dd_d_T")
 
-        ddq = prog.NewContinuousVariables(self.nq_manipulator, 1)
+        ddq = prog.NewContinuousVariables(self.nq_manipulator, 1, name="ddq")
 
-        prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
+        # prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
 
         ## Constraints
-        # Link tangential force balance
-        prog.AddConstraint(eq(m_L*a_LT, F_FLT+F_GT+F_OT))
-        # Link normal force balance
-        prog.AddConstraint(eq(m_L*a_LN, F_NL + F_GN + F_ON))
-        # Link moment balance
-        prog.AddConstraint(eq(I_L*dd_theta_L, (-w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O))
-        # 3rd law normal forces
-        prog.AddConstraint(eq(F_NL, -F_NM))
-        # 3rd law friction forces
-        prog.AddConstraint(eq(F_FMT, -F_FLT))
-        # d_T derivative is derivative
+        # "set_description" calls gives us useful names for printing
+        prog.AddConstraint(
+            eq(m_L*a_LT, F_FLT+F_GT+F_OT)).evaluator().set_description(
+                "Link tangential force balance")
+        prog.AddConstraint(eq(m_L*a_LN, F_NL + F_GN + F_ON)).evaluator().set_description(
+                "Link normal force balance") 
+        prog.AddConstraint(eq(I_L*dd_theta_L, \
+            (-w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O)).evaluator().set_description(
+                "Link moment balance") 
+        prog.AddConstraint(eq(F_NL, -F_NM)).evaluator().set_description(
+                "3rd law normal forces") 
+        prog.AddConstraint(eq(F_FMT, -F_FLT)).evaluator().set_description(
+                "3rd law friction forces") 
         prog.AddConstraint(eq(
             -dd_theta_L*(h_L/2+r) + d_theta_L**2*w_L/2 - a_LT + a_MT,
             -dd_theta_L*d_N + dd_d_T - d_theta_L**2*d_T - 2*d_theta_L*d_d_N
-        ))
-        # d_N derivative is derivative
+        )).evaluator().set_description("3rd law friction forces")
         prog.AddConstraint(eq(
             -dd_theta_L*w_L/2 - d_theta_L**2*h_L/2 - d_theta_L**2*r - a_LN + a_MN,
             dd_theta_L*d_T + dd_d_N - d_theta_L**2*d_N + 2*d_theta_L*d_d_T
-        ))
-        # No penetration
-        prog.AddConstraint(eq(dd_d_N, 0))
-        # Friction relationship LT
-        prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T))
-        # Friction relationship LX
-        prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X))
-
-        # Relate manipulator and end effector with joint velocities in Y direction
-        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq))))#joint_centering_torque
+        )).evaluator().set_description("d_N derivative is derivative") 
+        prog.AddConstraint(eq(dd_d_N, 0)).evaluator().set_description("No penetration")
+        prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T)).evaluator().set_description(
+            "Friction relationship LT")
+        prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X)).evaluator().set_description(
+            "Friction relationship LX") 
+        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq)))).evaluator().set_description(
+            "Relate manipulator and end effector with joint accelerations") 
 
         # Manipulator equations
         tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
         tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
         tau_contact = tau_contact_trn + tau_contact_rot
-        tau_out = tau_ctrl - tau_g + joint_centering_torque
-        prog.AddConstraint(eq(np.matmul(M, ddq) + Cv, tau_g + tau_contact + tau_out))
+        for i in range(self.nq_manipulator):
+            M_ddq_row_i = (np.matmul(M, ddq) + Cv)[i,0]
+            assert not hasattr(M_ddq_row_i, "shape")
+            tau_i = (tau_g + tau_contact + tau_out)[i,0]
+            assert not hasattr(tau_i, "shape")
+            prog.AddConstraint(M_ddq_row_i == tau_i).evaluator().set_description("Manipulator equations " + str(i))
         
         # Projection equations
         prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
         prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
-        # prog.AddConstraint(eq(F_CT, np.cos(theta_L)*F_CY + np.sin(theta_L)*F_CZ))
-        # prog.AddConstraint(eq(F_CN, -np.sin(theta_L)*F_CY + np.cos(theta_L)*F_CZ))
         prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
-
-        # Relate forces and torques
-        # prog.AddConstraint(eq(tau_out, np.matmul(J_translational.T,F_CXYZ)))
-
-        # # Desired quantities
-        # prog.AddConstraint(eq(self.a_LNd, a_LN))
-        # prog.AddConstraint(eq(dd_d_T, 0))
-        # prog.AddConstraint(eq(a_MX, 0))
-        # prog.AddConstraint(eq(alpha_MY, 0))
 
         # Calculate desired values
         dd_d_Td = 10000*(self.d_Td - d_T) - 10*d_d_T
@@ -732,31 +723,18 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Don't want to rotate around the u axis
 
         ##
+        print(prog)
         result = Solve(prog)
-        assert result.is_success
-        # self.tau_ctrl_result = []
+        for i in result.GetInfeasibleConstraintNames(prog):
+            print(i)
+
+        assert result.is_success()
         tau_ctrl_result = []
         for i in range(self.nq_manipulator):
             tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
 
-        # F_CN = 0.01
-        # F_CT = self.get_pre_contact_F_CT(p_LEMT, v_LEMT)
-        # F_FMX = 0
-
-        # F_CX = result.GetSolution()[prog.FindDecisionVariableIndex(F_CX[0,0])]
-        # F_CT = result.GetSolution()[prog.FindDecisionVariableIndex(F_CT[0,0])]# -self.k*s_d_T
-        # F_CN = result.GetSolution()[prog.FindDecisionVariableIndex(F_CN[0,0])]# - self.k_F*s_F
         # %DEBUG_APPEND%
-        # self.debug['F_CXs'].append(F_CX)
-        # self.debug['F_CNs'].append(F_CN)
-        # self.debug['F_CTs'].append(F_CT)
+        self.debug["F_NM"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_NM[0,0])])
+
 
         return tau_ctrl_result
-
-        # s_d_X = self.lamda*(d_X - self.d_Xd) + (d_d_X)
-        # F_CX = -self.k*s_d_X# - F_FMX
-
-        # F_M = F_CN*N_hat + F_CT*T_hat
-        # F_M[0] = F_CX
-
-        # return F_M.flatten()
