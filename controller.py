@@ -736,19 +736,27 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
         # Calculate desired values
-        dd_d_Td = 100*(self.d_Td - d_T) - 10*d_d_T
+        dd_d_Td = 10*(self.d_Td - d_T) - 1*d_d_T
+        dd_theta_Ld = 0
+        a_MX_d = 0
+        alpha_MXd = 0
+        alpha_MYd = 0
+        alpha_MZd = 0
+        dd_d_Nd = 0
+        ##.1 #0# 10*(self.d_theta_Ld - d_theta_L)
+
         # dd_d_Xd = 10*(0 - d_X) - 1*d_d_X
         theta_Md = theta_L #+ np.pi/2
         d_theta_Md = d_theta_L
         # alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
 
         prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
-        prog.AddConstraint(a_LN[0,0] == 0).evaluator().set_description("Desired a_LN constraint" + str(i))
-        prog.AddConstraint(a_MX[0,0] == 0).evaluator().set_description("Desired a_MX constraint" + str(i))
-        prog.AddConstraint(alpha_MX[0,0] == 0).evaluator().set_description("Desired alpha_MX constraint" + str(i))
-        prog.AddConstraint(alpha_MY[0,0] == 0).evaluator().set_description("Desired alpha_MY constraint" + str(i))
-        prog.AddConstraint(alpha_MZ[0,0] == 0).evaluator().set_description("Desired alpha_MZ constraint" + str(i))
-        prog.AddConstraint(dd_d_N[0,0] == 0).evaluator().set_description("Desired dd_d_N constraint" + str(i))
+        prog.AddConstraint(dd_theta_L[0,0] == dd_theta_Ld).evaluator().set_description("Desired a_LN constraint" + str(i))
+        prog.AddConstraint(a_MX[0,0] == a_MX_d).evaluator().set_description("Desired a_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MX[0,0] == alpha_MXd).evaluator().set_description("Desired alpha_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MY[0,0] == alpha_MYd).evaluator().set_description("Desired alpha_MY constraint" + str(i))
+        prog.AddConstraint(alpha_MZ[0,0] == alpha_MZd).evaluator().set_description("Desired alpha_MZ constraint" + str(i))
+        prog.AddConstraint(dd_d_N[0,0] == dd_d_Nd).evaluator().set_description("Desired dd_d_N constraint" + str(i))
 
         result = Solve(prog)
         assert result.is_success()
