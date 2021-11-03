@@ -689,13 +689,19 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             "Friction relationship LT")
         prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X)).evaluator().set_description(
             "Friction relationship LX") 
-        prog.AddConstraint(eq(alpha_a_MXYZ, (Jdot_qdot + np.matmul(J, ddq)))).evaluator().set_description(
-            "Relate manipulator and end effector with joint accelerations") 
+        
+        for i in range(self.nq_manipulator):
+            lhs_i = alpha_a_MXYZ[i,0]
+            assert not hasattr(lhs_i, "shape")
+            rhs_i = (Jdot_qdot + np.matmul(J, ddq))[i,0]
+            assert not hasattr(rhs_i, "shape")
+            prog.AddConstraint(lhs_i == rhs_i).evaluator().set_description(
+                "Relate manipulator and end effector with joint accelerations " + str(i)) 
 
-        # Manipulator equations
         tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
         tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
         tau_contact = tau_contact_trn + tau_contact_rot
+        tau_out = tau_ctrl - tau_g + joint_centering_torque
         for i in range(self.nq_manipulator):
             M_ddq_row_i = (np.matmul(M, ddq) + Cv)[i,0]
             assert not hasattr(M_ddq_row_i, "shape")
@@ -710,19 +716,27 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
         # Calculate desired values
-        dd_d_Td = 10000*(self.d_Td - d_T) - 10*d_d_T
+        dd_d_Td = -5 #10000*(self.d_Td - d_T) - 1000*d_d_T
         # dd_d_Xd = 10*(0 - d_X) - 1*d_d_X
         theta_Md = theta_L #+ np.pi/2
         d_theta_Md = d_theta_L
-        alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
+        # alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
 
-        # prog.AddConstraint(eq(dd_d_T, dd_d_Td))
-        # prog.AddConstraint(eq(a_LN, self.a_LNd))
+        prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
+        prog.AddConstraint(a_LN[0,0] == 0).evaluator().set_description("Desired a_LN constraint" + str(i))
+        prog.AddConstraint(a_MX[0,0] == 0).evaluator().set_description("Desired a_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MX[0,0] == 0).evaluator().set_description("Desired alpha_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MY[0,0] == 0).evaluator().set_description("Desired alpha_MY constraint" + str(i))
+        prog.AddConstraint(alpha_MZ[0,0] == 0).evaluator().set_description("Desired alpha_MZ constraint" + str(i))
+        prog.AddConstraint(dd_d_N[0,0] == 0).evaluator().set_description("Desired dd_d_N constraint" + str(i))
+
         # TODO: add back
         # prog.AddConstraint(eq(alpha_MX, d_theta_Md))
         # Don't want to rotate around the u axis
 
         ##
+        print("num vars", prog.num_vars())
+        print("num_constraints", len(prog.GetAllConstraints()))
         print(prog)
         result = Solve(prog)
         for i in result.GetInfeasibleConstraintNames(prog):
