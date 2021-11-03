@@ -737,7 +737,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Calculate desired values
         dd_d_Td = 10*(self.d_Td - d_T) - 1*d_d_T
-        dd_theta_Ld = 0
+        a_LNd = 0.1
         a_MX_d = 0
         alpha_MXd = 0
         alpha_MYd = 0
@@ -751,7 +751,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # alpha_MX = 10000*(theta_Md - theta_M) + 1000*(d_theta_Md - d_theta_M)
 
         prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
-        prog.AddConstraint(dd_theta_L[0,0] == dd_theta_Ld).evaluator().set_description("Desired a_LN constraint" + str(i))
+        prog.AddConstraint(a_LN[0,0] == a_LNd).evaluator().set_description("Desired a_LN constraint" + str(i))
         prog.AddConstraint(a_MX[0,0] == a_MX_d).evaluator().set_description("Desired a_MX constraint" + str(i))
         prog.AddConstraint(alpha_MX[0,0] == alpha_MXd).evaluator().set_description("Desired alpha_MX constraint" + str(i))
         prog.AddConstraint(alpha_MY[0,0] == alpha_MYd).evaluator().set_description("Desired alpha_MY constraint" + str(i))
