@@ -498,7 +498,32 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         else:
             tau_ctrl = self.get_pre_contact_control_torques(
                 J, inputs['N_hat'], inputs['v_MN'])
+
             self.debug["F_NM"].append(0)
+            self.debug["F_FMT"].append(0)
+            self.debug["F_FMX"].append(0)
+            self.debug["F_ContactMY"].append(0)
+            self.debug["F_ContactMZ"].append(0)
+            self.debug["F_NL"].append(0)
+            self.debug["F_FLT"].append(0)
+            self.debug["F_FLX"].append(0)
+            for i in range(self.nq_manipulator):
+                self.debug["tau_ctrl_" + str(i)].append(0)
+            self.debug["a_MX"].append(0)
+            self.debug["a_MT"].append(0)
+            self.debug["a_MY"].append(0)
+            self.debug["a_MZ"].append(0)
+            self.debug["a_MN"].append(0)
+            self.debug["a_LT"].append(0)
+            self.debug["a_LN"].append(0)
+            self.debug["alpha_MX"].append(0)
+            self.debug["alpha_MY"].append(0)
+            self.debug["alpha_MZ"].append(0)
+            self.debug["dd_theta_L"].append(0)
+            self.debug["dd_d_N"].append(0)
+            self.debug["dd_d_T"].append(0)
+            for i in range(self.nq_manipulator):
+                self.debug["ddq_" + str(i)].append(0)
 
         tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
         output.SetFromVector(tau_out)
@@ -561,7 +586,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['mu_S'].append(np.nan)
         self.debug['hats_T'].append(np.nan)
         self.debug['s_hat_X'].append(np.nan)
-        self.debug['Jdot_qdot'].append([np.nan]*manipulator.data['nq'])
+        self.debug['Jdot_qdot'].append([[np.nan]]*manipulator.data['nq'])
         self.debug['theta_M'].append(np.nan)
         self.debug['d_theta_M'].append(np.nan)
 
@@ -577,11 +602,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             F_d[3:] += N_hat * F_CN
 
         tau_ctrl = (J.T@F_d).flatten()
-
-        # %DEBUG_APPEND%
-        # self.debug['F_CXs'].append(0)
-        # self.debug['F_CNs'].append(F_CN)
-        # self.debug['F_CTs'].append(0)
 
         return tau_ctrl
 
@@ -730,18 +750,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(alpha_MZ[0,0] == 0).evaluator().set_description("Desired alpha_MZ constraint" + str(i))
         prog.AddConstraint(dd_d_N[0,0] == 0).evaluator().set_description("Desired dd_d_N constraint" + str(i))
 
-        # TODO: add back
-        # prog.AddConstraint(eq(alpha_MX, d_theta_Md))
-        # Don't want to rotate around the u axis
-
-        ##
-        # print("num vars", prog.num_vars())
-        # print("num_constraints", len(prog.GetAllConstraints()))
-        # print(prog)
         result = Solve(prog)
-        for i in result.GetInfeasibleConstraintNames(prog):
-            print(i)
-
         assert result.is_success()
         tau_ctrl_result = []
         for i in range(self.nq_manipulator):
@@ -749,6 +758,29 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # %DEBUG_APPEND%
         self.debug["F_NM"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_NM[0,0])])
-
+        self.debug["F_FMT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_FMT[0,0])])
+        self.debug["F_FMX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_FMX[0,0])])
+        self.debug["F_ContactMY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMY[0,0])])
+        self.debug["F_ContactMZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMZ[0,0])])
+        self.debug["F_NL"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_NL[0,0])])
+        self.debug["F_FLT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_FLT[0,0])])
+        self.debug["F_FLX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_FLX[0,0])])
+        for i in range(self.nq_manipulator):
+            self.debug["tau_ctrl_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+        self.debug["a_MX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MX[0,0])])
+        self.debug["a_MT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MT[0,0])])
+        self.debug["a_MY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MY[0,0])])
+        self.debug["a_MZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MZ[0,0])])
+        self.debug["a_MN"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MN[0,0])])
+        self.debug["a_LT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_LT[0,0])])
+        self.debug["a_LN"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_LN[0,0])])
+        self.debug["alpha_MX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MX[0,0])])
+        self.debug["alpha_MY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MY[0,0])])
+        self.debug["alpha_MZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MZ[0,0])])
+        self.debug["dd_theta_L"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_theta_L[0,0])])
+        self.debug["dd_d_N"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_d_N[0,0])])
+        self.debug["dd_d_T"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_d_T[0,0])])
+        for i in range(self.nq_manipulator):
+            self.debug["ddq_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(ddq[i,0])])
 
         return tau_ctrl_result
