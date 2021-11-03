@@ -716,7 +716,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
 
         # Calculate desired values
-        dd_d_Td = -5 #10000*(self.d_Td - d_T) - 1000*d_d_T
+        dd_d_Td = 100*(self.d_Td - d_T) - 10*d_d_T
         # dd_d_Xd = 10*(0 - d_X) - 1*d_d_X
         theta_Md = theta_L #+ np.pi/2
         d_theta_Md = d_theta_L
@@ -735,9 +735,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Don't want to rotate around the u axis
 
         ##
-        print("num vars", prog.num_vars())
-        print("num_constraints", len(prog.GetAllConstraints()))
-        print(prog)
+        # print("num vars", prog.num_vars())
+        # print("num_constraints", len(prog.GetAllConstraints()))
+        # print(prog)
         result = Solve(prog)
         for i in result.GetInfeasibleConstraintNames(prog):
             print(i)
