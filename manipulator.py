@@ -42,9 +42,9 @@ INIT_Z = 0.5
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
     q0[0] = -np.pi/2
-    q0[1] = 0# 1.1
-    q0[3] = np.pi/2
-    q0[5] = np.pi/2#3*np.pi/2 + 0.1
+    q0[1] = -0.6
+    q0[3] = 1.7 #-1.5
+    q0[5] = 0.6
     q0[6] = -np.pi/4
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
@@ -54,24 +54,39 @@ def addArm(plant, scene_graph=None):
     Creates the panda arm.
     """
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile("panda_arm_hand.urdf")
+    arm_instance = parser.AddModelFromFile("panda_arm.urdf")
 
     # Weld pedestal to world
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.65, 0])
+        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.6, 0])
     )
-    # Weld fingers (offset matches original urdf)
+
+    # Initialize sphere body
+    mult = 11
+    sphere_body = plant.AddRigidBody(
+        "sphere_body", arm_instance,
+        pydrake.multibody.tree.SpatialInertia(
+            mass=MASS,
+            p_PScm_E=np.array([0., 0., 0.]),
+            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
+    if plant.geometry_source_is_registered():
+        col_geom = plant.RegisterCollisionGeometry(
+            sphere_body, RigidTransform(),
+            pydrake.geometry.Sphere(RADIUS*mult),
+            "sphere_body",
+            pydrake.multibody.plant.CoulombFriction(1, 1))
+        plant.RegisterVisualGeometry(
+            sphere_body,
+            RigidTransform(),
+            pydrake.geometry.Sphere(RADIUS*mult),
+            "sphere_body",
+            [.9, .5, .5, 1.0])  # Color
     plant.WeldFrames(
-        plant.GetFrameByName("panda_hand", arm_instance),
-        plant.GetFrameByName("panda_leftfinger", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
-    )
-    plant.WeldFrames(
-        plant.GetFrameByName("panda_hand", arm_instance),
-        plant.GetFrameByName("panda_rightfinger", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0, 0.0584])
+        plant.GetFrameByName("panda_link8", arm_instance),
+        plant.GetFrameByName("sphere_body", arm_instance),
+        RigidTransform(RotationMatrix(), [0, 0, 0.065])
     )
 
     return arm_instance
@@ -184,7 +199,7 @@ expected_keys = {
 }
 
 arm_data = {
-    "contact_body_name": "panda_leftfinger",
+    "contact_body_name": "sphere_body",
     "add_plant_function": addArm,
     "set_positions": setArmPositions,
     "nq": 7,
@@ -201,4 +216,4 @@ sphere_data = {
 assert arm_data.keys() == expected_keys
 assert sphere_data.keys() == expected_keys
 
-data = sphere_data
+data = arm_data
