@@ -10,12 +10,12 @@ import pedestal
 
 import numpy as np
 
-RADIUS = 0.01
+RADIUS = 0.05
 VOLUME = (4/3)*RADIUS**3*np.pi
 MASS = VOLUME*1e3  # Assume finger is made of water
 
-INIT_Y = pedestal.PEDESTAL_WIDTH/2 + RADIUS + constants.EPSILON
-INIT_Z = 0.5
+INIT_Y = 0.2
+INIT_Z = 0.25
 
 
 # class ManipulatorPlant:
@@ -56,7 +56,7 @@ def addArm(plant, scene_graph=None):
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
     arm_instance = parser.AddModelFromFile("panda_arm.urdf")
 
-    # Weld pedestal to world
+    # Weld panda to world
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
@@ -64,7 +64,6 @@ def addArm(plant, scene_graph=None):
     )
 
     # Initialize sphere body
-    mult = 5
     sphere_body = plant.AddRigidBody(
         "sphere_body", arm_instance,
         pydrake.multibody.tree.SpatialInertia(
@@ -74,13 +73,13 @@ def addArm(plant, scene_graph=None):
     if plant.geometry_source_is_registered():
         col_geom = plant.RegisterCollisionGeometry(
             sphere_body, RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS*mult),
+            pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
             pydrake.multibody.plant.CoulombFriction(1, 1))
         plant.RegisterVisualGeometry(
             sphere_body,
             RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS*mult),
+            pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
     plant.WeldFrames(
