@@ -60,11 +60,11 @@ def addArm(plant, scene_graph=None):
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.6, 0])
+        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.7, 0])
     )
 
     # Initialize sphere body
-    mult = 11
+    mult = 5
     sphere_body = plant.AddRigidBody(
         "sphere_body", arm_instance,
         pydrake.multibody.tree.SpatialInertia(
@@ -86,7 +86,7 @@ def addArm(plant, scene_graph=None):
     plant.WeldFrames(
         plant.GetFrameByName("panda_link8", arm_instance),
         plant.GetFrameByName("sphere_body", arm_instance),
-        RigidTransform(RotationMatrix(), [0, 0, 0.065])
+        RigidTransform(RotationMatrix().MakeZRotation(3*np.pi/4), [0, 0, 0.065]) # Roughly aligns axes with world axes
     )
 
     return arm_instance
