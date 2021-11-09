@@ -58,6 +58,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.b_J = sys_params['b_J']
         self.k_J = sys_params['k_J']
         self.g = sys_params['g']
+        mu_paper = constants.FRICTION
+        self.mu = 2*mu_paper/(1+mu_paper)
+        self.r = manipulator.RADIUS
 
         # Initialize control targets
         self.d_Td = -0.12
@@ -274,22 +277,59 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Derived terms
         p_LLE = N_hat * -self.h_L/2 + T_hat * self.w_L/2
         p_LE = p_L + p_LLE
+
+        p_C = p_M + N_hat*self.r
+        p_CT = self.get_T_proj(p_C)
+        p_CN = self.get_N_proj(p_C)
+
+        d = p_C - p_LE
+        d_T = self.get_T_proj(d)
+        d_N = self.get_N_proj(d)
+        d_X = d[0]
+
+        p_MConM = p_C - p_M
+        p_LConL = p_C - p_L
+
+        # Velocities
+        v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
+        v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
+
+        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*self.r - v_LT + v_MT + d_theta_L*d_N
+        d_d_N = -d_theta_L*self.w_L/2-v_LN+v_MN-d_theta_L*d_T
+        d_d_X = v_WConM[0]
+
+        v_S_raw = v_WConM - v_WConL
+        v_S_N = np.matmul(N_proj_mat, v_S_raw)
+        v_S = v_S_raw - v_S_N
+
+        s_hat = v_S/np.linalg.norm(v_S)
+        hats_T = self.get_T_proj(s_hat)
+        s_hat_X = s_hat[0]
+        s_S = np.linalg.norm(v_S)
     
         # Gravity
         F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
         F_GT = self.get_T_proj(F_G)
         F_GN = self.get_N_proj(F_G)
 
+        stribeck_mu = stribeck(1, 1, s_S/self.v_stiction)
+        mu_S = stribeck_mu
+
         ret = {
             "d_theta_L": d_theta_L,
-            "p_LN": p_LN, "p_LT": p_LT, "theta_L": theta_L, "p_LE": p_LE,
-            "p_M": p_M, "p_L": p_L, "N_proj_mat": N_proj_mat, "v_L": v_L,
+            "p_LN": p_LN, "p_LT": p_LT, "theta_L": theta_L,
+            "p_L": p_L, "N_proj_mat": N_proj_mat, "v_L": v_L,
             "v_M": v_M, "omega_vec_L": omega_vec_L, "omega_vec_M": omega_vec_M,
             "v_LT": v_LT, "v_LN": v_LN, "v_MT": v_MT, "v_MN": v_MN,
             "T_hat": T_hat,
             "N_hat": N_hat, "pose_M": pose_M,
             "vel_M": vel_M, "theta_MX": theta_MX, "theta_MY": theta_MY, "theta_MZ": theta_MZ, "d_theta_MX": d_theta_MX,
             "F_GT": F_GT, "F_GN": F_GN, "pose_L": pose_L, "d_theta_MY": d_theta_MY, "d_theta_MZ": d_theta_MZ,
+            "d_N": d_N, "d_T": d_T, "d_d_N": d_d_N,
+            "d_d_T": d_d_T, "p_CN": p_CN,
+            "p_CT": p_CT,"p_MConM": p_MConM, "mu_S": mu_S,
+            "hats_T": hats_T, "s_hat_X": s_hat_X, "d_X": d_X,
+            "d_d_X": d_d_X
         }
         return ret
 
@@ -309,110 +349,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         vel_M = vels[self.contact_body_idx]
 
         return pose_L, vel_L, pose_M, vel_M
-
-    def calc_inputs_contact(self, pen_depth, N_hat, contact_point, slip_speed, p_LE, p_M, p_L, \
-            N_proj_mat, d_theta_L, v_L, v_M, omega_vec_L, omega_vec_M, \
-            v_LT, v_LN, v_MT, v_MN):
-        pen_vec = pen_depth*N_hat
-
-        # Positions
-        p_C = np.array([contact_point]).T
-        p_CT = self.get_T_proj(p_C)
-        p_CN = self.get_N_proj(p_C)
-        r = np.linalg.norm(p_C-p_M) # TODO: make this support multiple directions
-
-
-        d = p_C - p_LE
-        d_T = self.get_T_proj(d)
-        d_N = self.get_N_proj(d)
-        d_X = d[0]
-
-        p_MConM = p_C - p_M
-        p_LConL = p_C - p_L
-
-        # Velocities
-        v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
-        v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
-
-        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*r - v_LT + v_MT + d_theta_L*d_N
-        d_d_N = -d_theta_L*self.w_L/2-v_LN+v_MN-d_theta_L*d_T
-        d_d_X = v_WConM[0]
-
-        v_S_raw = v_WConM - v_WConL
-        v_S_N = np.matmul(N_proj_mat, v_S_raw)
-        v_S = v_S_raw - v_S_N
-        # %DEBUG_APPEND%
-        self.debug["v_S"].append(v_S)
-        self.debug["v_WConM"].append(v_WConM)
-        self.debug["v_WConL"].append(v_WConL)
-        self.debug["v_S_raw"].append(v_S_raw)
-        self.debug["v_L"].append(v_L)
-        self.debug["v_M"].append(v_M)
-
-        s_hat = v_S/np.linalg.norm(v_S)
-        hats_T = self.get_T_proj(s_hat)
-        s_hat_X = s_hat[0]
-
-
-        # Forces
-        if self.use_friction_adaptive_ctrl:
-            mu = self.mu_hat
-        else:
-            mu_paper = constants.FRICTION
-            mu = 2*mu_paper/(1+mu_paper)
-        stribeck_mu = stribeck(1, 1, slip_speed/self.v_stiction)
-        mu_S = stribeck_mu
-
-
-        # def sat(phi):
-        #     if phi > 0:
-        #         return min(phi, 1)
-        #     return max(phi, -1)
-
-        # f_mu = self.get_f_mu(inps_)
-        # f = self.get_f(inps_)
-        # g_mu = self.get_g_mu(inps_)
-        # g = self.get_g(inps_)
-
-        # s_d_T = self.lamda*(d_T - self.d_Td) + (d_d_T)
-        # s_F = v_LN - self.v_LNd
-        # phi = 0.001
-        # s_delta_d_T = s_d_T - phi*sat(s_d_T/phi)
-        # Y = g_mu - f_mu*a_LNd
-        # dt = 0
-        # if len(self.d_d_N_sqr_log) >= self.d_d_N_sqr_log_len and d_d_N_sqr_sum < self.d_d_N_sqr_lim: # Check if d_N is oscillating
-        #     if len(self.debug['times']) >= 2:
-        #         dt = self.debug['times'][-1] - self.debug['times'][-2]
-        #         self.mu_hat += -self.P*dt*Y*s_delta_d_T
-        #     if self.mu_hat > 1:
-        #         self.mu_hat = 1
-        #     if self.mu_hat < 0:
-        #         self.mu_hat = 0
-
-        # Even if we're not using adaptive control (i.e. learning mu), we'll still the lambda term to implement sliding mode control
-        # u_hat = -(f*a_LNd) + g - m_M * self.lamda*d_d_T
-
-        # if self.use_friction_adaptive_ctrl:
-        #     Y_mu_term = Y*self.mu_hat
-        # else:
-        #     Y_mu_term = Y*constants.FRICTION
-
-        # F_CT = u_hat + Y_mu_term
-        # if self.use_friction_robust_adaptive_ctrl:
-        #     # TODO: remove this option
-        #     F_CT += -self.k*s_delta_d_T# - k_robust*np.sign(s_delta_d_T)
-        # else:
-        #     F_CT += -self.k*s_d_T
-        # F_CN = self.get_F_CN(inps_) - self.k*s_F
-        ret = {
-            "r": r, "mu": mu, "d_N": d_N, "d_T": d_T, "d_d_N": d_d_N,
-            "d_d_T": d_d_T, "p_CN": p_CN,
-            "p_CT": p_CT,"p_MConM": p_MConM, "mu_S": mu_S,
-            "hats_T": hats_T, "s_hat_X": s_hat_X, "d_X": d_X,
-            "d_d_X": d_d_X
-        }
-
-        return ret
 
     def CalcOutput(self, context, output):
         ## Load inputs
@@ -459,26 +395,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         del(contact_values['N_hat'])
         in_contact = contact_values['in_contact']
         if in_contact:
-            contact_inputs = self.calc_inputs_contact(pen_depth=contact_values["pen_depth"], N_hat=inputs["N_hat"], contact_point = contact_values["contact_point"], slip_speed = contact_values["slip_speed"], p_LE = inputs["p_LE"], p_M = inputs["p_M"], p_L = inputs["p_L"], N_proj_mat = inputs["N_proj_mat"], d_theta_L = inputs["d_theta_L"], v_L = inputs["v_L"], v_M = inputs["v_M"], omega_vec_L = inputs["omega_vec_L"], omega_vec_M = inputs["omega_vec_M"],  v_LT = inputs["v_LT"], v_LN = inputs["v_LN"], v_MT = inputs["v_MT"], v_MN = inputs["v_MN"], )
-        
-            # # Calculate metric used to tell whether or not contact transients have passed
-            # if len(self.d_d_N_sqr_log) < self.d_d_N_sqr_log_len:
-            #     self.d_d_N_sqr_log.append(d_d_N**2)
-            # else:
-            #     self.d_d_N_sqr_log = self.d_d_N_sqr_log[1:] + [d_d_N**2]
-            # d_d_N_sqr_sum = sum(self.d_d_N_sqr_log)
-        else:
-
-            # %DEBUG_APPEND%
-            self.debug["v_S"].append(np.ones((3,1))*np.nan)
-            self.debug["v_S"].append(np.ones((3,1))*np.nan)
-            self.debug["v_WConM"].append(np.ones((3,1))*np.nan)
-            self.debug["v_WConL"].append(np.ones((3,1))*np.nan)
-            self.debug["v_S_raw"].append(np.ones((3,1))*np.nan)
-            self.debug["v_L"].append(np.ones((3,1))*np.nan)
-            self.debug["v_M"].append(np.ones((3,1))*np.nan)
-            pass
-            # d_d_N_sqr_sum = 0
+            contact_inputs = inputs
 
         # Get torques
         J_plus = np.linalg.pinv(J)
@@ -488,7 +405,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
         if in_contact:
-            tau_ctrl = self.get_contact_control_torques(r = contact_inputs["r"], mu = contact_inputs["mu"], d_theta_L = inputs["d_theta_L"], d_N = contact_inputs["d_N"], d_T = contact_inputs["d_T"], d_d_N = contact_inputs["d_d_N"], d_d_T = contact_inputs["d_d_T"], F_GT = inputs["F_GT"], F_GN = inputs["F_GN"], F_OT = inputs["F_OT"], F_ON = inputs["F_ON"], tau_O = inputs["tau_O"],  p_CN = contact_inputs["p_CN"], p_CT = contact_inputs["p_CT"], p_LN = inputs["p_LN"], p_LT = inputs["p_LT"], p_MConM = contact_inputs["p_MConM"], theta_L = inputs["theta_L"], mu_S = contact_inputs["mu_S"], hats_T = contact_inputs["hats_T"], s_hat_X = contact_inputs["s_hat_X"], Jdot_qdot = manipulator_values["Jdot_qdot"], J_translational = manipulator_values["J_translational"], J_rotational = manipulator_values["J_rotational"], J = manipulator_values["J"], M = manipulator_values["M"], Cv = manipulator_values["Cv"], tau_g = manipulator_values["tau_g"], joint_centering_torque=joint_centering_torque, theta_MX = inputs["theta_MX"], theta_MY = inputs["theta_MY"], theta_MZ = inputs["theta_MZ"], d_theta_MX = inputs["d_theta_MX"], v_LN = inputs["v_LN"], d_X = contact_inputs["d_X"], d_d_X = contact_inputs["d_d_X"], d_theta_MY = inputs["d_theta_MY"], d_theta_MZ = inputs["d_theta_MZ"])
+            tau_ctrl = self.get_contact_control_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
         else:
             tau_ctrl = self.get_pre_contact_control_torques(
                 J, inputs['N_hat'], inputs['v_MN'])
@@ -616,14 +533,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         return tau_ctrl
 
     def get_contact_control_torques(self, \
-            r, mu, 
             d_theta_L, d_N, d_T, d_d_N, d_d_T, \
             F_GT, F_GN, F_OT, F_ON, tau_O, 
             p_CN, p_CT, p_LN, p_LT, p_MConM, theta_L,
             mu_S, hats_T, s_hat_X,
             Jdot_qdot, J_translational, J_rotational, J,
             M, Cv, tau_g, joint_centering_torque, theta_MX, theta_MY, theta_MZ, d_theta_MX, \
-            v_LN, d_X, d_d_X, d_theta_MY, d_theta_MZ):
+            v_LN, d_X, d_d_X, d_theta_MY, d_theta_MZ, **kwargs):
         
         tau_g = np.expand_dims(tau_g, 1)
         assert tau_g.shape == (self.nq_manipulator, 1)
@@ -714,17 +630,17 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         prog.AddConstraint(eq(F_FMX, -F_FLX)).evaluator().set_description(
                 "3rd law friction forces (X hat)") 
         prog.AddConstraint(eq(
-            -dd_theta_L*(self.h_L/2+r) + d_theta_L**2*self.w_L/2 - a_LT + a_MT,
+            -dd_theta_L*(self.h_L/2+self.r) + d_theta_L**2*self.w_L/2 - a_LT + a_MT,
             -dd_theta_L*d_N + dd_d_T - d_theta_L**2*d_T - 2*d_theta_L*d_d_N
         )).evaluator().set_description("d_N derivative is derivative")
         prog.AddConstraint(eq(
-            -dd_theta_L*self.w_L/2 - d_theta_L**2*self.h_L/2 - d_theta_L**2*r - a_LN + a_MN,
+            -dd_theta_L*self.w_L/2 - d_theta_L**2*self.h_L/2 - d_theta_L**2*self.r - a_LN + a_MN,
             dd_theta_L*d_T + dd_d_N - d_theta_L**2*d_N + 2*d_theta_L*d_d_T
         )).evaluator().set_description("d_N derivative is derivative") 
         prog.AddConstraint(eq(dd_d_N, 0)).evaluator().set_description("No penetration")
-        prog.AddConstraint(eq(F_FLT, mu_S*F_NL*mu*hats_T)).evaluator().set_description(
+        prog.AddConstraint(eq(F_FLT, mu_S*F_NL*self.mu*hats_T)).evaluator().set_description(
             "Friction relationship LT")
-        prog.AddConstraint(eq(F_FLX, mu_S*F_NL*mu*s_hat_X)).evaluator().set_description(
+        prog.AddConstraint(eq(F_FLX, mu_S*F_NL*self.mu*s_hat_X)).evaluator().set_description(
             "Friction relationship LX") 
         
         for i in range(6):
