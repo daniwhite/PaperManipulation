@@ -8,6 +8,8 @@ import constants
 import manipulator
 import paper
 
+import enum
+
 # Drake imports
 import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
@@ -42,12 +44,20 @@ def step5(x):
     x3 = x * x * x
     return x3 * (10 + x * (6 * x - 15))
 
+class CtrlType(enum.Enum):
+    OPTIMIZATION_WITH_CHEATS = enum.auto()
+    OPTIMIZATION_ASSUMING_HINGE = enum.auto()
+    SIMPLE_COMPLIANT = enum.auto()
+
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
 
-    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, options, sys_params, jnt_frc_log):
+    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, options, sys_params, jnt_frc_log, ctrl_type):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.contacts = []
+
+        self.ctrl_type = ctrl_type
+        assert type(self.ctrl_type) is CtrlType
 
         # Initialize system parameters
         self.v_stiction = sys_params['v_stiction']
@@ -63,7 +73,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.r = manipulator.RADIUS
 
         # Initialize control targets
-        self.d_Td = -0.12
+        self.d_Td = -0.03 #-0.12
         self.v_LNd = 0.1
         self.d_Xd = 0
         self.pre_contact_v_MNd = 0.1
@@ -72,6 +82,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Initialize estimates
         self.mu_hat = 0.8
+        self.v_LN_integrator = 0
 
         # Initialize gains
         self.k = 10
@@ -205,6 +216,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
 
+        self.debug['Jdot_qdot'].append(Jdot_qdot)
+
         ret = {
             "q": q, "v": v, "tau_g": tau_g, "M": M, "Cv": Cv, "J": J,
             "Jdot_qdot": Jdot_qdot, "J_translational": J_translational,
@@ -315,6 +328,29 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         stribeck_mu = stribeck(1, 1, s_S/self.v_stiction)
         mu_S = stribeck_mu
 
+        self.debug['d_theta_L'].append(d_theta_L)
+        self.debug['d_N'].append(d_N)
+        self.debug['d_T'].append(d_T)
+        self.debug['d_d_N'].append(d_d_N)
+        self.debug['d_d_T'].append(d_d_T)
+        self.debug['F_GT'].append(F_GT)
+        self.debug['F_GN'].append(F_GN)
+        self.debug['p_CN'].append(p_CN)
+        self.debug['p_CT'].append(p_CT)
+        self.debug['p_LN'].append(p_LN)
+        self.debug['p_LT'].append(p_LT)
+        self.debug['p_MConM'].append(p_MConM)
+        self.debug['theta_L'].append(theta_L)
+        self.debug['mu_S'].append(mu_S)
+        self.debug['hats_T'].append(hats_T)
+        self.debug['s_hat_X'].append(s_hat_X)
+        self.debug['theta_MX'].append(theta_MX)
+        self.debug['theta_MY'].append(theta_MY)
+        self.debug['theta_MZ'].append(theta_MZ)
+        self.debug['d_theta_MX'].append(d_theta_MX)
+        self.debug['d_theta_MY'].append(d_theta_MY)
+        self.debug['d_theta_MZ'].append(d_theta_MZ)
+
         ret = {
             "d_theta_L": d_theta_L,
             "p_LN": p_LN, "p_LT": p_LT, "theta_L": theta_L,
@@ -338,6 +374,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         F_OT = jnt_frcs.translational()[1]
         F_ON = jnt_frcs.translational()[2]
         tau_O = jnt_frcs.rotational()[0]
+
+        self.debug['F_OT'].append(F_OT)
+        self.debug['F_ON'].append(F_ON)
+        self.debug['tau_O'].append(tau_O)
 
         return F_OT, F_ON, tau_O
 
@@ -405,11 +445,16 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
 
         if in_contact:
-            tau_ctrl = self.get_contact_control_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
+            if self.ctrl_type == CtrlType.OPTIMIZATION_WITH_CHEATS:
+                tau_ctrl = self.get_contact_control_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
+            elif self.ctrl_type == CtrlType.SIMPLE_COMPLIANT:
+                tau_ctrl = self.get_contact_simple(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
         else:
             tau_ctrl = self.get_pre_contact_control_torques(
                 J, inputs['N_hat'], inputs['v_MN'])
 
+        if (self.ctrl_type != CtrlType.OPTIMIZATION_WITH_CHEATS) or (not in_contact):
+            # %DEBUG_APPEND%
             # Control inputs
             self.debug["dd_d_Td"].append(0)
             self.debug["a_LNd"].append(0)
@@ -445,6 +490,33 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.debug["dd_d_T"].append(0)
             for i in range(self.nq_manipulator):
                 self.debug["ddq_" + str(i)].append(0)
+            self.debug['d_theta_L'].append(np.nan)
+            self.debug['d_N'].append(np.nan)
+            self.debug['d_T'].append(np.nan)
+            self.debug['d_d_N'].append(np.nan)
+            self.debug['d_d_T'].append(np.nan)
+            self.debug['F_GT'].append(np.nan)
+            self.debug['F_GN'].append(np.nan)
+            self.debug['F_OT'].append(np.nan)
+            self.debug['F_ON'].append(np.nan)
+            self.debug['tau_O'].append(np.nan)
+            self.debug['p_CN'].append(np.nan)
+            self.debug['p_CT'].append(np.nan)
+            self.debug['p_LN'].append(np.nan)
+            self.debug['p_LT'].append(np.nan)
+            self.debug['p_MConM'].append([[np.nan]]*3)
+            self.debug['theta_L'].append(np.nan)
+            self.debug['mu_S'].append(np.nan)
+            self.debug['hats_T'].append(np.nan)
+            self.debug['s_hat_X'].append(np.nan)
+            self.debug['Jdot_qdot'].append(np.array([[np.nan]]*6))
+            self.debug['theta_MX'].append(np.nan)
+            self.debug['theta_MY'].append(np.nan)
+            self.debug['theta_MZ'].append(np.nan)
+            self.debug['d_theta_MX'].append(np.nan)
+            self.debug['d_theta_MY'].append(np.nan)
+            self.debug['d_theta_MZ'].append(np.nan)
+            self.debug["theta_MXd"].append(np.nan)
 
         tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
         output.SetFromVector(tau_out)
@@ -452,8 +524,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Debug
         # %DEBUG_APPEND%
         self.debug["tau_g"].append(manipulator_values['tau_g'])
-
-        # self.debug['F_d'].append(F_d)
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
         self.debug['J'].append(J)
@@ -489,33 +559,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
 
     def get_pre_contact_control_torques(self, J, N_hat, v_MN):
-        self.debug['d_theta_L'].append(np.nan)
-        self.debug['d_N'].append(np.nan)
-        self.debug['d_T'].append(np.nan)
-        self.debug['d_d_N'].append(np.nan)
-        self.debug['d_d_T'].append(np.nan)
-        self.debug['F_GT'].append(np.nan)
-        self.debug['F_GN'].append(np.nan)
-        self.debug['F_OT'].append(np.nan)
-        self.debug['F_ON'].append(np.nan)
-        self.debug['tau_O'].append(np.nan)
-        self.debug['p_CN'].append(np.nan)
-        self.debug['p_CT'].append(np.nan)
-        self.debug['p_LN'].append(np.nan)
-        self.debug['p_LT'].append(np.nan)
-        self.debug['p_MConM'].append([[np.nan]]*3)
-        self.debug['theta_L'].append(np.nan)
-        self.debug['mu_S'].append(np.nan)
-        self.debug['hats_T'].append(np.nan)
-        self.debug['s_hat_X'].append(np.nan)
-        self.debug['Jdot_qdot'].append(np.array([[np.nan]]*6))
-        self.debug['theta_MX'].append(np.nan)
-        self.debug['theta_MY'].append(np.nan)
-        self.debug['theta_MZ'].append(np.nan)
-        self.debug['d_theta_MX'].append(np.nan)
-        self.debug['d_theta_MY'].append(np.nan)
-        self.debug['d_theta_MZ'].append(np.nan)
-        self.debug["theta_MXd"].append(np.nan)
 
 
         # TODO: add controller for hitting correct orientation
@@ -529,8 +572,52 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             F_d[3:] += N_hat * F_CN
 
         tau_ctrl = (J.T@F_d).flatten()
-
         return tau_ctrl
+
+    def get_contact_simple(self, d_T, d_d_T, v_LN, d_X, d_d_X, theta_L, d_theta_L, theta_MX, d_theta_MX, theta_MY, d_theta_MY, theta_MZ, d_theta_MZ, T_hat, N_hat, J_translational, J_rotational, **kwargs):
+        if len(self.debug["times"]) > 2:
+            dt = self.debug["times"][-1] - self.debug["times"][-2]
+        else:
+            dt = 0
+        self.v_LN_integrator += dt*(self.v_LNd - v_LN)
+        
+        F_CT = 1000*(self.d_Td - d_T) - 100*d_d_T
+        F_CN = 10*(self.v_LNd - v_LN) + self.v_LN_integrator
+        F_CX = 100*(self.d_Xd - d_X) - 10 * d_d_X
+        theta_MXd = theta_L
+        tau_X = 100*(theta_MXd - theta_MX)  + 10*(d_theta_L - d_theta_MX)
+        tau_Y = 10*(self.theta_MYd - theta_MY) - 5*d_theta_MY
+        tau_Z = 10*(self.theta_MZd - theta_MZ) - 5*d_theta_MZ
+
+        F = F_CT*T_hat + F_CN*N_hat + F_CX * np.array([[1, 0, 0]]).T
+        tau = np.array([[tau_X, tau_Y, tau_Z]]).T
+
+        tau_ctrl = np.matmul(J_translational.T, F) + np.matmul(J_rotational.T, tau)
+        return tau_ctrl.flatten()
+
+    def get_contact_simple(self, d_T, d_d_T, v_LN, d_X, d_d_X, theta_L, d_theta_L, theta_MX, d_theta_MX, theta_MY, d_theta_MY, theta_MZ, d_theta_MZ, T_hat, N_hat, J_translational, J_rotational, F_GN, **kwargs):
+        if len(self.debug["times"]) > 2:
+            dt = self.debug["times"][-1] - self.debug["times"][-2]
+        else:
+            dt = 0
+        self.v_LN_integrator += dt*(self.v_LNd - v_LN)
+
+        F_ON_approx = -(self.k_J*theta_L - self.b_J*d_theta_L)/(self.w_L/2)
+        ff_term = -F_GN - F_ON_approx
+        
+        F_CT = 1000*(self.d_Td - d_T) - 100*d_d_T
+        F_CN = 10*(self.v_LNd - v_LN) + 0*self.v_LN_integrator + ff_term
+        F_CX = 100*(self.d_Xd - d_X) - 10 * d_d_X
+        theta_MXd = theta_L
+        tau_X = 100*(theta_MXd - theta_MX)  + 10*(d_theta_L - d_theta_MX)
+        tau_Y = 10*(self.theta_MYd - theta_MY) - 5*d_theta_MY
+        tau_Z = 10*(self.theta_MZd - theta_MZ) - 5*d_theta_MZ
+
+        F = F_CT*T_hat + F_CN*N_hat + F_CX * np.array([[1, 0, 0]]).T
+        tau = np.array([[tau_X, tau_Y, tau_Z]]).T
+
+        tau_ctrl = np.matmul(J_translational.T, F) + np.matmul(J_rotational.T, tau)
+        return tau_ctrl.flatten()
 
     def get_contact_control_torques(self, \
             d_theta_L, d_N, d_T, d_d_N, d_d_T, \
@@ -545,33 +632,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         assert tau_g.shape == (self.nq_manipulator, 1)
         joint_centering_torque = np.expand_dims(joint_centering_torque, 1)
         assert joint_centering_torque.shape == (self.nq_manipulator, 1)
-
-        self.debug['d_theta_L'].append(d_theta_L)
-        self.debug['d_N'].append(d_N)
-        self.debug['d_T'].append(d_T)
-        self.debug['d_d_N'].append(d_d_N)
-        self.debug['d_d_T'].append(d_d_T)
-        self.debug['F_GT'].append(F_GT)
-        self.debug['F_GN'].append(F_GN)
-        self.debug['F_OT'].append(F_OT)
-        self.debug['F_ON'].append(F_ON)
-        self.debug['tau_O'].append(tau_O)
-        self.debug['p_CN'].append(p_CN)
-        self.debug['p_CT'].append(p_CT)
-        self.debug['p_LN'].append(p_LN)
-        self.debug['p_LT'].append(p_LT)
-        self.debug['p_MConM'].append(p_MConM)
-        self.debug['theta_L'].append(theta_L)
-        self.debug['mu_S'].append(mu_S)
-        self.debug['hats_T'].append(hats_T)
-        self.debug['s_hat_X'].append(s_hat_X)
-        self.debug['Jdot_qdot'].append(Jdot_qdot)
-        self.debug['theta_MX'].append(theta_MX)
-        self.debug['theta_MY'].append(theta_MY)
-        self.debug['theta_MZ'].append(theta_MZ)
-        self.debug['d_theta_MX'].append(d_theta_MX)
-        self.debug['d_theta_MY'].append(d_theta_MY)
-        self.debug['d_theta_MZ'].append(d_theta_MZ)
 
         ## 1. Define an instance of MathematicalProgram
         prog = MathematicalProgram()

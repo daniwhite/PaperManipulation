@@ -104,7 +104,7 @@ class Paper:
                 self.plant.AddFrame(paper2_hinge_frame)
 
                 joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
-                    "paper_hinge",
+                    "paper_hinge_" + str(link_num),
                     paper1_hinge_frame,
                     paper2_hinge_frame,
                     [1, 0, 0],
