@@ -47,6 +47,7 @@ def step5(x):
 class CtrlType(enum.Enum):
     OPTIMIZATION_WITH_CHEATS = enum.auto()
     OPTIMIZATION_ASSUMING_HINGE = enum.auto()
+    OPTIMIZATION_ASSUMING_HINGE_NO_FRICTION = enum.auto()
     SIMPLE_COMPLIANT = enum.auto()
 
 class FoldingController(pydrake.systems.framework.LeafSystem):
@@ -449,6 +450,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 tau_ctrl = self.get_optimization_with_cheats_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
             elif self.ctrl_type == CtrlType.OPTIMIZATION_ASSUMING_HINGE:
                 tau_ctrl = self.get_optimization_assuming_hinge_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
+            elif self.ctrl_type == CtrlType.OPTIMIZATION_ASSUMING_HINGE_NO_FRICTION:
+                tau_ctrl = self.get_optimization_assuming_hinge_no_friction_torques(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
             elif self.ctrl_type == CtrlType.SIMPLE_COMPLIANT:
                 tau_ctrl = self.get_contact_simple(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
         else:
@@ -620,6 +623,188 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         tau_ctrl = np.matmul(J_translational.T, F) + np.matmul(J_rotational.T, tau)
         return tau_ctrl.flatten()
+
+    def get_optimization_assuming_hinge_no_friction_torques(self, \
+            d_theta_L, d_N, d_T, d_d_N, d_d_T, \
+            F_GT, F_GN,
+            p_CN, p_CT, p_LN, p_LT, p_MConM, theta_L,
+            mu_S, hats_T, s_hat_X,
+            Jdot_qdot, J_translational, J_rotational, J,
+            M, Cv, tau_g, joint_centering_torque, theta_MX, theta_MY, theta_MZ, d_theta_MX, \
+            v_LN, d_X, d_d_X, d_theta_MY, d_theta_MZ, **kwargs):
+        
+        tau_g = np.expand_dims(tau_g, 1)
+        assert tau_g.shape == (self.nq_manipulator, 1)
+        joint_centering_torque = np.expand_dims(joint_centering_torque, 1)
+        assert joint_centering_torque.shape == (self.nq_manipulator, 1)
+
+        ## 1. Define an instance of MathematicalProgram
+        prog = MathematicalProgram()
+
+        ## 2. Add decision variables
+        # Contact values
+        F_NM = prog.NewContinuousVariables(1, 1, name="F_NM")
+        F_FMT = np.array([[0]]) #prog.NewContinuousVariables(1, 1, name="F_FMT")
+        F_FMX = np.array([[0]]) #prog.NewContinuousVariables(1, 1, name="F_FMX")
+        F_ContactMY = prog.NewContinuousVariables(1, 1, name="F_ContactMY")
+        F_ContactMZ = prog.NewContinuousVariables(1, 1, name="F_ContactMZ")
+        F_NL = prog.NewContinuousVariables(1, 1, name="F_NL")
+        F_FLT = np.array([[0]]) #prog.NewContinuousVariables(1, 1, name="F_FLT")
+        F_FLX = np.array([[0]]) #prog.NewContinuousVariables(1, 1, name="F_FLX")
+        F_ContactM_XYZ = np.array([F_FMX, F_ContactMY, F_ContactMZ])[:,:,0]
+
+        # Object forces and torques
+        F_OT = prog.NewContinuousVariables(1, 1, name="F_OT")
+        F_ON = prog.NewContinuousVariables(1, 1, name="F_ON")
+        tau_O = -self.k_J*theta_L-self.b_J*d_theta_L
+
+        # Control values
+        tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1, name="tau_ctrl")
+
+        # Object accelerations
+        a_MX = prog.NewContinuousVariables(1, 1, name="a_MX")
+        a_MT = prog.NewContinuousVariables(1, 1, name="a_MT")
+        a_MY = prog.NewContinuousVariables(1, 1, name="a_MY")
+        a_MZ = prog.NewContinuousVariables(1, 1, name="a_MZ")
+        a_MN = prog.NewContinuousVariables(1, 1, name="a_MN")
+        a_LT = prog.NewContinuousVariables(1, 1, name="a_LT")
+        a_LN = prog.NewContinuousVariables(1, 1, name="a_LN")
+        alpha_MX = prog.NewContinuousVariables(1, 1, name="alpha_MX")
+        alpha_MY = prog.NewContinuousVariables(1, 1, name="alpha_MY")
+        alpha_MZ = prog.NewContinuousVariables(1, 1, name="alpha_MZ")
+        alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
+
+        # Derived accelerations
+        dd_theta_L = prog.NewContinuousVariables(1, 1, name="dd_theta_L")
+        dd_d_N = prog.NewContinuousVariables(1, 1, name="dd_d_N")
+        dd_d_T = prog.NewContinuousVariables(1, 1, name="dd_d_T")
+
+        ddq = prog.NewContinuousVariables(self.nq_manipulator, 1, name="ddq")
+
+        # prog.AddCost(np.matmul(tau_ctrl.T, tau_ctrl)[0,0])
+
+        ## Constraints
+        # "set_description" calls gives us useful names for printing
+        prog.AddConstraint(
+            eq(self.m_L*a_LT, F_FLT+F_GT+F_OT)).evaluator().set_description(
+                "Link tangential force balance")
+        prog.AddConstraint(eq(self.m_L*a_LN, F_NL + F_GN + F_ON)).evaluator().set_description(
+                "Link normal force balance") 
+        prog.AddConstraint(eq(self.I_L*dd_theta_L, \
+            (-self.w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O)).evaluator().set_description(
+                "Link moment balance") 
+        prog.AddConstraint(eq(F_NL, -F_NM)).evaluator().set_description(
+                "3rd law normal forces") 
+        # prog.AddConstraint(eq(F_FMT, -F_FLT)).evaluator().set_description(
+        #         "3rd law friction forces (T hat)") 
+        # prog.AddConstraint(eq(F_FMX, -F_FLX)).evaluator().set_description(
+        #         "3rd law friction forces (X hat)") 
+        prog.AddConstraint(eq(
+            -dd_theta_L*(self.h_L/2+self.r) + d_theta_L**2*self.w_L/2 - a_LT + a_MT,
+            -dd_theta_L*d_N + dd_d_T - d_theta_L**2*d_T - 2*d_theta_L*d_d_N
+        )).evaluator().set_description("d_N derivative is derivative")
+        prog.AddConstraint(eq(
+            -dd_theta_L*self.w_L/2 - d_theta_L**2*self.h_L/2 - d_theta_L**2*self.r - a_LN + a_MN,
+            dd_theta_L*d_T + dd_d_N - d_theta_L**2*d_N + 2*d_theta_L*d_d_T
+        )).evaluator().set_description("d_N derivative is derivative") 
+        prog.AddConstraint(eq(dd_d_N, 0)).evaluator().set_description("No penetration")
+        # prog.AddConstraint(eq(F_FLT, mu_S*F_NL*self.mu*hats_T)).evaluator().set_description(
+        #     "Friction relationship LT")
+        # prog.AddConstraint(eq(F_FLX, mu_S*F_NL*self.mu*s_hat_X)).evaluator().set_description(
+        #     "Friction relationship LX")
+        
+        prog.AddConstraint(eq(a_LT, -(self.w_L/2)*d_theta_L**2)).evaluator().set_description(
+            "Hinge constraint (T hat)")
+        prog.AddConstraint(eq(a_LN, (self.w_L/2)*dd_theta_L)).evaluator().set_description(
+            "Hinge constraint (N hat)")
+        
+        for i in range(6):
+            lhs_i = alpha_a_MXYZ[i,0]
+            assert not hasattr(lhs_i, "shape")
+            rhs_i = (Jdot_qdot + np.matmul(J, ddq))[i,0]
+            assert not hasattr(rhs_i, "shape")
+            prog.AddConstraint(lhs_i == rhs_i).evaluator().set_description(
+                "Relate manipulator and end effector with joint accelerations " + str(i)) 
+
+        tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
+        tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
+        tau_contact = tau_contact_trn + tau_contact_rot
+        tau_out = tau_ctrl - tau_g + joint_centering_torque
+        for i in range(self.nq_manipulator):
+            M_ddq_row_i = (np.matmul(M, ddq) + Cv)[i,0]
+            assert not hasattr(M_ddq_row_i, "shape")
+            tau_i = (tau_g + tau_contact + tau_out)[i,0]
+            assert not hasattr(tau_i, "shape")
+            prog.AddConstraint(M_ddq_row_i == tau_i).evaluator().set_description("Manipulator equations " + str(i))
+        
+        # Projection equations
+        prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
+        prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
+        prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
+        prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
+
+        # Calculate desired values
+        dd_d_Td = 1000*(self.d_Td - d_T) - 100*d_d_T
+        a_LNd = 10*(self.v_LNd - v_LN)
+        a_MX_d = 100*(self.d_Xd - d_X) - 10 * d_d_X
+        theta_MXd = theta_L
+        alpha_MXd = 100*(theta_MXd - theta_MX)  + 10*(d_theta_L - d_theta_MX)
+        alpha_MYd = 10*(self.theta_MYd - theta_MY) - 5*d_theta_MY
+        alpha_MZd = 10*(self.theta_MZd - theta_MZ) - 5*d_theta_MZ
+        dd_d_Nd = 0
+        prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
+        prog.AddConstraint(a_LN[0,0] == a_LNd).evaluator().set_description("Desired a_LN constraint" + str(i))
+        prog.AddConstraint(a_MX[0,0] == a_MX_d).evaluator().set_description("Desired a_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MX[0,0] == alpha_MXd).evaluator().set_description("Desired alpha_MX constraint" + str(i))
+        prog.AddConstraint(alpha_MY[0,0] == alpha_MYd).evaluator().set_description("Desired alpha_MY constraint" + str(i))
+        prog.AddConstraint(alpha_MZ[0,0] == alpha_MZd).evaluator().set_description("Desired alpha_MZ constraint" + str(i))
+        prog.AddConstraint(dd_d_N[0,0] == dd_d_Nd).evaluator().set_description("Desired dd_d_N constraint" + str(i))
+
+        result = Solve(prog)
+        assert result.is_success()
+        tau_ctrl_result = []
+        for i in range(self.nq_manipulator):
+            tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+
+        # %DEBUG_APPEND%
+        # control effort
+        self.debug["dd_d_Td"].append(dd_d_Td)
+        self.debug["a_LNd"].append(a_LNd)
+        self.debug["a_MX_d"].append(a_MX_d)
+        self.debug["alpha_MXd"].append(alpha_MXd)
+        self.debug["alpha_MYd"].append(alpha_MYd)
+        self.debug["alpha_MZd"].append(alpha_MZd)
+        self.debug["dd_d_Nd"].append(dd_d_Nd)
+
+        # decision variables
+        self.debug["F_NM"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_NM[0,0])])
+        self.debug["F_FMT"].append(F_FMT)
+        self.debug["F_FMX"].append(F_FMX)
+        self.debug["F_ContactMY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMY[0,0])])
+        self.debug["F_ContactMZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMZ[0,0])])
+        self.debug["F_NL"].append(result.GetSolution()[prog.FindDecisionVariableIndex(F_NL[0,0])])
+        self.debug["F_FLT"].append(F_FLT)
+        self.debug["F_FLX"].append(F_FLX)
+        for i in range(self.nq_manipulator):
+            self.debug["tau_ctrl_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+        self.debug["a_MX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MX[0,0])])
+        self.debug["a_MT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MT[0,0])])
+        self.debug["a_MY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MY[0,0])])
+        self.debug["a_MZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MZ[0,0])])
+        self.debug["a_MN"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_MN[0,0])])
+        self.debug["a_LT"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_LT[0,0])])
+        self.debug["a_LN"].append(result.GetSolution()[prog.FindDecisionVariableIndex(a_LN[0,0])])
+        self.debug["alpha_MX"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MX[0,0])])
+        self.debug["alpha_MY"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MY[0,0])])
+        self.debug["alpha_MZ"].append(result.GetSolution()[prog.FindDecisionVariableIndex(alpha_MZ[0,0])])
+        self.debug["dd_theta_L"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_theta_L[0,0])])
+        self.debug["dd_d_N"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_d_N[0,0])])
+        self.debug["dd_d_T"].append(result.GetSolution()[prog.FindDecisionVariableIndex(dd_d_T[0,0])])
+        for i in range(self.nq_manipulator):
+            self.debug["ddq_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(ddq[i,0])])
+        self.debug["theta_MXd"].append(theta_MXd)
+
+        return tau_ctrl_result
 
     def get_optimization_assuming_hinge_torques(self, \
             d_theta_L, d_N, d_T, d_d_N, d_d_T, \
