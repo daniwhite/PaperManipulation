@@ -12,21 +12,23 @@ import enum
 
 # Drake imports
 import pydrake
-from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
-from pydrake.all import BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, SpatialForce, FindResourceOrThrow, RigidTransform, RotationMatrix, AngleAxis, RollPitchYaw
+from pydrake.multibody.tree import JacobianWrtVariable
 from pydrake.all import (
-    MathematicalProgram, Solve, eq, le, ge
+    MathematicalProgram, Solve, eq, \
+    BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, \
+    SpatialForce, RigidTransform, RollPitchYaw \
 )
 
 if constants.USE_NEW_MESHCAT:
     import sys
     sys.path.append("manipulation/")
-    from manipulation.meshcat_cpp_utils import StartMeshcat, AddMeshcatTriad
+    from manipulation.meshcat_cpp_utils import AddMeshcatTriad
 
 
 def stribeck(us, uk, v):
     '''
-    Python version of MultibodyPlant::StribeckModel::ComputeFrictionCoefficient
+    Python version of
+    `MultibodyPlant::StribeckModel::ComputeFrictionCoefficient`
 
     From
     https://github.com/RobotLocomotion/drake/blob/b09e40db4b1c01232b22f7705fb98aa99ef91f87/multibody/plant/images/stiction.py
@@ -47,11 +49,19 @@ def step5(x):
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
 
-    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, options, sys_params, jnt_frc_log):
+    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
+            options, sys_params, jnt_frc_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
-        self.contacts = []
 
-        # Initialize system parameters
+        # Set up plant for evaluation
+        self.manipulator_plant = MultibodyPlant(constants.DT)
+        manipulator.data["add_plant_function"](self.manipulator_plant)
+        self.manipulator_plant.Finalize()
+        self.manipulator_plant_context = \
+            self.manipulator_plant.CreateDefaultContext()
+
+        # ========================= SYSTEM PARAMETERS =========================
+        # Physical parameters
         self.v_stiction = sys_params['v_stiction']
         self.I_L = sys_params['I_L']
         self.w_L = sys_params['w_L']
@@ -64,7 +74,14 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.mu = 2*mu_paper/(1+mu_paper)
         self.r = manipulator.RADIUS
 
-        # Initialize control targets
+        # Other parameters
+        self.ll_idx = ll_idx
+        self.contact_body_idx = contact_body_idx
+        self.nq_manipulator = \
+            self.manipulator_plant.get_actuation_input_port().size()
+
+        # ========================== CONTROLLER INIT ==========================
+        # Control targets
         self.d_Td = -0.03 #-0.12
         self.v_LNd = 0.1
         self.d_Xd = 0
@@ -72,59 +89,41 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.theta_MYd = None
         self.theta_MZd = None
 
-        # Initialize estimates
-        self.mu_hat = 0.8
-        self.v_LN_integrator = 0
-
-        # Initialize gains
-        self.k = 10
-        self.k_F = 100
+        # Gains
         self.K_centering = 1
         self.D_centering = 0.1
-        self.lamda = 100 # Sliding surface time constant
-        self.P = 10000 # Adapatation law gain
         self.pre_contact_Kp = 10
 
-        # Initialize logs
+        # Intermediary variables
+        self.last_v_LN = 0
+        self.init_q = None
+        self.t_contact_start =  None
+        self.v_LN_integrator = 0
+
+        # Options
+        self.use_simple_ctrl = options['use_simple_ctrl']
+        self.model_friction = options['model_friction']
+        self.measure_joint_wrench = options['measure_joint_wrench']
+
+        # ============================== LOG INIT =============================
         self.manipulator_acc_log = manipulator_acc_log
         # %DEBUG_APPEND%
         self.debug = defaultdict(list)
         self.debug['times'] = []
         self.jnt_frc_log = jnt_frc_log
-        self.jnt_frc_log.append(SpatialForce(np.zeros((3, 1)), np.zeros((3, 1))))
-        self.d_d_N_sqr_log = []
+        self.jnt_frc_log.append(
+            SpatialForce(np.zeros((3, 1)), np.zeros((3, 1))))
+        self.contacts = []
 
-        # Initialize intermediary variables
-        self.last_v_LN = 0
-        self.init_q = None
-        self.t_contact_start =  None
-
-        self.manipulator_plant = MultibodyPlant(constants.DT)
-        manipulator.data["add_plant_function"](self.manipulator_plant)
-        self.manipulator_plant.Finalize()
-        self.manipulator_plant_context = self.manipulator_plant.CreateDefaultContext()
-
-        # Other parameters
-        self.ll_idx = ll_idx
-        self.contact_body_idx = contact_body_idx
-        self.use_friction_adaptive_ctrl = options['use_friction_adaptive_ctrl']
-        self.use_friction_robust_adaptive_ctrl = options['use_friction_robust_adaptive_ctrl']
-
-        self.use_simple_ctrl = options['use_simple_ctrl']
-        self.model_friction = options['model_friction']
-        self.measure_joint_wrench = options['measure_joint_wrench']
-
-        self.d_d_N_sqr_log_len = 100
-        self.d_d_N_sqr_lim = 2e-4
-
-        self.nq_manipulator = self.manipulator_plant.get_actuation_input_port().size()
-
+        # ============================== DRAKE IO =============================
         # Input ports
         self.DeclareVectorInputPort("q", BasicVector(self.nq_manipulator*2))
         self.DeclareAbstractInputPort(
-            "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
+            "poses", pydrake.common.value.AbstractValue.Make(
+                [RigidTransform(), RigidTransform()]))
         self.DeclareAbstractInputPort(
-            "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
+            "vels", pydrake.common.value.AbstractValue.Make(
+                [SpatialVelocity(), SpatialVelocity()]))
         self.DeclareAbstractInputPort(
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
@@ -532,7 +531,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['F_OTs'].append(inputs['F_OT'])
         self.debug['F_ONs'].append(inputs['F_ON'])
         self.debug['tau_Os'].append(inputs['tau_O'])
-        self.debug['mu_ests'].append(self.mu_hat)
         # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
         self.debug["M"].append(manipulator_values['M'])
