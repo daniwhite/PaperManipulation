@@ -140,10 +140,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
 
     def process_contact_results(self, contact_results):
-        contact_point = None
-        slip_speed = None
-        pen_depth = None
-        N_hat = None
+        """
+        Process results from contact input port.
+
+        Sets in_contact.
+        """
+        raw_in_contact = False
         self.contacts.append([])
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
@@ -153,17 +155,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             b_idx = int(point_pair_contact_info.bodyB_index())
             self.contacts[-1].append([a_idx, b_idx])
 
-            if ((a_idx == self.ll_idx) and (b_idx == self.contact_body_idx) or
-                    (a_idx == self.contact_body_idx) and (b_idx == self.ll_idx)):
-                contact_point = point_pair_contact_info.contact_point()
-                slip_speed = point_pair_contact_info.slip_speed()
-                pen_point_pair = point_pair_contact_info.point_pair()
-                pen_depth = pen_point_pair.depth
-                # PROGRAMMING: check sign
-                N_hat = np.expand_dims(pen_point_pair.nhat_BA_W, 1)
+            if ((a_idx == self.ll_idx) and (b_idx == self.contact_body_idx)):
+                raw_in_contact = True
+
+            if ((a_idx == self.contact_body_idx) and (b_idx == self.ll_idx)):
+                raw_in_contact = True
 
         # Get contact times
-        raw_in_contact = (not (contact_point is None))
         if raw_in_contact:
             if self.t_contact_start is None:
                 self.t_contact_start = self.debug['times'][-1]
@@ -171,12 +169,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.t_contact_start =  None
         in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.5
 
-        ret = {
-            "contact_point": contact_point, "slip_speed": slip_speed,
-            "pen_depth": pen_depth, "N_hat": N_hat,
-            "raw_in_contact": raw_in_contact, "in_contact": in_contact,
-        }
-        return ret
+        return in_contact
 
 
     def evaluate_manipulator(self, state):
@@ -377,7 +370,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         return F_OT, F_ON, tau_O
 
-    def simulate_vision(self, poses, vels, in_contact, N_hat):
+    def simulate_vision(self, poses, vels):
         pose_L = poses[self.ll_idx]
         vel_L = vels[self.ll_idx]
 
@@ -399,7 +392,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['times'].append(context.get_time())
 
         # Process contact
-        contact_values = self.process_contact_results(contact_results)
+        in_contact = self.process_contact_results(contact_results)
 
         # Process state
         manipulator_values = self.evaluate_manipulator(state)
@@ -415,8 +408,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             dt = self.debug['times'][-1] - self.debug['times'][-2]
 
         # Precompute other inputs
-        pose_L, vel_L, pose_M, vel_M = self.simulate_vision(poses, vels,
-            contact_values['raw_in_contact'], contact_values['N_hat'])
+        pose_L, vel_L, pose_M, vel_M = self.simulate_vision(poses, vels)
         inputs = self.calc_vision_inputs(pose_L, vel_L, pose_M, vel_M)
         F_OT, F_ON, tau_O = self.get_cheat_inputs()
         inputs["F_OT"] = F_OT
@@ -428,10 +420,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         if self.theta_MZd is None:
             self.theta_MZd = inputs['theta_MZ']
 
-        del(contact_values['N_hat'])
-        in_contact = contact_values['in_contact']
-        if in_contact:
-            contact_inputs = inputs
 
         # Get torques
         J_plus = np.linalg.pinv(J)
@@ -524,7 +512,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['tau_out'].append(tau_out)
         self.debug['J'].append(J)
 
-        self.debug['raw_in_contact'].append(contact_values['raw_in_contact'])
         self.debug['in_contact'].append(in_contact)
 
         
