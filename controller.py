@@ -2,6 +2,7 @@
 # General imports
 import numpy as np
 from collections import defaultdict
+from dataclasses import dataclass
 
 # Local imports
 import constants
@@ -23,6 +24,53 @@ if constants.USE_NEW_MESHCAT:
     import sys
     sys.path.append("manipulation/")
     from manipulation.meshcat_cpp_utils import AddMeshcatTriad
+
+
+
+@dataclass
+class VisionDerivedData:
+    """
+    Data derived from vision information.
+    """
+    d_theta_L: float = 0
+    p_LN: float = 0
+    p_LT: float = 0
+    theta_L: float = 0
+    p_L: np.ndarray = np.zeros((3,1))
+    N_proj_mat: np.ndarray = np.zeros((3,3))
+    v_L: np.ndarray = np.zeros((3,1))
+    v_M: np.ndarray = np.zeros((3,1))
+    omega_vec_L: np.ndarray = np.zeros((3,1))
+    omega_vec_M: np.ndarray = np.zeros((3,1))
+    v_LT: float = 0
+    v_LN: float = 0
+    v_MT: float = 0
+    v_MN: float = 0
+    T_hat: np.ndarray = np.zeros((3,1))
+    N_hat: np.ndarray = np.zeros((3,1))
+    pose_M: np.ndarray = np.zeros((3,1))
+    vel_M: np.ndarray = np.zeros((3,1))
+    theta_MX: float = 0
+    theta_MY: float = 0
+    theta_MZ: float = 0
+    d_theta_MX: float = 0
+    F_GT: float = 0
+    F_GN: float = 0
+    pose_L: np.ndarray = np.zeros((3,1))
+    d_theta_MY: float = 0
+    d_theta_MZ: float = 0
+    d_N: float = 0
+    d_T: float = 0
+    d_d_N: float = 0
+    d_d_T: float = 0
+    p_CN: float = 0
+    p_CT: float = 0
+    p_MConM: np.ndarray = np.zeros((3,1))
+    mu_S: float = 0
+    hats_T: float = 0
+    s_hat_X: float = 0
+    d_X: float = 0
+    d_d_X: float = 0
 
 
 def stribeck(us, uk, v):
@@ -79,6 +127,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.contact_body_idx = contact_body_idx
         self.nq_manipulator = \
             self.manipulator_plant.get_actuation_input_port().size()
+        self.debug_keys = {
+            'd_theta_L', 'd_N', 'd_T', 'd_d_N', 'd_d_T', 'F_GT', 'F_GN',
+            'p_CN', 'p_CT', 'p_LN', 'p_LT', 'p_MConM', 'theta_L', 'mu_S',
+            'hats_T', 's_hat_X', 'theta_MX', 'theta_MY', 'theta_MZ',
+            'd_theta_MX', 'd_theta_MY', 'd_theta_MZ', 'F_OT', 'F_ON', 'tau_O'
+        }
 
         # ========================== CONTROLLER INIT ==========================
         # Control targets
@@ -99,6 +153,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.init_q = None
         self.t_contact_start =  None
         self.v_LN_integrator = 0
+        self.vision_derived_data = VisionDerivedData()
 
         # Options
         self.use_simple_ctrl = options['use_simple_ctrl']
@@ -215,7 +270,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         return ret
 
 
-    def calc_vision_inputs(self, pose_L, vel_L, pose_M, vel_M):
+    def update_vision_inputs(self, pose_L, vel_L, pose_M, vel_M):
         # Load positions
         p_L = np.array([pose_L.translation()[0:3]]).T
         p_M = np.array([pose_M.translation()[0:3]]).T
@@ -317,58 +372,62 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         stribeck_mu = stribeck(1, 1, s_S/self.v_stiction)
         mu_S = stribeck_mu
 
-        self.debug['d_theta_L'].append(d_theta_L)
-        self.debug['d_N'].append(d_N)
-        self.debug['d_T'].append(d_T)
-        self.debug['d_d_N'].append(d_d_N)
-        self.debug['d_d_T'].append(d_d_T)
-        self.debug['F_GT'].append(F_GT)
-        self.debug['F_GN'].append(F_GN)
-        self.debug['p_CN'].append(p_CN)
-        self.debug['p_CT'].append(p_CT)
-        self.debug['p_LN'].append(p_LN)
-        self.debug['p_LT'].append(p_LT)
-        self.debug['p_MConM'].append(p_MConM)
-        self.debug['theta_L'].append(theta_L)
-        self.debug['mu_S'].append(mu_S)
-        self.debug['hats_T'].append(hats_T)
-        self.debug['s_hat_X'].append(s_hat_X)
-        self.debug['theta_MX'].append(theta_MX)
-        self.debug['theta_MY'].append(theta_MY)
-        self.debug['theta_MZ'].append(theta_MZ)
-        self.debug['d_theta_MX'].append(d_theta_MX)
-        self.debug['d_theta_MY'].append(d_theta_MY)
-        self.debug['d_theta_MZ'].append(d_theta_MZ)
+        self.vision_derived_data.d_theta_L = d_theta_L
+        self.vision_derived_data.p_LN = p_LN
+        self.vision_derived_data.p_LT = p_LT
+        self.vision_derived_data.theta_L = theta_L
+        self.vision_derived_data.p_L = p_L
+        self.vision_derived_data.N_proj_mat = N_proj_mat
+        self.vision_derived_data.v_L = v_L
+        self.vision_derived_data.v_M = v_M
+        self.vision_derived_data.omega_vec_L = omega_vec_L
+        self.vision_derived_data.omega_vec_M = omega_vec_M
+        self.vision_derived_data.v_LT = v_LT
+        self.vision_derived_data.v_LN = v_LN
+        self.vision_derived_data.v_MT = v_MT
+        self.vision_derived_data.v_MN = v_MN
+        self.vision_derived_data.T_hat = T_hat
+        self.vision_derived_data.N_hat = N_hat
+        self.vision_derived_data.pose_M = pose_M
+        self.vision_derived_data.vel_M = vel_M
+        self.vision_derived_data.theta_MX = theta_MX
+        self.vision_derived_data.theta_MY = theta_MY
+        self.vision_derived_data.theta_MZ = theta_MZ
+        self.vision_derived_data.d_theta_MX = d_theta_MX
+        self.vision_derived_data.F_GT = F_GT
+        self.vision_derived_data.F_GN = F_GN
+        self.vision_derived_data.pose_L = pose_L
+        self.vision_derived_data.d_theta_MY = d_theta_MY
+        self.vision_derived_data.d_theta_MZ = d_theta_MZ
+        self.vision_derived_data.d_N = d_N
+        self.vision_derived_data.d_T = d_T
+        self.vision_derived_data.d_d_N = d_d_N
+        self.vision_derived_data.d_d_T = d_d_T
+        self.vision_derived_data.p_CN = p_CN
+        self.vision_derived_data.p_CT = p_CT
+        self.vision_derived_data.p_MConM = p_MConM
+        self.vision_derived_data.mu_S = mu_S
+        self.vision_derived_data.hats_T = hats_T
+        self.vision_derived_data.s_hat_X = s_hat_X
+        self.vision_derived_data.d_X = d_X
+        self.vision_derived_data.d_d_X = d_d_X
 
-        ret = {
-            "d_theta_L": d_theta_L,
-            "p_LN": p_LN, "p_LT": p_LT, "theta_L": theta_L,
-            "p_L": p_L, "N_proj_mat": N_proj_mat, "v_L": v_L,
-            "v_M": v_M, "omega_vec_L": omega_vec_L, "omega_vec_M": omega_vec_M,
-            "v_LT": v_LT, "v_LN": v_LN, "v_MT": v_MT, "v_MN": v_MN,
-            "T_hat": T_hat,
-            "N_hat": N_hat, "pose_M": pose_M,
-            "vel_M": vel_M, "theta_MX": theta_MX, "theta_MY": theta_MY, "theta_MZ": theta_MZ, "d_theta_MX": d_theta_MX,
-            "F_GT": F_GT, "F_GN": F_GN, "pose_L": pose_L, "d_theta_MY": d_theta_MY, "d_theta_MZ": d_theta_MZ,
-            "d_N": d_N, "d_T": d_T, "d_d_N": d_d_N,
-            "d_d_T": d_d_T, "p_CN": p_CN,
-            "p_CT": p_CT,"p_MConM": p_MConM, "mu_S": mu_S,
-            "hats_T": hats_T, "s_hat_X": s_hat_X, "d_X": d_X,
-            "d_d_X": d_d_X
-        }
-        return ret
-
-    def get_cheat_inputs(self):
+    def update_cheat_inputs(self):
         jnt_frcs = self.jnt_frc_log[-1]
         F_OT = jnt_frcs.translational()[1]
         F_ON = jnt_frcs.translational()[2]
         tau_O = jnt_frcs.rotational()[0]
 
-        self.debug['F_OT'].append(F_OT)
-        self.debug['F_ON'].append(F_ON)
-        self.debug['tau_O'].append(tau_O)
+        self.F_OT = F_OT
+        self.F_ON = F_ON
+        self.tau_O = tau_O
 
-        return F_OT, F_ON, tau_O
+    def update_debug(self):
+        for k in self.debug_keys:
+            try:
+                self.debug[k].append(getattr(self.vision_derived_data, k))
+            except AttributeError:
+                self.debug[k].append(getattr(self, k))
 
     def simulate_vision(self, poses, vels):
         pose_L = poses[self.ll_idx]
@@ -409,16 +468,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Precompute other inputs
         pose_L, vel_L, pose_M, vel_M = self.simulate_vision(poses, vels)
-        inputs = self.calc_vision_inputs(pose_L, vel_L, pose_M, vel_M)
-        F_OT, F_ON, tau_O = self.get_cheat_inputs()
-        inputs["F_OT"] = F_OT
-        inputs["F_ON"] = F_ON
-        inputs["tau_O"] = tau_O
+        self.update_vision_inputs(pose_L, vel_L, pose_M, vel_M)
+        self.update_cheat_inputs()
 
         if self.theta_MYd is None:
-            self.theta_MYd = inputs['theta_MY']
+            self.theta_MYd = self.vision_derived_data.theta_MY
         if self.theta_MZd is None:
-            self.theta_MZd = inputs['theta_MZ']
+            self.theta_MZd = self.vision_derived_data.theta_MZ
 
 
         # Get torques
@@ -430,12 +486,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         if in_contact:
             if self.use_simple_ctrl:
-                tau_ctrl = self.get_simple_torque(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
+                tau_ctrl = self.get_simple_torque(joint_centering_torque=joint_centering_torque,
+                **manipulator_values)
             else:
-                tau_ctrl = self.solve_manipulator_eqs(joint_centering_torque=joint_centering_torque, **inputs, **manipulator_values)
+                tau_ctrl = self.solve_manipulator_eqs(joint_centering_torque=joint_centering_torque,
+                **manipulator_values)
         else:
-            tau_ctrl = self.get_pre_contact_control_torques(
-                J, inputs['N_hat'], inputs['v_MN'])
+            tau_ctrl = self.get_pre_contact_control_torques(J)
 
         if self.use_simple_ctrl or (not in_contact):
             # %DEBUG_APPEND%
@@ -505,6 +562,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
         output.SetFromVector(tau_out)
 
+        self.update_debug()
+
         # Debug
         # %DEBUG_APPEND%
         self.debug["tau_g"].append(manipulator_values['tau_g'])
@@ -513,11 +572,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['J'].append(J)
 
         self.debug['in_contact'].append(in_contact)
-
-        
-        self.debug['F_OTs'].append(inputs['F_OT'])
-        self.debug['F_ONs'].append(inputs['F_ON'])
-        self.debug['tau_Os'].append(inputs['tau_O'])
         # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
         self.debug["M"].append(manipulator_values['M'])
@@ -535,57 +589,51 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         #     X_PT.set_translation(contact_point)
         if constants.USE_NEW_MESHCAT:
             AddMeshcatTriad(self.meshcat, "axes/" + "pose_M",
-                        length=0.15, radius=0.006, X_PT=inputs["pose_M"])
+                        length=0.15, radius=0.006, X_PT=self.vision_derived_data.pose_M)
             AddMeshcatTriad(self.meshcat, "axes/" + "pose_L",
-                        length=0.15, radius=0.006, X_PT=inputs["pose_L"])
+                        length=0.15, radius=0.006, X_PT=self.vision_derived_data.pose_L)
 
 
-    def get_pre_contact_control_torques(self, J, N_hat, v_MN):
+    def get_pre_contact_control_torques(self, J):
         # TODO: add controller for hitting correct orientation
         # Proportional control for moving towards the link
         v_MNd = self.pre_contact_v_MNd
         Kp = self.pre_contact_Kp
-        F_CN = (v_MNd - v_MN)*Kp
+        F_CN = (v_MNd - self.vision_derived_data.v_MN)*Kp
 
         F_d = np.zeros((6,1))
         if self.debug['times'][-1] > paper.settling_time:
-            F_d[3:] += N_hat * F_CN
+            F_d[3:] += self.vision_derived_data.N_hat * F_CN
 
         tau_ctrl = (J.T@F_d).flatten()
         return tau_ctrl
 
-    def get_simple_torque(self, d_T, d_d_T, v_LN, d_X, d_d_X, theta_L, d_theta_L, theta_MX, d_theta_MX, theta_MY, d_theta_MY, theta_MZ, d_theta_MZ, T_hat, N_hat, J_translational, J_rotational, F_GN, **kwargs):
+    def get_simple_torque(self, J_translational, J_rotational, F_GN, **kwargs):
         if len(self.debug["times"]) > 2:
             dt = self.debug["times"][-1] - self.debug["times"][-2]
         else:
             dt = 0
-        self.v_LN_integrator += dt*(self.v_LNd - v_LN)
+        self.v_LN_integrator += dt*(self.v_LNd - self.vision_derived_data.v_LN)
 
-        F_ON_approx = -(self.k_J*theta_L - self.b_J*d_theta_L)/(self.w_L/2)
+        F_ON_approx = -(self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L)/(self.w_L/2)
         ff_term = -F_GN - F_ON_approx
         
-        F_CT = 1000*(self.d_Td - d_T) - 100*d_d_T
-        F_CN = 10*(self.v_LNd - v_LN) + 0*self.v_LN_integrator + ff_term
-        F_CX = 100*(self.d_Xd - d_X) - 10 * d_d_X
-        theta_MXd = theta_L
-        tau_X = 100*(theta_MXd - theta_MX)  + 10*(d_theta_L - d_theta_MX)
-        tau_Y = 10*(self.theta_MYd - theta_MY) - 5*d_theta_MY
-        tau_Z = 10*(self.theta_MZd - theta_MZ) - 5*d_theta_MZ
+        F_CT = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
+        F_CN = 10*(self.v_LNd - self.vision_derived_data.v_LN) + 0*self.v_LN_integrator + ff_term
+        F_CX = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
+        theta_MXd = self.vision_derived_data.theta_L
+        tau_X = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
+        tau_Y = 10*(self.theta_MYd - self.vision_derived_data.theta_MY) - 5*self.vision_derived_data.d_theta_MY
+        tau_Z = 10*(self.theta_MZd - self.vision_derived_data.theta_MZ) - 5*self.vision_derived_data.d_theta_MZ
 
-        F = F_CT*T_hat + F_CN*N_hat + F_CX * np.array([[1, 0, 0]]).T
+        F = F_CT*self.vision_derived_data.T_hat + F_CN*self.vision_derived_data.N_hat + F_CX * np.array([[1, 0, 0]]).T
         tau = np.array([[tau_X, tau_Y, tau_Z]]).T
 
         tau_ctrl = np.matmul(J_translational.T, F) + np.matmul(J_rotational.T, tau)
         return tau_ctrl.flatten()
 
-    def solve_manipulator_eqs(self, \
-            d_theta_L, d_N, d_T, d_d_N, d_d_T, \
-            F_GT, F_GN, F_OT, F_ON, tau_O,
-            p_CN, p_CT, p_LN, p_LT, p_MConM, theta_L,
-            mu_S, hats_T, s_hat_X,
-            Jdot_qdot, J_translational, J_rotational, J,
-            M, Cv, tau_g, joint_centering_torque, theta_MX, theta_MY, theta_MZ, d_theta_MX, \
-            v_LN, d_X, d_d_X, d_theta_MY, d_theta_MZ, **kwargs):
+    def solve_manipulator_eqs(self, Jdot_qdot, J_translational, J_rotational,
+            J, M, Cv, tau_g, joint_centering_torque, **kwargs):
         
         tau_g = np.expand_dims(tau_g, 1)
         assert tau_g.shape == (self.nq_manipulator, 1)
@@ -617,10 +665,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         if not self.measure_joint_wrench:
             F_OT = prog.NewContinuousVariables(1, 1, name="F_OT")
             F_ON = prog.NewContinuousVariables(1, 1, name="F_ON")
-            tau_O = -self.k_J*theta_L-self.b_J*d_theta_L
+            tau_O = -self.k_J*self.vision_derived_data.theta_L \
+                    - self.b_J*self.vision_derived_data.d_theta_L
 
         # Control values
-        tau_ctrl = prog.NewContinuousVariables(self.nq_manipulator, 1, name="tau_ctrl")
+        tau_ctrl = prog.NewContinuousVariables(
+            self.nq_manipulator, 1, name="tau_ctrl")
 
         # Object accelerations
         a_MX = prog.NewContinuousVariables(1, 1, name="a_MX")
@@ -645,12 +695,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         ## Constraints
         # "set_description" calls gives us useful names for printing
         prog.AddConstraint(
-            eq(self.m_L*a_LT, F_FLT+F_GT+F_OT)).evaluator().set_description(
+            eq(self.m_L*a_LT, F_FLT+self.vision_derived_data.F_GT+F_OT)).evaluator().set_description(
                 "Link tangential force balance")
-        prog.AddConstraint(eq(self.m_L*a_LN, F_NL + F_GN + F_ON)).evaluator().set_description(
+        prog.AddConstraint(eq(self.m_L*a_LN, F_NL + self.vision_derived_data.F_GN + F_ON)).evaluator().set_description(
                 "Link normal force balance") 
         prog.AddConstraint(eq(self.I_L*dd_theta_L, \
-            (-self.w_L/2)*F_ON - (p_CN-p_LN) * F_FLT + (p_CT-p_LT)*F_NL + tau_O)).evaluator().set_description(
+            (-self.w_L/2)*F_ON - (self.vision_derived_data.p_CN-self.vision_derived_data.p_LN) * F_FLT + (self.vision_derived_data.p_CT-self.vision_derived_data.p_LT)*F_NL + tau_O)).evaluator().set_description(
                 "Link moment balance") 
         prog.AddConstraint(eq(F_NL, -F_NM)).evaluator().set_description(
                 "3rd law normal forces")
@@ -660,22 +710,22 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             prog.AddConstraint(eq(F_FMX, -F_FLX)).evaluator().set_description(
                     "3rd law friction forces (X hat)") 
         prog.AddConstraint(eq(
-            -dd_theta_L*(self.h_L/2+self.r) + d_theta_L**2*self.w_L/2 - a_LT + a_MT,
-            -dd_theta_L*d_N + dd_d_T - d_theta_L**2*d_T - 2*d_theta_L*d_d_N
+            -dd_theta_L*(self.h_L/2+self.r) + self.vision_derived_data.d_theta_L**2*self.w_L/2 - a_LT + a_MT,
+            -dd_theta_L*self.vision_derived_data.d_N + dd_d_T - self.vision_derived_data.d_theta_L**2*self.vision_derived_data.d_T - 2*self.vision_derived_data.d_theta_L*self.vision_derived_data.d_d_N
         )).evaluator().set_description("d_N derivative is derivative")
         prog.AddConstraint(eq(
-            -dd_theta_L*self.w_L/2 - d_theta_L**2*self.h_L/2 - d_theta_L**2*self.r - a_LN + a_MN,
-            dd_theta_L*d_T + dd_d_N - d_theta_L**2*d_N + 2*d_theta_L*d_d_T
+            -dd_theta_L*self.w_L/2 - self.vision_derived_data.d_theta_L**2*self.h_L/2 - self.vision_derived_data.d_theta_L**2*self.r - a_LN + a_MN,
+            dd_theta_L*self.vision_derived_data.d_T + dd_d_N - self.vision_derived_data.d_theta_L**2*self.vision_derived_data.d_N + 2*self.vision_derived_data.d_theta_L*self.vision_derived_data.d_d_T
         )).evaluator().set_description("d_N derivative is derivative") 
         prog.AddConstraint(eq(dd_d_N, 0)).evaluator().set_description("No penetration")
         if self.model_friction:
-            prog.AddConstraint(eq(F_FLT, mu_S*F_NL*self.mu*hats_T)).evaluator().set_description(
+            prog.AddConstraint(eq(F_FLT, self.vision_derived_data.mu_S*F_NL*self.mu*self.vision_derived_data.hats_T)).evaluator().set_description(
                 "Friction relationship LT")
-            prog.AddConstraint(eq(F_FLX, mu_S*F_NL*self.mu*s_hat_X)).evaluator().set_description(
+            prog.AddConstraint(eq(F_FLX, self.vision_derived_data.mu_S*F_NL*self.mu*self.vision_derived_data.s_hat_X)).evaluator().set_description(
                 "Friction relationship LX")
         
         if not self.measure_joint_wrench:
-            prog.AddConstraint(eq(a_LT, -(self.w_L/2)*d_theta_L**2)).evaluator().set_description(
+            prog.AddConstraint(eq(a_LT, -(self.w_L/2)*self.vision_derived_data.d_theta_L**2)).evaluator().set_description(
                 "Hinge constraint (T hat)")
             prog.AddConstraint(eq(a_LN, (self.w_L/2)*dd_theta_L)).evaluator().set_description(
                 "Hinge constraint (N hat)")
@@ -689,7 +739,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 "Relate manipulator and end effector with joint accelerations " + str(i)) 
 
         tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
-        tau_contact_rot = np.matmul(J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ, axis=0))
+        tau_contact_rot = np.matmul(J_rotational.T, np.cross(self.vision_derived_data.p_MConM, F_ContactM_XYZ, axis=0))
         tau_contact = tau_contact_trn + tau_contact_rot
         tau_out = tau_ctrl - tau_g + joint_centering_torque
         for i in range(self.nq_manipulator):
@@ -700,19 +750,19 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             prog.AddConstraint(M_ddq_row_i == tau_i).evaluator().set_description("Manipulator equations " + str(i))
         
         # Projection equations
-        prog.AddConstraint(eq(a_MT, np.cos(theta_L)*a_MY + np.sin(theta_L)*a_MZ))
-        prog.AddConstraint(eq(a_MN, -np.sin(theta_L)*a_MY + np.cos(theta_L)*a_MZ))
-        prog.AddConstraint(eq(F_FMT, np.cos(theta_L)*F_ContactMY + np.sin(theta_L)*F_ContactMZ))
-        prog.AddConstraint(eq(F_NM, -np.sin(theta_L)*F_ContactMY + np.cos(theta_L)*F_ContactMZ))
+        prog.AddConstraint(eq(a_MT, np.cos(self.vision_derived_data.theta_L)*a_MY + np.sin(self.vision_derived_data.theta_L)*a_MZ))
+        prog.AddConstraint(eq(a_MN, -np.sin(self.vision_derived_data.theta_L)*a_MY + np.cos(self.vision_derived_data.theta_L)*a_MZ))
+        prog.AddConstraint(eq(F_FMT, np.cos(self.vision_derived_data.theta_L)*F_ContactMY + np.sin(self.vision_derived_data.theta_L)*F_ContactMZ))
+        prog.AddConstraint(eq(F_NM, -np.sin(self.vision_derived_data.theta_L)*F_ContactMY + np.cos(self.vision_derived_data.theta_L)*F_ContactMZ))
 
         # Calculate desired values
-        dd_d_Td = 1000*(self.d_Td - d_T) - 100*d_d_T
-        a_LNd = 10*(self.v_LNd - v_LN)
-        a_MX_d = 100*(self.d_Xd - d_X) - 10 * d_d_X
-        theta_MXd = theta_L
-        alpha_MXd = 100*(theta_MXd - theta_MX)  + 10*(d_theta_L - d_theta_MX)
-        alpha_MYd = 10*(self.theta_MYd - theta_MY) - 5*d_theta_MY
-        alpha_MZd = 10*(self.theta_MZd - theta_MZ) - 5*d_theta_MZ
+        dd_d_Td = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
+        a_LNd = 10*(self.v_LNd - self.vision_derived_data.v_LN)
+        a_MX_d = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
+        theta_MXd = self.vision_derived_data.theta_L
+        alpha_MXd = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
+        alpha_MYd = 10*(self.theta_MYd - self.vision_derived_data.theta_MY) - 5*self.vision_derived_data.d_theta_MY
+        alpha_MZd = 10*(self.theta_MZd - self.vision_derived_data.theta_MZ) - 5*self.vision_derived_data.d_theta_MZ
         dd_d_Nd = 0
         prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
         prog.AddConstraint(a_LN[0,0] == a_LNd).evaluator().set_description("Desired a_LN constraint" + str(i))
