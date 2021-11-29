@@ -39,36 +39,29 @@ class VisionDerivedData:
     """
     Data derived from vision information.
     """
-    d_theta_L: float = 0
-    p_LN: float = 0
-    p_LT: float = 0
-    theta_L: float = 0
-    p_L: np.ndarray = np.zeros((3,1))
-    N_proj_mat: np.ndarray = np.zeros((3,3))
-    v_L: np.ndarray = np.zeros((3,1))
-    v_M: np.ndarray = np.zeros((3,1))
-    omega_vec_L: np.ndarray = np.zeros((3,1))
-    omega_vec_M: np.ndarray = np.zeros((3,1))
-    v_LT: float = 0
-    v_LN: float = 0
-    v_MT: float = 0
-    v_MN: float = 0
     T_hat: np.ndarray = np.zeros((3,1))
     N_hat: np.ndarray = np.zeros((3,1))
+    theta_L: float = 0
+    d_theta_L: float = 0
+    pose_L: np.ndarray = np.zeros((3,1))
+    p_LN: float = 0
+    p_LT: float = 0
     pose_M: np.ndarray = np.zeros((3,1))
-    vel_M: np.ndarray = np.zeros((3,1))
+    v_LN: float = 0
+    v_MN: float = 0
     theta_MX: float = 0
     theta_MY: float = 0
     theta_MZ: float = 0
     d_theta_MX: float = 0
-    F_GT: float = 0
-    F_GN: float = 0
-    pose_L: np.ndarray = np.zeros((3,1))
     d_theta_MY: float = 0
     d_theta_MZ: float = 0
+    F_GT: float = 0
+    F_GN: float = 0
+    d_X: float = 0
+    d_d_X: float = 0
     d_N: float = 0
-    d_T: float = 0
     d_d_N: float = 0
+    d_T: float = 0
     d_d_T: float = 0
     p_CN: float = 0
     p_CT: float = 0
@@ -76,8 +69,6 @@ class VisionDerivedData:
     mu_S: float = 0
     hats_T: float = 0
     s_hat_X: float = 0
-    d_X: float = 0
-    d_d_X: float = 0
     in_contact: bool = False
 
 
@@ -391,36 +382,29 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         in_contact = raw_in_contact and self.debug['times'][-1] \
             - self.t_contact_start > 0.5
 
-        self.vision_derived_data.d_theta_L = d_theta_L
-        self.vision_derived_data.p_LN = p_LN
-        self.vision_derived_data.p_LT = p_LT
-        self.vision_derived_data.theta_L = theta_L
-        self.vision_derived_data.p_L = p_L
-        self.vision_derived_data.N_proj_mat = N_proj_mat
-        self.vision_derived_data.v_L = v_L
-        self.vision_derived_data.v_M = v_M
-        self.vision_derived_data.omega_vec_L = omega_vec_L
-        self.vision_derived_data.omega_vec_M = omega_vec_M
-        self.vision_derived_data.v_LT = v_LT
-        self.vision_derived_data.v_LN = v_LN
-        self.vision_derived_data.v_MT = v_MT
-        self.vision_derived_data.v_MN = v_MN
         self.vision_derived_data.T_hat = T_hat
         self.vision_derived_data.N_hat = N_hat
+        self.vision_derived_data.theta_L = theta_L
+        self.vision_derived_data.d_theta_L = d_theta_L
+        self.vision_derived_data.pose_L = pose_L
+        self.vision_derived_data.p_LN = p_LN
+        self.vision_derived_data.p_LT = p_LT
         self.vision_derived_data.pose_M = pose_M
-        self.vision_derived_data.vel_M = vel_M
+        self.vision_derived_data.v_LN = v_LN
+        self.vision_derived_data.v_MN = v_MN
         self.vision_derived_data.theta_MX = theta_MX
         self.vision_derived_data.theta_MY = theta_MY
         self.vision_derived_data.theta_MZ = theta_MZ
         self.vision_derived_data.d_theta_MX = d_theta_MX
-        self.vision_derived_data.F_GT = F_GT
-        self.vision_derived_data.F_GN = F_GN
-        self.vision_derived_data.pose_L = pose_L
         self.vision_derived_data.d_theta_MY = d_theta_MY
         self.vision_derived_data.d_theta_MZ = d_theta_MZ
+        self.vision_derived_data.F_GT = F_GT
+        self.vision_derived_data.F_GN = F_GN
+        self.vision_derived_data.d_X = d_X
+        self.vision_derived_data.d_d_X = d_d_X
         self.vision_derived_data.d_N = d_N
-        self.vision_derived_data.d_T = d_T
         self.vision_derived_data.d_d_N = d_d_N
+        self.vision_derived_data.d_T = d_T
         self.vision_derived_data.d_d_T = d_d_T
         self.vision_derived_data.p_CN = p_CN
         self.vision_derived_data.p_CT = p_CT
@@ -428,8 +412,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.mu_S = mu_S
         self.vision_derived_data.hats_T = hats_T
         self.vision_derived_data.s_hat_X = s_hat_X
-        self.vision_derived_data.d_X = d_X
-        self.vision_derived_data.d_d_X = d_d_X
         self.vision_derived_data.in_contact = in_contact
 
     def update_cheat_ports_data(self):
