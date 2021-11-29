@@ -26,6 +26,13 @@ if constants.USE_NEW_MESHCAT:
     from manipulation.meshcat_cpp_utils import AddMeshcatTriad
 
 
+def get_attrs_from_class(classname):
+    """
+    Returns iterator containing all attributes of classname besides the builtin
+    ones.
+    """
+    return filter(lambda s: not s.startswith('__'), dir(classname))
+
 
 @dataclass
 class VisionDerivedData:
@@ -73,6 +80,33 @@ class VisionDerivedData:
     d_d_X: float = 0
 
 
+@dataclass
+class CheatPortsData:
+    """
+    Data which we cannot practically measure, but is helpful for constructing a
+    'perfect model' simulation.
+    """
+    F_OT: float = 0
+    F_ON: float = 0
+    tau_O: float = 0
+
+
+@dataclass
+class ManipulatorData:
+    """
+    Data about the manipulator itself.
+    """
+    q: np.ndarray = np.zeros((manipulator.data["nq"], 1))
+    v: np.ndarray = np.zeros((manipulator.data["nq"], 1))
+    tau_g: np.ndarray = np.zeros((manipulator.data["nq"], 1))
+    M: np.ndarray = np.zeros((manipulator.data["nq"], manipulator.data["nq"]))
+    J_translational: np.ndarray = np.zeros((3, manipulator.data["nq"]))
+    J_rotational: np.ndarray = np.zeros((3, manipulator.data["nq"]))
+    J: np.ndarray = np.zeros((6, manipulator.data["nq"]))
+    Cv: np.ndarray = np.zeros((manipulator.data["nq"], 1))
+    Jdot_qdot: np.ndarray = np.zeros((manipulator.data["nq"], 1))
+
+
 def stribeck(us, uk, v):
     '''
     Python version of
@@ -93,6 +127,7 @@ def step5(x):
     '''Python version of MultibodyPlant::StribeckModel::step5 method'''
     x3 = x * x * x
     return x3 * (10 + x * (6 * x - 15))
+
 
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
@@ -127,12 +162,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.contact_body_idx = contact_body_idx
         self.nq_manipulator = \
             self.manipulator_plant.get_actuation_input_port().size()
-        self.debug_keys = {
-            'd_theta_L', 'd_N', 'd_T', 'd_d_N', 'd_d_T', 'F_GT', 'F_GN',
-            'p_CN', 'p_CT', 'p_LN', 'p_LT', 'p_MConM', 'theta_L', 'mu_S',
-            'hats_T', 's_hat_X', 'theta_MX', 'theta_MY', 'theta_MZ',
-            'd_theta_MX', 'd_theta_MY', 'd_theta_MZ', 'F_OT', 'F_ON', 'tau_O'
-        }
 
         # ========================== CONTROLLER INIT ==========================
         # Control targets
@@ -153,7 +182,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.init_q = None
         self.t_contact_start =  None
         self.v_LN_integrator = 0
-        self.vision_derived_data = VisionDerivedData()
+        self.joint_centering_torque = None
 
         # Options
         self.use_simple_ctrl = options['use_simple_ctrl']
@@ -161,6 +190,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.measure_joint_wrench = options['measure_joint_wrench']
 
         # ============================== LOG INIT =============================
+        # Set up logs
         self.manipulator_acc_log = manipulator_acc_log
         # %DEBUG_APPEND%
         self.debug = defaultdict(list)
@@ -169,6 +199,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.jnt_frc_log.append(
             SpatialForce(np.zeros((3, 1)), np.zeros((3, 1))))
         self.contacts = []
+
+        # Set up dataclasses
+        self.vision_derived_data = VisionDerivedData()
+        self.cheat_ports_data = CheatPortsData()
+        self.manipulator_data = ManipulatorData()
 
         # ============================== DRAKE IO =============================
         # Input ports
@@ -227,7 +262,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         return in_contact
 
 
-    def evaluate_manipulator(self, state):
+    def update_manipulator_data(self, state):
         q = state[:self.nq_manipulator]
         v = state[self.nq_manipulator:]
         self.manipulator_plant.SetPositions(self.manipulator_plant_context, q)
@@ -236,7 +271,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         M = self.manipulator_plant.CalcMassMatrixViaInverseDynamics(self.manipulator_plant_context)
         Cv = np.expand_dims(self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context), 1)
 
-        tau_g = self.manipulator_plant.CalcGravityGeneralizedForces(self.manipulator_plant_context)
+        tau_g_raw = self.manipulator_plant.CalcGravityGeneralizedForces(
+            self.manipulator_plant_context)
+        tau_g = np.expand_dims(tau_g_raw, 1)
 
         contact_body = self.manipulator_plant.GetBodyByName(
             manipulator.data["contact_body_name"])
@@ -260,17 +297,18 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
 
-        self.debug['Jdot_qdot'].append(Jdot_qdot)
+        self.manipulator_data.q = q
+        self.manipulator_data.v = v
+        self.manipulator_data.tau_g = tau_g
+        self.manipulator_data.M = M
+        self.manipulator_data.Cv = Cv
+        self.manipulator_data.J = J
+        self.manipulator_data.Jdot_qdot = Jdot_qdot
+        self.manipulator_data.J_translational = J_translational
+        self.manipulator_data.J_rotational = J_rotational
 
-        ret = {
-            "q": q, "v": v, "tau_g": tau_g, "M": M, "Cv": Cv, "J": J,
-            "Jdot_qdot": Jdot_qdot, "J_translational": J_translational,
-            "J_rotational": J_rotational
-        }
-        return ret
 
-
-    def update_vision_inputs(self, pose_L, vel_L, pose_M, vel_M):
+    def update_vision_derived_data(self, pose_L, vel_L, pose_M, vel_M):
         # Load positions
         p_L = np.array([pose_L.translation()[0:3]]).T
         p_M = np.array([pose_M.translation()[0:3]]).T
@@ -412,22 +450,19 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.d_X = d_X
         self.vision_derived_data.d_d_X = d_d_X
 
-    def update_cheat_inputs(self):
+    def update_cheat_ports_data(self):
         jnt_frcs = self.jnt_frc_log[-1]
-        F_OT = jnt_frcs.translational()[1]
-        F_ON = jnt_frcs.translational()[2]
-        tau_O = jnt_frcs.rotational()[0]
-
-        self.F_OT = F_OT
-        self.F_ON = F_ON
-        self.tau_O = tau_O
+        self.cheat_ports_data.F_OT = jnt_frcs.translational()[1]
+        self.cheat_ports_data.F_ON = jnt_frcs.translational()[2]
+        self.cheat_ports_data.tau_O = jnt_frcs.rotational()[0]
 
     def update_debug(self):
-        for k in self.debug_keys:
-            try:
-                self.debug[k].append(getattr(self.vision_derived_data, k))
-            except AttributeError:
-                self.debug[k].append(getattr(self, k))
+        for k in get_attrs_from_class(VisionDerivedData):
+            self.debug[k].append(getattr(self.vision_derived_data, k))
+        for k in get_attrs_from_class(CheatPortsData):
+            self.debug[k].append(getattr(self.cheat_ports_data, k))
+        for k in get_attrs_from_class(ManipulatorData):
+            self.debug[k].append(getattr(self.manipulator_data, k))
 
     def simulate_vision(self, poses, vels):
         pose_L = poses[self.ll_idx]
@@ -454,129 +489,93 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         in_contact = self.process_contact_results(contact_results)
 
         # Process state
-        manipulator_values = self.evaluate_manipulator(state)
-        q = manipulator_values['q']
-        v = manipulator_values['v']
-        J = manipulator_values['J']
+        self.update_manipulator_data(state)
 
         # Book keeping
         if self.init_q is None:
-            self.init_q = q
-        dt = 0
-        if len(self.debug['times']) >= 2:
-            dt = self.debug['times'][-1] - self.debug['times'][-2]
+            self.init_q = self.manipulator_data.q
 
         # Precompute other inputs
         pose_L, vel_L, pose_M, vel_M = self.simulate_vision(poses, vels)
-        self.update_vision_inputs(pose_L, vel_L, pose_M, vel_M)
-        self.update_cheat_inputs()
+        self.update_vision_derived_data(pose_L, vel_L, pose_M, vel_M)
+        self.update_cheat_ports_data()
 
         if self.theta_MYd is None:
             self.theta_MYd = self.vision_derived_data.theta_MY
         if self.theta_MZd is None:
             self.theta_MZd = self.vision_derived_data.theta_MZ
 
-
         # Get torques
-        J_plus = np.linalg.pinv(J)
-        nullspace_basis = np.eye(self.nq_manipulator) - np.matmul(J_plus, J)
+        J_plus = np.linalg.pinv(self.manipulator_data.J)
+        nullspace_basis = np.eye(self.nq_manipulator) \
+            - np.matmul(J_plus, self.manipulator_data.J)
 
-        # Add a PD controller projected into the nullspace of the Jacobian that keeps us close to the nominal configuration
-        joint_centering_torque = np.matmul(nullspace_basis, self.K_centering*(self.init_q - q) + self.D_centering*(-v))
+        # Add a PD controller projected into the nullspace of the Jacobian that
+        # keeps us close to the nominal configuration
+        self.joint_centering_torque = np.expand_dims(np.matmul(
+            nullspace_basis,
+            self.K_centering*(self.init_q - self.manipulator_data.q) \
+                + self.D_centering*(-self.manipulator_data.v)), 1)
 
         if in_contact:
             if self.use_simple_ctrl:
-                tau_ctrl = self.get_simple_torque(joint_centering_torque=joint_centering_torque,
-                **manipulator_values)
+                tau_ctrl = self.get_simple_torque()
             else:
-                tau_ctrl = self.solve_manipulator_eqs(joint_centering_torque=joint_centering_torque,
-                **manipulator_values)
+                tau_ctrl = self.solve_manipulator_eqs()
         else:
-            tau_ctrl = self.get_pre_contact_control_torques(J)
+            tau_ctrl = self.get_pre_contact_control_torques()
 
         if self.use_simple_ctrl or (not in_contact):
             # %DEBUG_APPEND%
-            # Control inputs
-            self.debug["dd_d_Td"].append(0)
-            self.debug["a_LNd"].append(0)
-            self.debug["a_MX_d"].append(0)
-            self.debug["alpha_MXd"].append(0)
-            self.debug["alpha_MYd"].append(0)
-            self.debug["alpha_MZd"].append(0)
-            self.debug["dd_d_Nd"].append(0)
-
-            # Decision variables
-            self.debug["F_NM"].append(0)
-            self.debug["F_FMT"].append(0)
-            self.debug["F_FMX"].append(0)
-            self.debug["F_ContactMY"].append(0)
-            self.debug["F_ContactMZ"].append(0)
-            self.debug["F_NL"].append(0)
-            self.debug["F_FLT"].append(0)
-            self.debug["F_FLX"].append(0)
+            self.debug["dd_d_Td"].append(np.nan)
+            self.debug["a_LNd"].append(np.nan)
+            self.debug["a_MX_d"].append(np.nan)
+            self.debug["alpha_MXd"].append(np.nan)
+            self.debug["alpha_MYd"].append(np.nan)
+            self.debug["alpha_MZd"].append(np.nan)
+            self.debug["dd_d_Nd"].append(np.nan)
+            self.debug["F_FMT"].append(np.nan)
+            self.debug["F_FMX"].append(np.nan)
+            self.debug["F_FLT"].append(np.nan)
+            self.debug["F_FLX"].append(np.nan)
+            self.debug["F_NM"].append(np.nan)
+            self.debug["F_ContactMY"].append(np.nan)
+            self.debug["F_ContactMZ"].append(np.nan)
+            self.debug["F_NL"].append(np.nan)
             for i in range(self.nq_manipulator):
-                self.debug["tau_ctrl_" + str(i)].append(0)
-            self.debug["a_MX"].append(0)
-            self.debug["a_MT"].append(0)
-            self.debug["a_MY"].append(0)
-            self.debug["a_MZ"].append(0)
-            self.debug["a_MN"].append(0)
-            self.debug["a_LT"].append(0)
-            self.debug["a_LN"].append(0)
-            self.debug["alpha_MX"].append(0)
-            self.debug["alpha_MY"].append(0)
-            self.debug["alpha_MZ"].append(0)
-            self.debug["dd_theta_L"].append(0)
-            self.debug["dd_d_N"].append(0)
-            self.debug["dd_d_T"].append(0)
+                self.debug["tau_ctrl_" + str(i)].append(np.nan)
+            self.debug["a_MX"].append(np.nan)
+            self.debug["a_MT"].append(np.nan)
+            self.debug["a_MY"].append(np.nan)
+            self.debug["a_MZ"].append(np.nan)
+            self.debug["a_MN"].append(np.nan)
+            self.debug["a_LT"].append(np.nan)
+            self.debug["a_LN"].append(np.nan)
+            self.debug["alpha_MX"].append(np.nan)
+            self.debug["alpha_MY"].append(np.nan)
+            self.debug["alpha_MZ"].append(np.nan)
+            self.debug["dd_theta_L"].append(np.nan)
+            self.debug["dd_d_N"].append(np.nan)
+            self.debug["dd_d_T"].append(np.nan)
             for i in range(self.nq_manipulator):
-                self.debug["ddq_" + str(i)].append(0)
-            self.debug['d_theta_L'].append(np.nan)
-            self.debug['d_N'].append(np.nan)
-            self.debug['d_T'].append(np.nan)
-            self.debug['d_d_N'].append(np.nan)
-            self.debug['d_d_T'].append(np.nan)
-            self.debug['F_GT'].append(np.nan)
-            self.debug['F_GN'].append(np.nan)
-            self.debug['F_OT'].append(np.nan)
-            self.debug['F_ON'].append(np.nan)
-            self.debug['tau_O'].append(np.nan)
-            self.debug['p_CN'].append(np.nan)
-            self.debug['p_CT'].append(np.nan)
-            self.debug['p_LN'].append(np.nan)
-            self.debug['p_LT'].append(np.nan)
-            self.debug['p_MConM'].append([[np.nan]]*3)
-            self.debug['theta_L'].append(np.nan)
-            self.debug['mu_S'].append(np.nan)
-            self.debug['hats_T'].append(np.nan)
-            self.debug['s_hat_X'].append(np.nan)
-            self.debug['Jdot_qdot'].append(np.array([[np.nan]]*6))
-            self.debug['theta_MX'].append(np.nan)
-            self.debug['theta_MY'].append(np.nan)
-            self.debug['theta_MZ'].append(np.nan)
-            self.debug['d_theta_MX'].append(np.nan)
-            self.debug['d_theta_MY'].append(np.nan)
-            self.debug['d_theta_MZ'].append(np.nan)
+                self.debug["ddq_" + str(i)].append(np.nan)
             self.debug["theta_MXd"].append(np.nan)
 
-        tau_out = tau_ctrl - manipulator_values['tau_g'] + joint_centering_torque
+        tau_out = tau_ctrl - self.manipulator_data.tau_g \
+            + self.joint_centering_torque
         output.SetFromVector(tau_out)
 
         self.update_debug()
 
         # Debug
         # %DEBUG_APPEND%
-        self.debug["tau_g"].append(manipulator_values['tau_g'])
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
-        self.debug['J'].append(J)
 
         self.debug['in_contact'].append(in_contact)
         # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
-        self.debug["M"].append(manipulator_values['M'])
-        self.debug["C"].append(manipulator_values['Cv'])
-        self.debug["joint_centering_torque"].append(joint_centering_torque)
+        self.debug["joint_centering_torque"].append(self.joint_centering_torque)
 
         # X_PT = RigidTransform()
         # if contact_point is not None:
@@ -594,7 +593,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                         length=0.15, radius=0.006, X_PT=self.vision_derived_data.pose_L)
 
 
-    def get_pre_contact_control_torques(self, J):
+    def get_pre_contact_control_torques(self):
         # TODO: add controller for hitting correct orientation
         # Proportional control for moving towards the link
         v_MNd = self.pre_contact_v_MNd
@@ -605,10 +604,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         if self.debug['times'][-1] > paper.settling_time:
             F_d[3:] += self.vision_derived_data.N_hat * F_CN
 
-        tau_ctrl = (J.T@F_d).flatten()
+        tau_ctrl = self.manipulator_data.J.T@F_d
         return tau_ctrl
 
-    def get_simple_torque(self, J_translational, J_rotational, F_GN, **kwargs):
+    def get_simple_torque(self):
         if len(self.debug["times"]) > 2:
             dt = self.debug["times"][-1] - self.debug["times"][-2]
         else:
@@ -616,7 +615,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.v_LN_integrator += dt*(self.v_LNd - self.vision_derived_data.v_LN)
 
         F_ON_approx = -(self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L)/(self.w_L/2)
-        ff_term = -F_GN - F_ON_approx
+        ff_term = -self.vision_derived_data.F_GN - F_ON_approx
         
         F_CT = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
         F_CN = 10*(self.v_LNd - self.vision_derived_data.v_LN) + 0*self.v_LN_integrator + ff_term
@@ -629,16 +628,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         F = F_CT*self.vision_derived_data.T_hat + F_CN*self.vision_derived_data.N_hat + F_CX * np.array([[1, 0, 0]]).T
         tau = np.array([[tau_X, tau_Y, tau_Z]]).T
 
-        tau_ctrl = np.matmul(J_translational.T, F) + np.matmul(J_rotational.T, tau)
-        return tau_ctrl.flatten()
+        tau_ctrl = np.matmul(self.manipulator_data.J_translational.T, F) \
+            + np.matmul(self.manipulator_data.J_rotational.T, tau)
+        return tau_ctrl
 
-    def solve_manipulator_eqs(self, Jdot_qdot, J_translational, J_rotational,
-            J, M, Cv, tau_g, joint_centering_torque, **kwargs):
-        
-        tau_g = np.expand_dims(tau_g, 1)
-        assert tau_g.shape == (self.nq_manipulator, 1)
-        joint_centering_torque = np.expand_dims(joint_centering_torque, 1)
-        assert joint_centering_torque.shape == (self.nq_manipulator, 1)
+    def solve_manipulator_eqs(self):
+        assert self.manipulator_data.tau_g.shape == (self.nq_manipulator, 1)
+        assert self.joint_centering_torque.shape == (self.nq_manipulator, 1)
 
         ## 1. Define an instance of MathematicalProgram
         prog = MathematicalProgram()
@@ -683,7 +679,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         alpha_MX = prog.NewContinuousVariables(1, 1, name="alpha_MX")
         alpha_MY = prog.NewContinuousVariables(1, 1, name="alpha_MY")
         alpha_MZ = prog.NewContinuousVariables(1, 1, name="alpha_MZ")
-        alpha_a_MXYZ = np.array([alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
+        alpha_a_MXYZ = np.array(
+            [alpha_MX, alpha_MY, alpha_MZ, a_MX, a_MY, a_MZ])[:,:,0]
 
         # Derived accelerations
         dd_theta_L = prog.NewContinuousVariables(1, 1, name="dd_theta_L")
@@ -733,19 +730,21 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         for i in range(6):
             lhs_i = alpha_a_MXYZ[i,0]
             assert not hasattr(lhs_i, "shape")
-            rhs_i = (Jdot_qdot + np.matmul(J, ddq))[i,0]
+            rhs_i = (self.manipulator_data.Jdot_qdot + np.matmul(self.manipulator_data.J, ddq))[i,0]
             assert not hasattr(rhs_i, "shape")
             prog.AddConstraint(lhs_i == rhs_i).evaluator().set_description(
                 "Relate manipulator and end effector with joint accelerations " + str(i)) 
 
-        tau_contact_trn = np.matmul(J_translational.T, F_ContactM_XYZ)
-        tau_contact_rot = np.matmul(J_rotational.T, np.cross(self.vision_derived_data.p_MConM, F_ContactM_XYZ, axis=0))
+        tau_contact_trn = np.matmul(
+            self.manipulator_data.J_translational.T, F_ContactM_XYZ)
+        tau_contact_rot = np.matmul(
+            self.manipulator_data.J_rotational.T, np.cross(self.vision_derived_data.p_MConM, F_ContactM_XYZ, axis=0))
         tau_contact = tau_contact_trn + tau_contact_rot
-        tau_out = tau_ctrl - tau_g + joint_centering_torque
+        tau_out = tau_ctrl - self.manipulator_data.tau_g + self.joint_centering_torque
         for i in range(self.nq_manipulator):
-            M_ddq_row_i = (np.matmul(M, ddq) + Cv)[i,0]
+            M_ddq_row_i = (np.matmul(self.manipulator_data.M, ddq) + self.manipulator_data.Cv)[i,0]
             assert not hasattr(M_ddq_row_i, "shape")
-            tau_i = (tau_g + tau_contact + tau_out)[i,0]
+            tau_i = (self.manipulator_data.tau_g + tau_contact + tau_out)[i,0]
             assert not hasattr(tau_i, "shape")
             prog.AddConstraint(M_ddq_row_i == tau_i).evaluator().set_description("Manipulator equations " + str(i))
         
@@ -777,6 +776,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         tau_ctrl_result = []
         for i in range(self.nq_manipulator):
             tau_ctrl_result.append(result.GetSolution()[prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+        tau_ctrl_result = np.expand_dims(tau_ctrl_result, 1)
 
         # %DEBUG_APPEND%
         # control effort
