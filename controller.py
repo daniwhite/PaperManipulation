@@ -78,6 +78,7 @@ class VisionDerivedData:
     s_hat_X: float = 0
     d_X: float = 0
     d_d_X: float = 0
+    in_contact: bool = False
 
 
 @dataclass
@@ -162,6 +163,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.contact_body_idx = contact_body_idx
         self.nq_manipulator = \
             self.manipulator_plant.get_actuation_input_port().size()
+        self.d_N_thresh = -5e-4
 
         # ========================== CONTROLLER INIT ==========================
         # Control targets
@@ -229,39 +231,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.meshcat = meshcat
 
 
-    def process_contact_results(self, contact_results):
-        """
-        Process results from contact input port.
-
-        Sets in_contact.
-        """
-        raw_in_contact = False
-        self.contacts.append([])
-        for i in range(contact_results.num_point_pair_contacts()):
-            point_pair_contact_info = \
-                contact_results.point_pair_contact_info(i)
-
-            a_idx = int(point_pair_contact_info.bodyA_index())
-            b_idx = int(point_pair_contact_info.bodyB_index())
-            self.contacts[-1].append([a_idx, b_idx])
-
-            if ((a_idx == self.ll_idx) and (b_idx == self.contact_body_idx)):
-                raw_in_contact = True
-
-            if ((a_idx == self.contact_body_idx) and (b_idx == self.ll_idx)):
-                raw_in_contact = True
-
-        # Get contact times
-        if raw_in_contact:
-            if self.t_contact_start is None:
-                self.t_contact_start = self.debug['times'][-1]
-        else:
-            self.t_contact_start =  None
-        in_contact = raw_in_contact and self.debug['times'][-1] - self.t_contact_start > 0.5
-
-        return in_contact
-
-
     def update_manipulator_data(self, state):
         q = state[:self.nq_manipulator]
         v = state[self.nq_manipulator:]
@@ -292,7 +261,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.manipulator_plant.world_frame(),
             self.manipulator_plant.world_frame())
 
-        Jdot_qdot = np.expand_dims(np.array(list(Jdot_qdot_raw.rotational()) + list(Jdot_qdot_raw.translational())), 1)
+        Jdot_qdot = np.expand_dims(np.array(list(Jdot_qdot_raw.rotational()) \
+            + list(Jdot_qdot_raw.translational())), 1)
 
         J_rotational = J[:3,:]
         J_translational = J[3:,:]
@@ -389,7 +359,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
         v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
 
-        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*self.r - v_LT + v_MT + d_theta_L*d_N
+        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*self.r - v_LT + v_MT \
+            + d_theta_L*d_N
         d_d_N = -d_theta_L*self.w_L/2-v_LN+v_MN-d_theta_L*d_T
         d_d_X = v_WConM[0]
 
@@ -409,6 +380,16 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         stribeck_mu = stribeck(1, 1, s_S/self.v_stiction)
         mu_S = stribeck_mu
+
+        # Calculate whether we are in contact
+        raw_in_contact = d_N > self.d_N_thresh
+        if raw_in_contact:
+            if self.t_contact_start is None:
+                self.t_contact_start = self.debug['times'][-1]
+        else:
+            self.t_contact_start =  None
+        in_contact = raw_in_contact and self.debug['times'][-1] \
+            - self.t_contact_start > 0.5
 
         self.vision_derived_data.d_theta_L = d_theta_L
         self.vision_derived_data.p_LN = p_LN
@@ -449,6 +430,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.s_hat_X = s_hat_X
         self.vision_derived_data.d_X = d_X
         self.vision_derived_data.d_d_X = d_d_X
+        self.vision_derived_data.in_contact = in_contact
 
     def update_cheat_ports_data(self):
         jnt_frcs = self.jnt_frc_log[-1]
@@ -475,7 +457,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
     def CalcOutput(self, context, output):
         ## Load inputs
-        # This input put is already restricted to the manipulator, but it includes both q and v
+        # This input put is already restricted to the manipulator, but it
+        # includes both q and v
         state = self.get_input_port(0).Eval(context)
         poses = self.get_input_port(1).Eval(context)
         vels = self.get_input_port(2).Eval(context)
@@ -484,9 +467,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # Get time
         # %DEBUG_APPEND%
         self.debug['times'].append(context.get_time())
-
-        # Process contact
-        in_contact = self.process_contact_results(contact_results)
 
         # Process state
         self.update_manipulator_data(state)
@@ -517,7 +497,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.K_centering*(self.init_q - self.manipulator_data.q) \
                 + self.D_centering*(-self.manipulator_data.v)), 1)
 
-        if in_contact:
+        if self.vision_derived_data.in_contact:
             if self.use_simple_ctrl:
                 tau_ctrl = self.get_simple_torque()
             else:
@@ -525,7 +505,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         else:
             tau_ctrl = self.get_pre_contact_control_torques()
 
-        if self.use_simple_ctrl or (not in_contact):
+        if self.use_simple_ctrl or (not self.vision_derived_data.in_contact):
             # %DEBUG_APPEND%
             self.debug["dd_d_Td"].append(np.nan)
             self.debug["a_LNd"].append(np.nan)
@@ -571,11 +551,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # %DEBUG_APPEND%
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
-
-        self.debug['in_contact'].append(in_contact)
-        # self.debug['d_d_N_sqr_sum'].append(d_d_N_sqr_sum)
         self.debug['v_LNds'].append(self.v_LNd)
-        self.debug["joint_centering_torque"].append(self.joint_centering_torque)
+        self.debug["joint_centering_torque"].append(
+            self.joint_centering_torque)
 
         # X_PT = RigidTransform()
         # if contact_point is not None:
@@ -588,9 +566,11 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         #     X_PT.set_translation(contact_point)
         if constants.USE_NEW_MESHCAT:
             AddMeshcatTriad(self.meshcat, "axes/" + "pose_M",
-                        length=0.15, radius=0.006, X_PT=self.vision_derived_data.pose_M)
+                        length=0.15, radius=0.006,
+                        X_PT=self.vision_derived_data.pose_M)
             AddMeshcatTriad(self.meshcat, "axes/" + "pose_L",
-                        length=0.15, radius=0.006, X_PT=self.vision_derived_data.pose_L)
+                        length=0.15, radius=0.006,
+                        X_PT=self.vision_derived_data.pose_L)
 
 
     def get_pre_contact_control_torques(self):
