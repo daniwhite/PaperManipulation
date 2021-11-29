@@ -177,11 +177,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.v_LN_integrator = 0
         self.joint_centering_torque = None
 
-        # Options
-        self.use_simple_ctrl = options['use_simple_ctrl']
-        self.model_friction = options['model_friction']
-        self.measure_joint_wrench = options['measure_joint_wrench']
-
         # ============================== LOG INIT =============================
         # Set up logs
         self.manipulator_acc_log = manipulator_acc_log
@@ -437,6 +432,12 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         return pose_L, vel_L, pose_M, vel_M
 
+    def get_contact_control_torques(self):
+        raise NotImplementedError
+
+    def non_contact_debug_update(self):
+        raise NotImplementedError
+
     def CalcOutput(self, context, output):
         ## Load inputs
         # This input put is already restricted to the manipulator, but it
@@ -480,48 +481,13 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
                 + self.D_centering*(-self.manipulator_data.v)), 1)
 
         if self.vision_derived_data.in_contact:
-            if self.use_simple_ctrl:
-                tau_ctrl = self.get_simple_torque()
-            else:
-                tau_ctrl = self.solve_manipulator_eqs()
+            tau_ctrl = self.get_contact_control_torques()
+            assert tau_ctrl.shape == (self.nq_manipulator, 1)
         else:
             tau_ctrl = self.get_pre_contact_control_torques()
 
-        if self.use_simple_ctrl or (not self.vision_derived_data.in_contact):
-            # %DEBUG_APPEND%
-            self.debug["dd_d_Td"].append(np.nan)
-            self.debug["a_LNd"].append(np.nan)
-            self.debug["a_MX_d"].append(np.nan)
-            self.debug["alpha_MXd"].append(np.nan)
-            self.debug["alpha_MYd"].append(np.nan)
-            self.debug["alpha_MZd"].append(np.nan)
-            self.debug["dd_d_Nd"].append(np.nan)
-            self.debug["F_FMT"].append(np.nan)
-            self.debug["F_FMX"].append(np.nan)
-            self.debug["F_FLT"].append(np.nan)
-            self.debug["F_FLX"].append(np.nan)
-            self.debug["F_NM"].append(np.nan)
-            self.debug["F_ContactMY"].append(np.nan)
-            self.debug["F_ContactMZ"].append(np.nan)
-            self.debug["F_NL"].append(np.nan)
-            for i in range(self.nq_manipulator):
-                self.debug["tau_ctrl_" + str(i)].append(np.nan)
-            self.debug["a_MX"].append(np.nan)
-            self.debug["a_MT"].append(np.nan)
-            self.debug["a_MY"].append(np.nan)
-            self.debug["a_MZ"].append(np.nan)
-            self.debug["a_MN"].append(np.nan)
-            self.debug["a_LT"].append(np.nan)
-            self.debug["a_LN"].append(np.nan)
-            self.debug["alpha_MX"].append(np.nan)
-            self.debug["alpha_MY"].append(np.nan)
-            self.debug["alpha_MZ"].append(np.nan)
-            self.debug["dd_theta_L"].append(np.nan)
-            self.debug["dd_d_N"].append(np.nan)
-            self.debug["dd_d_T"].append(np.nan)
-            for i in range(self.nq_manipulator):
-                self.debug["ddq_" + str(i)].append(np.nan)
-            self.debug["theta_MXd"].append(np.nan)
+        if not self.vision_derived_data.in_contact:
+            self.non_contact_debug_update()
 
         tau_out = tau_ctrl - self.manipulator_data.tau_g \
             + self.joint_centering_torque
@@ -569,32 +535,41 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         tau_ctrl = self.manipulator_data.J.T@F_d
         return tau_ctrl
 
-    def get_simple_torque(self):
-        if len(self.debug["times"]) > 2:
-            dt = self.debug["times"][-1] - self.debug["times"][-2]
-        else:
-            dt = 0
-        self.v_LN_integrator += dt*(self.v_LNd - self.vision_derived_data.v_LN)
 
-        F_ON_approx = -(self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L)/(self.w_L/2)
-        ff_term = -self.vision_derived_data.F_GN - F_ON_approx
-        
-        F_CT = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
-        F_CN = 10*(self.v_LNd - self.vision_derived_data.v_LN) + 0*self.v_LN_integrator + ff_term
-        F_CX = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
-        theta_MXd = self.vision_derived_data.theta_L
-        tau_X = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
-        tau_Y = 10*(self.theta_MYd - self.vision_derived_data.theta_MY) - 5*self.vision_derived_data.d_theta_MY
-        tau_Z = 10*(self.theta_MZd - self.vision_derived_data.theta_MZ) - 5*self.vision_derived_data.d_theta_MZ
 
-        F = F_CT*self.vision_derived_data.T_hat + F_CN*self.vision_derived_data.N_hat + F_CX * np.array([[1, 0, 0]]).T
-        tau = np.array([[tau_X, tau_Y, tau_Z]]).T
+class FoldingPositionController:
+    def __init__(self):
+        pass
 
-        tau_ctrl = np.matmul(self.manipulator_data.J_translational.T, F) \
-            + np.matmul(self.manipulator_data.J_rotational.T, tau)
-        return tau_ctrl
+    def get_contact_control_torques(self):
+        pass
 
-    def solve_manipulator_eqs(self):
+    def non_contact_debug_update(self):
+        pass
+
+
+class FoldingImpedanceController:
+    def __init__(self):
+        pass
+
+    def get_contact_control_torques(self):
+        pass
+
+    def non_contact_debug_update(self):
+        pass
+
+
+class FoldingInverseDynamicsController(FoldingController):
+    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
+            options, sys_params, jnt_frc_log):
+        super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
+            options, sys_params, jnt_frc_log)
+
+        # Options
+        self.model_friction = options['model_friction']
+        self.measure_joint_wrench = options['measure_joint_wrench']
+
+    def get_contact_control_torques(self):
         assert self.manipulator_data.tau_g.shape == (self.nq_manipulator, 1)
         assert self.joint_centering_torque.shape == (self.nq_manipulator, 1)
 
@@ -785,3 +760,74 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug["theta_MXd"].append(theta_MXd)
 
         return tau_ctrl_result
+
+    def non_contact_debug_update(self):
+        # %DEBUG_APPEND%
+        self.debug["dd_d_Td"].append(np.nan)
+        self.debug["a_LNd"].append(np.nan)
+        self.debug["a_MX_d"].append(np.nan)
+        self.debug["alpha_MXd"].append(np.nan)
+        self.debug["alpha_MYd"].append(np.nan)
+        self.debug["alpha_MZd"].append(np.nan)
+        self.debug["dd_d_Nd"].append(np.nan)
+        self.debug["F_FMT"].append(np.nan)
+        self.debug["F_FMX"].append(np.nan)
+        self.debug["F_FLT"].append(np.nan)
+        self.debug["F_FLX"].append(np.nan)
+        self.debug["F_NM"].append(np.nan)
+        self.debug["F_ContactMY"].append(np.nan)
+        self.debug["F_ContactMZ"].append(np.nan)
+        self.debug["F_NL"].append(np.nan)
+        for i in range(self.nq_manipulator):
+            self.debug["tau_ctrl_" + str(i)].append(np.nan)
+        self.debug["a_MX"].append(np.nan)
+        self.debug["a_MT"].append(np.nan)
+        self.debug["a_MY"].append(np.nan)
+        self.debug["a_MZ"].append(np.nan)
+        self.debug["a_MN"].append(np.nan)
+        self.debug["a_LT"].append(np.nan)
+        self.debug["a_LN"].append(np.nan)
+        self.debug["alpha_MX"].append(np.nan)
+        self.debug["alpha_MY"].append(np.nan)
+        self.debug["alpha_MZ"].append(np.nan)
+        self.debug["dd_theta_L"].append(np.nan)
+        self.debug["dd_d_N"].append(np.nan)
+        self.debug["dd_d_T"].append(np.nan)
+        for i in range(self.nq_manipulator):
+            self.debug["ddq_" + str(i)].append(np.nan)
+        self.debug["theta_MXd"].append(np.nan)
+
+
+class FoldingSimpleController(FoldingController):
+    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
+            options, sys_params, jnt_frc_log):
+        super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
+            options, sys_params, jnt_frc_log)
+
+    def get_contact_control_torques(self):
+        if len(self.debug["times"]) > 2:
+            dt = self.debug["times"][-1] - self.debug["times"][-2]
+        else:
+            dt = 0
+        self.v_LN_integrator += dt*(self.v_LNd - self.vision_derived_data.v_LN)
+
+        F_ON_approx = -(self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L)/(self.w_L/2)
+        ff_term = -self.vision_derived_data.F_GN - F_ON_approx
+        
+        F_CT = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
+        F_CN = 10*(self.v_LNd - self.vision_derived_data.v_LN) + 0*self.v_LN_integrator + ff_term
+        F_CX = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
+        theta_MXd = self.vision_derived_data.theta_L
+        tau_X = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
+        tau_Y = 10*(self.theta_MYd - self.vision_derived_data.theta_MY) - 5*self.vision_derived_data.d_theta_MY
+        tau_Z = 10*(self.theta_MZd - self.vision_derived_data.theta_MZ) - 5*self.vision_derived_data.d_theta_MZ
+
+        F = F_CT*self.vision_derived_data.T_hat + F_CN*self.vision_derived_data.N_hat + F_CX * np.array([[1, 0, 0]]).T
+        tau = np.array([[tau_X, tau_Y, tau_Z]]).T
+
+        tau_ctrl = np.matmul(self.manipulator_data.J_translational.T, F) \
+            + np.matmul(self.manipulator_data.J_rotational.T, tau)
+        return tau_ctrl
+
+    def non_contact_debug_update(self):
+        pass
