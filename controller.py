@@ -17,7 +17,7 @@ from pydrake.multibody.tree import JacobianWrtVariable
 from pydrake.all import (
     MathematicalProgram, Solve, eq, \
     BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, \
-    SpatialForce, RigidTransform, RollPitchYaw \
+    SpatialForce, RigidTransform, RollPitchYaw, RotationMatrix \
 )
 
 if constants.USE_NEW_MESHCAT:
@@ -43,10 +43,8 @@ class VisionDerivedData:
     N_hat: np.ndarray = np.zeros((3,1))
     theta_L: float = 0
     d_theta_L: float = 0
-    pose_L: np.ndarray = np.zeros((3,1))
     p_LN: float = 0
     p_LT: float = 0
-    pose_M: np.ndarray = np.zeros((3,1))
     v_LN: float = 0
     v_MN: float = 0
     theta_MX: float = 0
@@ -206,6 +204,23 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
 
+        self.DeclareVectorInputPort(
+            "pose_L_translational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "pose_L_rotational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "vel_L_translational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "vel_L_rotational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "pose_M_translational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "pose_M_rotational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "vel_M_translational", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "vel_M_rotational", pydrake.systems.framework.BasicVector(3))
+
         # Output ports
         self.DeclareVectorOutputPort(
             "actuation", pydrake.systems.framework.BasicVector(
@@ -263,33 +278,40 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.manipulator_data.J_translational = J_translational
         self.manipulator_data.J_rotational = J_rotational
 
-
-    def update_vision_derived_data(self, pose_L, vel_L, pose_M, vel_M):
-        # Load positions
-        p_L = np.array([pose_L.translation()[0:3]]).T
-        p_M = np.array([pose_M.translation()[0:3]]).T
+    def update_vision_derived_data(self, context):
+        p_L = np.array(
+            [self.GetInputPort("pose_L_translational").Eval(context)[0:3]]).T
+        p_M = np.array(
+            [self.GetInputPort("pose_M_translational").Eval(context)[0:3]]).T
         
-        R = pose_L.rotation()
+        rot_vec_L = np.array(
+            [self.GetInputPort("pose_L_rotational").Eval(context)[0:3]]).T
+        rot_vec_M = np.array(
+            [self.GetInputPort("pose_M_rotational").Eval(context)[0:3]]).T
 
-        rot_vec_L = RollPitchYaw(pose_L.rotation()).vector()
+        v_L = np.array(
+            [self.GetInputPort("vel_L_translational").Eval(context)[0:3]]).T
+        v_M = np.array(
+            [self.GetInputPort("vel_M_translational").Eval(context)[0:3]]).T
+
+        omega_vec_L = np.array(
+            [self.GetInputPort("vel_L_rotational").Eval(context)[0:3]]).T
+        omega_vec_M = np.array(
+            [self.GetInputPort("vel_M_rotational").Eval(context)[0:3]]).T
+
+        R = RotationMatrix(RollPitchYaw(rot_vec_L)).matrix()
+
         theta_L = rot_vec_L[0]
-
-        rot_vec_M = RollPitchYaw(pose_M.rotation()).vector()
         theta_MX = rot_vec_M[0]
         theta_MY = rot_vec_M[1]
         theta_MZ = rot_vec_M[2]
 
-        # Load velocities
-        v_L = np.array([vel_L.translational()[0:3]]).T
-        v_M = np.array([vel_M.translational()[0:3]]).T
-
-        d_theta_L = vel_L.rotational()[0]
+        d_theta_L = omega_vec_L.flatten()[0]
         omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
 
-        d_theta_MX = vel_M.rotational()[0]
-        d_theta_MY = vel_M.rotational()[1]
-        d_theta_MZ = vel_M.rotational()[2]
-        omega_vec_M = vel_M.rotational()
+        d_theta_MX = omega_vec_M.flatten()[0]
+        d_theta_MY = omega_vec_M.flatten()[1]
+        d_theta_MZ = omega_vec_M.flatten()[2]
 
         # Define unit vectors
         y_hat = np.array([[0, 1, 0]]).T
@@ -381,10 +403,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.N_hat = N_hat
         self.vision_derived_data.theta_L = theta_L
         self.vision_derived_data.d_theta_L = d_theta_L
-        self.vision_derived_data.pose_L = pose_L
         self.vision_derived_data.p_LN = p_LN
         self.vision_derived_data.p_LT = p_LT
-        self.vision_derived_data.pose_M = pose_M
         self.vision_derived_data.v_LN = v_LN
         self.vision_derived_data.v_MN = v_MN
         self.vision_derived_data.theta_MX = theta_MX
@@ -423,15 +443,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         for k in get_attrs_from_class(ManipulatorData):
             self.debug[k].append(getattr(self.manipulator_data, k))
 
-    def simulate_vision(self, poses, vels):
-        pose_L = poses[self.ll_idx]
-        vel_L = vels[self.ll_idx]
-
-        pose_M = poses[self.contact_body_idx]
-        vel_M = vels[self.contact_body_idx]
-
-        return pose_L, vel_L, pose_M, vel_M
-
     def get_contact_control_torques(self):
         raise NotImplementedError
 
@@ -459,8 +470,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
             self.init_q = self.manipulator_data.q
 
         # Precompute other inputs
-        pose_L, vel_L, pose_M, vel_M = self.simulate_vision(poses, vels)
-        self.update_vision_derived_data(pose_L, vel_L, pose_M, vel_M)
+        self.update_vision_derived_data(context)
         self.update_cheat_ports_data()
 
         if self.theta_MYd is None:
@@ -502,24 +512,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['v_LNds'].append(self.v_LNd)
         self.debug["joint_centering_torque"].append(
             self.joint_centering_torque)
-
-        # X_PT = RigidTransform()
-        # if contact_point is not None:
-        #     z_hat = np.array([[0, 0, 1]]).T
-        #     axis = np.cross(N_hat, z_hat, axis=0)
-        #     axis /= np.sqrt(axis.T@axis)
-        #     angle = np.arccos(np.matmul(N_hat.T, z_hat))
-        #     angle *= np.sign(N_hat.T@z_hat)
-        #     X_PT.set_rotation(AngleAxis(angle=angle, axis=axis))
-        #     X_PT.set_translation(contact_point)
-        if constants.USE_NEW_MESHCAT:
-            AddMeshcatTriad(self.meshcat, "axes/" + "pose_M",
-                        length=0.15, radius=0.006,
-                        X_PT=self.vision_derived_data.pose_M)
-            AddMeshcatTriad(self.meshcat, "axes/" + "pose_L",
-                        length=0.15, radius=0.006,
-                        X_PT=self.vision_derived_data.pose_L)
-
 
     def get_pre_contact_control_torques(self):
         # TODO: add controller for hitting correct orientation
