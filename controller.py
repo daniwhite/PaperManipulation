@@ -142,6 +142,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.w_L = sys_params['w_L']
         self.h_L = paper.PAPER_HEIGHT
         self.m_L = sys_params['m_L']
+        self.m_M = sys_params['m_M']
         self.b_J = sys_params['b_J']
         self.k_J = sys_params['k_J']
         self.g = sys_params['g']
@@ -158,8 +159,8 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # ========================== CONTROLLER INIT ==========================
         # Control targets
-        self.d_Td = -0.03 #-0.12
-        self.v_LNd = 0.1
+        self.d_Td = -self.w_L/2
+        self.d_theta_Ld = 0.5
         self.d_Xd = 0
         self.pre_contact_v_MNd = 0.1
         self.theta_MYd = None
@@ -171,10 +172,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.pre_contact_Kp = 10
 
         # Intermediary variables
-        self.last_v_LN = 0
         self.init_q = None
         self.t_contact_start =  None
-        self.v_LN_integrator = 0
+        self.d_theta_L_integrator = 0
         self.joint_centering_torque = None
 
         # ============================== LOG INIT =============================
@@ -499,7 +499,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # %DEBUG_APPEND%
         self.debug['tau_ctrl'].append(tau_ctrl)
         self.debug['tau_out'].append(tau_out)
-        self.debug['v_LNds'].append(self.v_LNd)
+        self.debug['d_theta_Lds'].append(self.d_theta_Ld)
         self.debug["joint_centering_torque"].append(
             self.joint_centering_torque)
 
@@ -693,7 +693,7 @@ class FoldingInverseDynamicsController(FoldingController):
 
         # Calculate desired values
         dd_d_Td = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
-        a_LNd = 10*(self.v_LNd - self.vision_derived_data.v_LN)
+        dd_theta_Ld = 10*(self.d_theta_Ld - self.vision_derived_data.d_theta_L)
         a_MX_d = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
         theta_MXd = self.vision_derived_data.theta_L
         alpha_MXd = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
@@ -701,7 +701,7 @@ class FoldingInverseDynamicsController(FoldingController):
         alpha_MZd = 10*(self.theta_MZd - self.vision_derived_data.theta_MZ) - 5*self.vision_derived_data.d_theta_MZ
         dd_d_Nd = 0
         prog.AddConstraint(dd_d_T[0,0] == dd_d_Td).evaluator().set_description("Desired dd_d_Td constraint" + str(i))
-        prog.AddConstraint(a_LN[0,0] == a_LNd).evaluator().set_description("Desired a_LN constraint" + str(i))
+        prog.AddConstraint(dd_theta_L[0,0] == dd_theta_Ld).evaluator().set_description("Desired a_LN constraint" + str(i))
         prog.AddConstraint(a_MX[0,0] == a_MX_d).evaluator().set_description("Desired a_MX constraint" + str(i))
         prog.AddConstraint(alpha_MX[0,0] == alpha_MXd).evaluator().set_description("Desired alpha_MX constraint" + str(i))
         prog.AddConstraint(alpha_MY[0,0] == alpha_MYd).evaluator().set_description("Desired alpha_MY constraint" + str(i))
@@ -718,7 +718,7 @@ class FoldingInverseDynamicsController(FoldingController):
         # %DEBUG_APPEND%
         # control effort
         self.debug["dd_d_Td"].append(dd_d_Td)
-        self.debug["a_LNd"].append(a_LNd)
+        self.debug["dd_theta_Ld"].append(dd_theta_Ld)
         self.debug["a_MX_d"].append(a_MX_d)
         self.debug["alpha_MXd"].append(alpha_MXd)
         self.debug["alpha_MYd"].append(alpha_MYd)
@@ -764,7 +764,7 @@ class FoldingInverseDynamicsController(FoldingController):
     def non_contact_debug_update(self):
         # %DEBUG_APPEND%
         self.debug["dd_d_Td"].append(np.nan)
-        self.debug["a_LNd"].append(np.nan)
+        self.debug["dd_theta_Ld"].append(np.nan)
         self.debug["a_MX_d"].append(np.nan)
         self.debug["alpha_MXd"].append(np.nan)
         self.debug["alpha_MYd"].append(np.nan)
@@ -809,13 +809,14 @@ class FoldingSimpleController(FoldingController):
             dt = self.debug["times"][-1] - self.debug["times"][-2]
         else:
             dt = 0
-        self.v_LN_integrator += dt*(self.v_LNd - self.vision_derived_data.v_LN)
+        self.d_theta_L_integrator += dt*(self.d_theta_Ld - self.vision_derived_data.d_theta_L)
 
-        F_ON_approx = -(self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L)/(self.w_L/2)
-        ff_term = -self.vision_derived_data.F_GN - F_ON_approx
+        tau_O_est = -self.k_J*self.vision_derived_data.theta_L - self.b_J*self.vision_derived_data.d_theta_L
+
+        ff_term = -self.vision_derived_data.F_GN - tau_O_est/(self.w_L/2)
         
         F_CT = 1000*(self.d_Td - self.vision_derived_data.d_T) - 100*self.vision_derived_data.d_d_T
-        F_CN = 10*(self.v_LNd - self.vision_derived_data.v_LN) + 0*self.v_LN_integrator + ff_term
+        F_CN = 10*(self.d_theta_Ld - self.vision_derived_data.d_theta_L) + ff_term
         F_CX = 100*(self.d_Xd - self.vision_derived_data.d_X) - 10 * self.vision_derived_data.d_d_X
         theta_MXd = self.vision_derived_data.theta_L
         tau_X = 100*(theta_MXd - self.vision_derived_data.theta_MX)  + 10*(self.vision_derived_data.d_theta_L - self.vision_derived_data.d_theta_MX)
