@@ -69,18 +69,6 @@ class VisionDerivedData:
     s_hat_X: float = 0
     in_contact: bool = False
 
-
-@dataclass
-class CheatPortsData:
-    """
-    Data which we cannot practically measure, but is helpful for constructing a
-    'perfect model' simulation.
-    """
-    F_OT: float = 0
-    F_ON: float = 0
-    tau_O: float = 0
-
-
 @dataclass
 class ManipulatorData:
     """
@@ -123,7 +111,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
 
     def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params, jnt_frc_log):
+            options, sys_params):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # Set up plant for evaluation
@@ -181,14 +169,10 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         # %DEBUG_APPEND%
         self.debug = defaultdict(list)
         self.debug['times'] = []
-        self.jnt_frc_log = jnt_frc_log
-        self.jnt_frc_log.append(
-            SpatialForce(np.zeros((3, 1)), np.zeros((3, 1))))
         self.contacts = []
 
         # Set up dataclasses
         self.vision_derived_data = VisionDerivedData()
-        self.cheat_ports_data = CheatPortsData()
         self.manipulator_data = ManipulatorData()
 
         # ============================== DRAKE IO =============================
@@ -429,17 +413,9 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.s_hat_X = s_hat_X
         self.vision_derived_data.in_contact = in_contact
 
-    def update_cheat_ports_data(self):
-        jnt_frcs = self.jnt_frc_log[-1]
-        self.cheat_ports_data.F_OT = jnt_frcs.translational()[1]
-        self.cheat_ports_data.F_ON = jnt_frcs.translational()[2]
-        self.cheat_ports_data.tau_O = jnt_frcs.rotational()[0]
-
     def update_debug(self):
         for k in get_attrs_from_class(VisionDerivedData):
             self.debug[k].append(getattr(self.vision_derived_data, k))
-        for k in get_attrs_from_class(CheatPortsData):
-            self.debug[k].append(getattr(self.cheat_ports_data, k))
         for k in get_attrs_from_class(ManipulatorData):
             self.debug[k].append(getattr(self.manipulator_data, k))
 
@@ -471,7 +447,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # Precompute other inputs
         self.update_vision_derived_data(context)
-        self.update_cheat_ports_data()
 
         if self.theta_MYd is None:
             self.theta_MYd = self.vision_derived_data.theta_MY
@@ -553,9 +528,9 @@ class FoldingImpedanceController:
 
 class FoldingInverseDynamicsController(FoldingController):
     def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params, jnt_frc_log):
+            options, sys_params):
         super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params, jnt_frc_log)
+            options, sys_params)
 
         # Options
         self.model_friction = options['model_friction']
@@ -792,9 +767,9 @@ class FoldingInverseDynamicsController(FoldingController):
 
 class FoldingSimpleController(FoldingController):
     def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params, jnt_frc_log):
+            options, sys_params):
         super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params, jnt_frc_log)
+            options, sys_params)
 
     def get_contact_control_torques(self):
         if len(self.debug["times"]) > 2:
