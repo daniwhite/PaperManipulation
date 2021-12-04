@@ -110,7 +110,7 @@ def step5(x):
 class FoldingController(pydrake.systems.framework.LeafSystem):
     """Base class for implementing a controller for whatever."""
 
-    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
+    def __init__(self, ll_idx, contact_body_idx, \
             options, sys_params):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
@@ -165,7 +165,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # ============================== LOG INIT =============================
         # Set up logs
-        self.manipulator_acc_log = manipulator_acc_log
         # %DEBUG_APPEND%
         self.debug = defaultdict(list)
         self.debug['times'] = []
@@ -527,10 +526,8 @@ class FoldingImpedanceController:
 
 
 class FoldingInverseDynamicsController(FoldingController):
-    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params):
-        super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params)
+    def __init__(self, ll_idx, contact_body_idx, options, sys_params):
+        super().__init__(ll_idx, contact_body_idx,  options, sys_params)
 
         # Options
         self.model_friction = options['model_friction']
@@ -766,10 +763,8 @@ class FoldingInverseDynamicsController(FoldingController):
 
 
 class FoldingSimpleController(FoldingController):
-    def __init__(self, manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params):
-        super().__init__(manipulator_acc_log, ll_idx, contact_body_idx, \
-            options, sys_params)
+    def __init__(self, ll_idx, contact_body_idx, options, sys_params):
+        super().__init__(ll_idx, contact_body_idx, options, sys_params)
 
     def get_contact_control_torques(self):
         if len(self.debug["times"]) > 2:

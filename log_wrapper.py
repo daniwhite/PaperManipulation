@@ -12,7 +12,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
 
     # PROGRAMMING: Clean up passed around references
-    def __init__(self, num_bodies, contact_body_idx, paper, manipulator_acc_log):
+    def __init__(self, num_bodies, contact_body_idx, paper):
         self.max_contacts = 10
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.entries_per_body = 3*6
@@ -52,7 +52,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             self.contact_entries + self.joint_entries + self.state_entries # + self.ctrl_forces_entries
 
         self.paper = paper
-        self.manipulator_acc_log = manipulator_acc_log
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -87,7 +86,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         state = self.get_input_port(6).Eval(context)
         # ctrl_forces = self.get_input_port(5).Eval(context)
         # PROGRAMMING: Better interface fro this
-        self.manipulator_acc_log.append(manipulator_accs)
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
             assert len(out) == self.get_idx("pos", "trn", i)
             out += list(pose.translation())
