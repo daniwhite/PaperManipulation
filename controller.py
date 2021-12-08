@@ -34,40 +34,13 @@ def get_attrs_from_class(classname):
     return filter(lambda s: not s.startswith('__'), dir(classname))
 
 
+vision_derived_data_keys = { "T_hat", "N_hat", "theta_L", "d_theta_L", "p_LN", "p_LT", "v_LN", "v_MN", "theta_MX", "theta_MY", "theta_MZ", "d_theta_MX", "d_theta_MY", "d_theta_MZ", "F_GT", "F_GN", "d_X", "d_d_X", "d_N", "d_d_N", "d_T", "d_d_T", "p_CN", "p_CT", "p_MConM", "mu_S", "hats_T", "s_hat_X", "in_contact" }
+
 @dataclass
 class VisionDerivedData:
     """
     Data derived from vision information.
     """
-    T_hat: np.ndarray = np.zeros((3,1))
-    N_hat: np.ndarray = np.zeros((3,1))
-    theta_L: float = 0
-    d_theta_L: float = 0
-    p_LN: float = 0
-    p_LT: float = 0
-    v_LN: float = 0
-    v_MN: float = 0
-    theta_MX: float = 0
-    theta_MY: float = 0
-    theta_MZ: float = 0
-    d_theta_MX: float = 0
-    d_theta_MY: float = 0
-    d_theta_MZ: float = 0
-    F_GT: float = 0
-    F_GN: float = 0
-    d_X: float = 0
-    d_d_X: float = 0
-    d_N: float = 0
-    d_d_N: float = 0
-    d_T: float = 0
-    d_d_T: float = 0
-    p_CN: float = 0
-    p_CT: float = 0
-    p_MConM: np.ndarray = np.zeros((3,1))
-    mu_S: float = 0
-    hats_T: float = 0
-    s_hat_X: float = 0
-    in_contact: bool = False
 
 @dataclass
 class ManipulatorData:
@@ -204,6 +177,66 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "vel_M_rotational", pydrake.systems.framework.BasicVector(3))
 
+        
+        self.DeclareVectorInputPort(
+            "T_hat", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "N_hat", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "theta_L", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_L", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "p_LN", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "p_LT", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "v_LN", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "v_MN", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "theta_MX", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "theta_MY", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "theta_MZ", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_MX", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_MY", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_MZ", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "F_GT", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "F_GN", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_X", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_d_X", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_N", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_d_N", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_T", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_d_T", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "p_CN", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "p_CT", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "p_MConM", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "mu_S", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "hats_T", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "s_hat_X", pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "in_contact", pydrake.systems.framework.BasicVector(1))
+
         # Output ports
         self.DeclareVectorOutputPort(
             "actuation", pydrake.systems.framework.BasicVector(
@@ -282,25 +315,21 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         omega_vec_M = np.array(
             [self.GetInputPort("vel_M_rotational").Eval(context)[0:3]]).T
 
-        R = RotationMatrix(RollPitchYaw(rot_vec_L)).matrix()
 
-        theta_L = rot_vec_L[0]
-        theta_MX = rot_vec_M[0]
-        theta_MY = rot_vec_M[1]
-        theta_MZ = rot_vec_M[2]
+        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
+        theta_MX = self.GetInputPort("theta_MX").Eval(context)[0]
+        theta_MY = self.GetInputPort("theta_MY").Eval(context)[0]
+        theta_MZ = self.GetInputPort("theta_MZ").Eval(context)[0]
 
-        d_theta_L = omega_vec_L.flatten()[0]
-        omega_vec_L = np.array([[d_theta_L, 0, 0]]).T
+        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
 
-        d_theta_MX = omega_vec_M.flatten()[0]
-        d_theta_MY = omega_vec_M.flatten()[1]
-        d_theta_MZ = omega_vec_M.flatten()[2]
+        d_theta_MX = self.GetInputPort("d_theta_MX").Eval(context)[0]
+        d_theta_MY = self.GetInputPort("d_theta_MY").Eval(context)[0]
+        d_theta_MZ = self.GetInputPort("d_theta_MZ").Eval(context)[0]
 
         # Define unit vectors
-        y_hat = np.array([[0, 1, 0]]).T
-        z_hat = np.array([[0, 0, 1]]).T
-        T_hat = R@y_hat
-        N_hat = R@z_hat
+        T_hat = np.array([self.GetInputPort("T_hat").Eval(context)]).T
+        N_hat = np.array([self.GetInputPort("N_hat").Eval(context)]).T
 
         # Projection
         T_proj_mat = T_hat@(T_hat.T)
@@ -321,66 +350,39 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.get_N_proj = get_N_proj
 
         # Get components
-        p_LT = get_T_proj(p_L)
-        p_LN = get_N_proj(p_L)
+        p_LT = self.GetInputPort("p_LT").Eval(context)[0]
+        p_LN = self.GetInputPort("p_LN").Eval(context)[0]
 
-        v_LN = get_N_proj(v_L)
-        v_LT = get_T_proj(v_L)
+        v_LN = self.GetInputPort("p_LN").Eval(context)[0]
+        v_LT = self.GetInputPort("p_LT").Eval(context)[0]
 
-        v_MN = get_N_proj(v_M)
-        v_MT = get_T_proj(v_M)
+        v_MN = self.GetInputPort("v_MN").Eval(context)[0]
 
-        # Derived terms
-        p_LLE = N_hat * -self.h_L/2 + T_hat * self.w_L/2
-        p_LE = p_L + p_LLE
+        p_CT = self.GetInputPort("p_CT").Eval(context)[0]
+        p_CN = self.GetInputPort("p_CN").Eval(context)[0]
 
-        p_C = p_M + N_hat*self.r
-        p_CT = self.get_T_proj(p_C)
-        p_CN = self.get_N_proj(p_C)
+        d_T = self.GetInputPort("d_T").Eval(context)[0]
+        d_N = self.GetInputPort("d_N").Eval(context)[0]
+        d_X = self.GetInputPort("d_X").Eval(context)[0]
 
-        d = p_C - p_LE
-        d_T = self.get_T_proj(d)
-        d_N = self.get_N_proj(d)
-        d_X = d[0]
+        p_MConM = np.array([self.GetInputPort("p_MConM").Eval(context)]).T
 
-        p_MConM = p_C - p_M
-        p_LConL = p_C - p_L
+        d_d_T = self.GetInputPort("d_d_T").Eval(context)[0]
+        d_d_N = self.GetInputPort("d_d_N").Eval(context)[0]
+        d_d_X = self.GetInputPort("d_d_X").Eval(context)[0]
 
-        # Velocities
-        v_WConL = v_L + np.cross(omega_vec_L, p_LConL, axis=0)
-        v_WConM = v_M + np.cross(omega_vec_M, p_MConM, axis=0)
-
-        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*self.r - v_LT + v_MT \
-            + d_theta_L*d_N
-        d_d_N = -d_theta_L*self.w_L/2-v_LN+v_MN-d_theta_L*d_T
-        d_d_X = v_WConM[0]
-
-        v_S_raw = v_WConM - v_WConL
-        v_S_N = np.matmul(N_proj_mat, v_S_raw)
-        v_S = v_S_raw - v_S_N
-
-        s_hat = v_S/np.linalg.norm(v_S)
-        hats_T = self.get_T_proj(s_hat)
-        s_hat_X = s_hat[0]
-        s_S = np.linalg.norm(v_S)
+        hats_T = self.GetInputPort("hats_T").Eval(context)[0]
+        s_hat_X = self.GetInputPort("s_hat_X").Eval(context)[0]
     
         # Gravity
-        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
-        F_GT = self.get_T_proj(F_G)
-        F_GN = self.get_N_proj(F_G)
+        F_GT = self.GetInputPort("F_GT").Eval(context)[0]
+        F_GN = self.GetInputPort("F_GN").Eval(context)[0]
 
-        stribeck_mu = stribeck(1, 1, s_S/self.v_stiction)
+        stribeck_mu = self.GetInputPort("mu_S").Eval(context)[0]
         mu_S = stribeck_mu
 
         # Calculate whether we are in contact
-        raw_in_contact = d_N > self.d_N_thresh
-        if raw_in_contact:
-            if self.t_contact_start is None:
-                self.t_contact_start = self.debug['times'][-1]
-        else:
-            self.t_contact_start =  None
-        in_contact = raw_in_contact and self.debug['times'][-1] \
-            - self.t_contact_start > 0.5
+        in_contact = self.GetInputPort("in_contact").Eval(context)[0]
 
         self.vision_derived_data.T_hat = T_hat
         self.vision_derived_data.N_hat = N_hat
@@ -413,7 +415,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.vision_derived_data.in_contact = in_contact
 
     def update_debug(self):
-        for k in get_attrs_from_class(VisionDerivedData):
+        for k in vision_derived_data_keys:
             self.debug[k].append(getattr(self.vision_derived_data, k))
         for k in get_attrs_from_class(ManipulatorData):
             self.debug[k].append(getattr(self.manipulator_data, k))
