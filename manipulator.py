@@ -54,7 +54,7 @@ def addArm(plant, scene_graph=None):
     Creates the panda arm.
     """
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile("panda_arm.urdf")
+    arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
 
     # Weld panda to world
     jnt = plant.WeldFrames(

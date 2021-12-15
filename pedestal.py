@@ -15,7 +15,7 @@ def AddPedestal(plant):
     """
     # Parse pedestal model
     parser = pydrake.multibody.parsing.Parser(plant)
-    pedestal_instance = parser.AddModelFromFile("pedestal.sdf")
+    pedestal_instance = parser.AddModelFromFile("models/pedestal.sdf")
 
     # Weld pedestal to world
     plant.WeldFrames(
