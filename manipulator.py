@@ -215,4 +215,4 @@ sphere_data = {
 assert arm_data.keys() == expected_keys
 assert sphere_data.keys() == expected_keys
 
-data = sphere_data
+data = arm_data

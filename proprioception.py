@@ -62,8 +62,7 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
             self.output_J_rotational)
         self.DeclareVectorOutputPort(
             "Jdot_qdot",
-            pydrake.systems.framework.BasicVector(
-                self.nq_manipulator),
+            pydrake.systems.framework.BasicVector(6),
             self.output_Jdot_qdot)
 
     # =========================== CALC FUNCTIONS ==========================
@@ -112,20 +111,20 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
 
     def output_Cv(self, context, output):
         self.update_plant(context)
-        Cv = self.manipulator_plant.CalcMassMatrixViaInverseDynamics(self.manipulator_plant_context)
+        Cv = self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context)
         output.SetFromVector(Cv.flatten())
 
     def output_J(self, context, output):
-        J = self.calc_J(self, context)
+        J = self.calc_J(context)
         output.SetFromVector(J.flatten())
 
     def output_J_translational(self, context, output):
-        J = self.calc_J(self, context)
+        J = self.calc_J(context)
         J_translational = J[3:,:]
         output.SetFromVector(J_translational.flatten())
 
     def output_J_rotational(self, context, output):
-        J = self.calc_J(self, context)
+        J = self.calc_J(context)
         J_rotational = J[:3,:]
         output.SetFromVector(J_rotational.flatten())
 
@@ -144,7 +143,7 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
         Jdot_qdot = list(Jdot_qdot_raw.rotational()) + \
             list(Jdot_qdot_raw.translational())
 
-        output.SetFromVector(Jdot_qdot.flatten())
+        output.SetFromVector(Jdot_qdot)
 
     # ========================== OTHER FUNCTIONS ==========================
     def update_plant(self, context):

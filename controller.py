@@ -149,7 +149,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
 
         # ============================== DRAKE IO =============================
         # Input ports
-        self.DeclareVectorInputPort("q", BasicVector(self.nq_manipulator*2))
+        self.DeclareVectorInputPort("q_", BasicVector(self.nq_manipulator*2))
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make(
                 [RigidTransform(), RigidTransform()]))
@@ -177,7 +177,6 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "vel_M_rotational", pydrake.systems.framework.BasicVector(3))
 
-        
         self.DeclareVectorInputPort(
             "T_hat", pydrake.systems.framework.BasicVector(3))
         self.DeclareVectorInputPort(
@@ -237,6 +236,33 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "in_contact", pydrake.systems.framework.BasicVector(1))
 
+        self.DeclareVectorInputPort(
+            "q", pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "v", pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "tau_g",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "M",
+            pydrake.systems.framework.BasicVector(
+                self.nq_manipulator*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "Cv",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "J",
+            pydrake.systems.framework.BasicVector(6*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "J_translational",
+            pydrake.systems.framework.BasicVector(3*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "J_rotational",
+            pydrake.systems.framework.BasicVector(3*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "Jdot_qdot",
+            pydrake.systems.framework.BasicVector(6))
+
         # Output ports
         self.DeclareVectorOutputPort(
             "actuation", pydrake.systems.framework.BasicVector(
@@ -248,41 +274,33 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.meshcat = meshcat
 
 
-    def update_manipulator_data(self, state):
-        q = state[:self.nq_manipulator]
-        v = state[self.nq_manipulator:]
+    def update_manipulator_data(self, state, context):
+        q = np.array(self.GetInputPort("q").Eval(context))
+        v = np.array(self.GetInputPort("v").Eval(context))
         self.manipulator_plant.SetPositions(self.manipulator_plant_context, q)
         self.manipulator_plant.SetVelocities(self.manipulator_plant_context, v)
 
-        M = self.manipulator_plant.CalcMassMatrixViaInverseDynamics(self.manipulator_plant_context)
-        Cv = np.expand_dims(self.manipulator_plant.CalcBiasTerm(self.manipulator_plant_context), 1)
+        M = np.array(self.GetInputPort("M").Eval(context)).reshape(
+            (self.nq_manipulator, self.nq_manipulator))
+        Cv = np.expand_dims(
+            np.array(self.GetInputPort("Cv").Eval(context)), 1)
 
-        tau_g_raw = self.manipulator_plant.CalcGravityGeneralizedForces(
-            self.manipulator_plant_context)
-        tau_g = np.expand_dims(tau_g_raw, 1)
+        tau_g = np.expand_dims(
+            np.array(self.GetInputPort("tau_g").Eval(context)), 1)
 
-        contact_body = self.manipulator_plant.GetBodyByName(
-            manipulator.data["contact_body_name"])
-        J = self.manipulator_plant.CalcJacobianSpatialVelocity(
-            self.manipulator_plant_context,
-            JacobianWrtVariable.kV,
-            contact_body.body_frame(),
-            [0, 0, 0],
-            self.manipulator_plant.world_frame(),
-            self.manipulator_plant.world_frame())
-        Jdot_qdot_raw = self.manipulator_plant.CalcBiasSpatialAcceleration(
-            self.manipulator_plant_context,
-            JacobianWrtVariable.kV,
-            contact_body.body_frame(),
-            [0, 0, 0],
-            self.manipulator_plant.world_frame(),
-            self.manipulator_plant.world_frame())
+        J = np.array(self.GetInputPort("J").Eval(context)).reshape(
+            (6, self.nq_manipulator))
 
-        Jdot_qdot = np.expand_dims(np.array(list(Jdot_qdot_raw.rotational()) \
-            + list(Jdot_qdot_raw.translational())), 1)
+        J_rotational = np.array(
+            self.GetInputPort("J_rotational").Eval(context)).reshape(
+                (3, self.nq_manipulator))
 
-        J_rotational = J[:3,:]
-        J_translational = J[3:,:]
+        J_translational = np.array(
+            self.GetInputPort("J_translational").Eval(context)).reshape(
+                (3, self.nq_manipulator))
+
+        Jdot_qdot = np.expand_dims(
+            np.array(self.GetInputPort("Jdot_qdot").Eval(context)), 1)
 
         self.manipulator_data.q = q
         self.manipulator_data.v = v
@@ -440,7 +458,7 @@ class FoldingController(pydrake.systems.framework.LeafSystem):
         self.debug['times'].append(context.get_time())
 
         # Process state
-        self.update_manipulator_data(state)
+        self.update_manipulator_data(state, context)
 
         # Book keeping
         if self.init_q is None:
