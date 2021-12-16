@@ -11,34 +11,42 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    # PROGRAMMING: Clean up passed around references
     def __init__(self, num_bodies, contact_body_idx, paper):
-        self.max_contacts = 10
         pydrake.systems.framework.LeafSystem.__init__(self)
-        self.entries_per_body = 3*6
-        self.entries_per_contact = 18
-        self.contact_entries = self.entries_per_contact*self.max_contacts
-        self.joint_entries = len(paper.joints)*6
-        self.nq_manipulator = manipulator.data['nq']
-        self.ctrl_forces_entries = 3
-        self.gen_accs_entries = self.nq_manipulator
-        self.state_entries = self.nq_manipulator*2 + 1
-        self.tau_g_entries = self.nq_manipulator
-
+        # Offsets
         self.type_strs_to_offsets = {
             "pos": 0,
             "vel": 6,
             "acc": 12,
         }
-
         self.direction_to_offset = {
             "trn": 0,
             "rot": 3
         }
-
         self.translational_offset = 0
         self.rotational_offset = 3
 
+
+        # General constants/members
+        self.max_contacts = 10
+        self.nq_manipulator = manipulator.data['nq']
+        self.paper = paper
+
+
+        # Numbers of entries
+        self.entries_per_body = 3*6
+        self.entries_per_contact = 18
+        self.contact_entries = self.entries_per_contact*self.max_contacts
+        self.joint_entries = len(paper.joints)*6
+        self.ctrl_forces_entries = 3
+        self.gen_accs_entries = self.nq_manipulator
+        self.state_entries = self.nq_manipulator*2 + 1
+        self.tau_g_entries = self.nq_manipulator
+        self.M_entries = self.nq_manipulator*self.nq_manipulator
+
+
+        # Start indices
+        # PROGRAMMING: Make this into a for loop?
         self._size = num_bodies*self.entries_per_body
 
         self.contact_entry_start_idx = self._size
@@ -50,13 +58,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.gen_accs_start_idx = self._size
         self._size += self.gen_accs_entries
 
-        self.state_start_idx = self.gen_accs_start_idx + self.gen_accs_entries
+        self.state_start_idx = self._size
         self._size += self.state_entries
 
-        self.tau_g_start_idx = self.state_start_idx + self.state_entries
+        self.tau_g_start_idx = self._size
         self._size +=  self.tau_g_entries
 
-        self.paper = paper
+        self.M_start_idx = self._size
+        self._size += self.M_entries
+
 
         # Poses, velocities, accelerations, etc
         self.DeclareAbstractInputPort(
@@ -82,6 +92,10 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "tau_g",
             pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "M",
+            pydrake.systems.framework.BasicVector(
+                self.nq_manipulator*self.nq_manipulator))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -100,6 +114,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         manipulator_accs = self.GetInputPort("manipulator_accs").Eval(context)
         state = self.GetInputPort("state").Eval(context)
         tau_g = self.GetInputPort("tau_g").Eval(context)
+        M = self.GetInputPort("M").Eval(context)
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -171,6 +186,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += [forces_found]
         assert(len(out) == self.tau_g_start_idx)
         out += list(tau_g)
+        assert(len(out) == self.M_start_idx)
+        out += list(M)
 
         output.SetFromVector(out)
 
