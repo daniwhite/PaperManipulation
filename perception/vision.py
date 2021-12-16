@@ -2,9 +2,9 @@
 import pydrake
 from pydrake.all import RigidTransform, SpatialVelocity, RollPitchYaw, RotationMatrix
 import numpy as np
-import paper
+import plant.paper as paper
 import constants
-import manipulator
+import plant.manipulator as manipulator
 
 class VisionSystem(pydrake.systems.framework.LeafSystem):
     """

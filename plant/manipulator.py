@@ -6,7 +6,7 @@ from pydrake.all import (
     MathematicalProgram, Solve, eq, le, ge,
 )
 import constants
-import pedestal
+import plant.pedestal as pedestal
 
 import numpy as np
 

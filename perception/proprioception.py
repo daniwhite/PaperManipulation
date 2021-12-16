@@ -1,5 +1,5 @@
 import constants
-import manipulator
+import plant.manipulator as manipulator
 
 import pydrake
 from pydrake.all import (

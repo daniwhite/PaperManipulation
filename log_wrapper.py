@@ -3,7 +3,7 @@
 import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BasicVector
 import numpy as np
-import manipulator
+import plant.manipulator as manipulator
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):
     """

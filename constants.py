@@ -4,7 +4,7 @@
 import numpy as np
 
 # Imports of other project files
-from pedestal import PEDESTAL_WIDTH
+from plant.pedestal import PEDESTAL_WIDTH
 
 g = 9.81
 

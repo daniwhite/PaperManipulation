@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 # Local imports
 import constants
-import manipulator
-import paper
+import plant.manipulator as manipulator
+import plant.paper as paper
 
 import enum
 
