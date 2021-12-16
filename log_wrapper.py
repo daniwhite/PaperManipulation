@@ -43,7 +43,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.state_entries = self.nq_manipulator*2 + 1
         self.tau_g_entries = self.nq_manipulator
         self.M_entries = self.nq_manipulator*self.nq_manipulator
-
+        self.Cv_entries = self.nq_manipulator
+        self.J_entries = 6*self.nq_manipulator
+        self.Jdot_qdot_entries = 6
 
         # Start indices
         # PROGRAMMING: Make this into a for loop?
@@ -66,6 +68,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
         self.M_start_idx = self._size
         self._size += self.M_entries
+
+        self.Cv_start_idx = self._size
+        self._size += self.Cv_entries
+
+        self.J_start_idx = self._size
+        self._size += self.J_entries
+
+        self.Jdot_qdot_start_idx = self._size
+        self._size += self.Jdot_qdot_entries
 
 
         # Poses, velocities, accelerations, etc
@@ -96,6 +107,16 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "M",
             pydrake.systems.framework.BasicVector(
                 self.nq_manipulator*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "Cv",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "J",
+            pydrake.systems.framework.BasicVector(6*self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "Jdot_qdot",
+            pydrake.systems.framework.BasicVector(6))
+
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -115,6 +136,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         state = self.GetInputPort("state").Eval(context)
         tau_g = self.GetInputPort("tau_g").Eval(context)
         M = self.GetInputPort("M").Eval(context)
+        Cv = self.GetInputPort("Cv").Eval(context)
+        J = self.GetInputPort("J").Eval(context)
+        Jdot_qdot = self.GetInputPort("Jdot_qdot").Eval(context)
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -188,6 +212,12 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(tau_g)
         assert(len(out) == self.M_start_idx)
         out += list(M)
+        assert(len(out) == self.Cv_start_idx)
+        out += list(Cv)
+        assert(len(out) == self.J_start_idx)
+        out += list(J)
+        assert(len(out) == self.Jdot_qdot_start_idx)
+        out += list(Jdot_qdot)
 
         output.SetFromVector(out)
 
