@@ -21,6 +21,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.joint_entries = len(paper.joints)*6
         self.nq_manipulator = manipulator.data['nq']
         self.ctrl_forces_entries = 3
+        self.gen_accs_entries = self.nq_manipulator
+        self.state_entries = self.nq_manipulator*2 + 1
+        self.tau_g_entries = self.nq_manipulator
 
         self.type_strs_to_offsets = {
             "pos": 0,
@@ -36,29 +39,34 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.translational_offset = 0
         self.rotational_offset = 3
 
-        self.contact_entry_start_idx = num_bodies*self.entries_per_body
-        self.joint_entry_start_idx = self.contact_entry_start_idx \
-            + self.contact_entries
+        self._size = num_bodies*self.entries_per_body
 
-        self.gen_accs_start_idx = self.joint_entry_start_idx + self.joint_entries
-        self.gen_accs_entries = self.nq_manipulator
+        self.contact_entry_start_idx = self._size
+        self._size += self.contact_entries
+
+        self.joint_entry_start_idx = self._size
+        self._size += self.joint_entries
+
+        self.gen_accs_start_idx = self._size
+        self._size += self.gen_accs_entries
 
         self.state_start_idx = self.gen_accs_start_idx + self.gen_accs_entries
-        self.state_entries = self.nq_manipulator*3 + 1
+        self._size += self.state_entries
 
-        # self.ctrl_forces_start_idx = self.state_start_idx + self.state_entries
-
-        self._size = num_bodies*self.entries_per_body + \
-            self.contact_entries + self.joint_entries + self.state_entries # + self.ctrl_forces_entries
+        self.tau_g_start_idx = self.state_start_idx + self.state_entries
+        self._size +=  self.tau_g_entries
 
         self.paper = paper
 
+        # Poses, velocities, accelerations, etc
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
         self.DeclareAbstractInputPort(
             "vels", pydrake.common.value.AbstractValue.Make([SpatialVelocity(), SpatialVelocity()]))
         self.DeclareAbstractInputPort(
             "accs", pydrake.common.value.AbstractValue.Make([SpatialAcceleration(), SpatialAcceleration()]))
+        
+        # Other forces/accelerations
         self.DeclareAbstractInputPort(
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
@@ -66,7 +74,14 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "joint_forces", pydrake.common.value.AbstractValue.Make([SpatialForce(), SpatialForce()]))
         self.DeclareVectorInputPort(
             "manipulator_accs", pydrake.systems.framework.BasicVector(self.nq_manipulator))
+
+        # q and v
         self.DeclareVectorInputPort("state", BasicVector(self.nq_manipulator*2))
+
+        # Manipulator equation terms
+        self.DeclareVectorInputPort(
+            "tau_g",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -77,15 +92,16 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
     def CalcOutput(self, context, output):
         out = []
-        poses = self.get_input_port(0).Eval(context)
-        vels = self.get_input_port(1).Eval(context)
-        accs = self.get_input_port(2).Eval(context)
-        contact_results = self.get_input_port(3).Eval(context)
-        joint_forces = self.get_input_port(4).Eval(context)
-        manipulator_accs = self.get_input_port(5).Eval(context)
-        state = self.get_input_port(6).Eval(context)
-        # ctrl_forces = self.get_input_port(5).Eval(context)
-        # PROGRAMMING: Better interface fro this
+        poses = self.GetInputPort("poses").Eval(context)
+        vels = self.GetInputPort("vels").Eval(context)
+        accs = self.GetInputPort("accs").Eval(context)
+        contact_results = self.GetInputPort("contact_results").Eval(context)
+        joint_forces = self.GetInputPort("joint_forces").Eval(context)
+        manipulator_accs = self.GetInputPort("manipulator_accs").Eval(context)
+        state = self.GetInputPort("state").Eval(context)
+        tau_g = self.GetInputPort("tau_g").Eval(context)
+
+        # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
             assert len(out) == self.get_idx("pos", "trn", i)
             out += list(pose.translation())
@@ -104,7 +120,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             assert len(out) == self.get_idx("acc", "rot", i)
             out += list(acc.rotational())
 
-
+        # Add contact results
         forces_found = 0
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
@@ -139,6 +155,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             out += [np.nan]*self.entries_per_contact
             forces_found_idx += 1
 
+        # Add joint forces
         for i, j in enumerate(self.paper.joints):
             if i == len(self.paper.joints) - 1:
                 assert self.get_last_jnt_idx("trn") == len(out) 
@@ -146,10 +163,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             if i == len(self.paper.joints) - 1:
                 assert self.get_last_jnt_idx("rot") == len(out) 
             out += list(joint_forces[int(j.index())].rotational())
+        # Other generic terms
+        assert len(out) == self.gen_accs_start_idx
         out += list(manipulator_accs)
+        assert len(out) == self.state_start_idx
         out += list(state)
         out += [forces_found]
-        # out += list(ctrl_forces)
+        assert(len(out) == self.tau_g_start_idx)
+        out += list(tau_g)
+
         output.SetFromVector(out)
 
     def get_idx(self, type_str, direction, body_idx):
