@@ -78,6 +78,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.Jdot_qdot_start_idx = self._size
         self._size += self.Jdot_qdot_entries
 
+        self.calc_in_contact_start_idx = self._size
+        self._size += 1
+
 
         # Poses, velocities, accelerations, etc
         self.DeclareAbstractInputPort(
@@ -117,6 +120,10 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "Jdot_qdot",
             pydrake.systems.framework.BasicVector(6))
 
+        # in_contact used by controller
+        self.DeclareVectorInputPort(
+            "in_contact", pydrake.systems.framework.BasicVector(1))
+
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -139,6 +146,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         Cv = self.GetInputPort("Cv").Eval(context)
         J = self.GetInputPort("J").Eval(context)
         Jdot_qdot = self.GetInputPort("Jdot_qdot").Eval(context)
+        in_contact = self.GetInputPort("in_contact").Eval(context)[0]
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -218,6 +226,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(J)
         assert(len(out) == self.Jdot_qdot_start_idx)
         out += list(Jdot_qdot)
+        assert(len(out) == self.calc_in_contact_start_idx)
+        out += [in_contact]
 
         output.SetFromVector(out)
 
