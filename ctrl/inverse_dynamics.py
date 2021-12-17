@@ -131,31 +131,32 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             "joint_centering_torque").Eval(context)), 1)
 
         # Force inputs
-        F_GT = self.GetInputPort("F_GT").Eval(context)
-        F_GN = self.GetInputPort("F_GN").Eval(context)
+        # PROGRAMMING: Add zeros here?
+        F_GT = self.GetInputPort("F_GT").Eval(context)[0]
+        F_GN = self.GetInputPort("F_GN").Eval(context)[0]
 
         # Positions
-        theta_L = self.GetInputPort("theta_L").Eval(context)
+        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
         theta_MX = self.GetInputPort("theta_MX").Eval(context)[0]
         theta_MY = self.GetInputPort("theta_MY").Eval(context)[0]
         theta_MZ = self.GetInputPort("theta_MZ").Eval(context)[0]
-        p_CT = self.GetInputPort("p_CT").Eval(context)
-        p_CN = self.GetInputPort("p_CN").Eval(context)
-        p_LT = self.GetInputPort("p_LT").Eval(context)
-        p_LN = self.GetInputPort("p_LN").Eval(context)
-        d_T = self.GetInputPort("d_T").Eval(context)
-        d_N = self.GetInputPort("d_N").Eval(context)
-        d_X = self.GetInputPort("d_X").Eval(context)
+        p_CT = self.GetInputPort("p_CT").Eval(context)[0]
+        p_CN = self.GetInputPort("p_CN").Eval(context)[0]
+        p_LT = self.GetInputPort("p_LT").Eval(context)[0]
+        p_LN = self.GetInputPort("p_LN").Eval(context)[0]
+        d_T = self.GetInputPort("d_T").Eval(context)[0]
+        d_N = self.GetInputPort("d_N").Eval(context)[0]
+        d_X = self.GetInputPort("d_X").Eval(context)[0]
         p_MConM = np.array([self.GetInputPort("p_MConM").Eval(context)]).T
 
         # Velocities
-        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)
-        d_theta_MX = self.GetInputPort("d_theta_MX").Eval(context)
-        d_theta_MY = self.GetInputPort("d_theta_MY").Eval(context)
-        d_theta_MZ = self.GetInputPort("d_theta_MZ").Eval(context)
-        d_d_T = self.GetInputPort("d_d_T").Eval(context)
-        d_d_N = self.GetInputPort("d_d_N").Eval(context)
-        d_d_X = self.GetInputPort("d_d_X").Eval(context)
+        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
+        d_theta_MX = self.GetInputPort("d_theta_MX").Eval(context)[0]
+        d_theta_MY = self.GetInputPort("d_theta_MY").Eval(context)[0]
+        d_theta_MZ = self.GetInputPort("d_theta_MZ").Eval(context)[0]
+        d_d_T = self.GetInputPort("d_d_T").Eval(context)[0]
+        d_d_N = self.GetInputPort("d_d_N").Eval(context)[0]
+        d_d_X = self.GetInputPort("d_d_X").Eval(context)[0]
 
         # Manipulator inputs
         J = np.array(self.GetInputPort("J").Eval(context)).reshape(
@@ -174,9 +175,9 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             np.array(self.GetInputPort("Cv").Eval(context)), 1)
 
         # Other inputs
-        mu_S = self.GetInputPort("mu_S").Eval(context)
-        hats_T = self.GetInputPort("hats_T").Eval(context)
-        s_hat_X = self.GetInputPort("s_hat_X").Eval(context)
+        mu_S = self.GetInputPort("mu_S").Eval(context)[0]
+        hats_T = self.GetInputPort("hats_T").Eval(context)[0]
+        s_hat_X = self.GetInputPort("s_hat_X").Eval(context)[0]
 
         # ============================= OTHER PREP ============================
         if self.theta_MYd is None:
@@ -367,7 +368,9 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
                 prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
         tau_ctrl_result = np.expand_dims(tau_ctrl_result, 1)
 
-        # %DEBUG_APPEND%
+        # ======================== UPDATE DEBUG VALUES ========================
+        self.debug["times"].append(context.get_time())
+
         # control effort
         self.debug["dd_d_Td"].append(dd_d_Td)
         self.debug["dd_theta_Ld"].append(dd_theta_Ld)
