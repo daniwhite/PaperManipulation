@@ -106,3 +106,30 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(tau_ctrl.flatten()) 
 
 
+class CtrlSelector(pydrake.systems.framework.LeafSystem):
+    def __init__(self):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        self.nq = manipulator.data["nq"]
+
+        self.DeclareVectorInputPort(
+            "in_contact",
+            pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "pre_contact_ctrl", pydrake.systems.framework.BasicVector(self.nq))
+        self.DeclareVectorInputPort(
+            "contact_ctrl", pydrake.systems.framework.BasicVector(self.nq))
+
+        self.DeclareVectorOutputPort(
+            "tau_out", pydrake.systems.framework.BasicVector(self.nq),
+            self.CalcOutput)
+
+    def CalcOutput(self, context, output):
+        pre_contact_tau_ctrl = self.GetInputPort(
+            "pre_contact_ctrl").Eval(context)
+        contact_tau_ctrl = self.GetInputPort(
+            "contact_ctrl").Eval(context)
+        in_contact = self.GetInputPort(
+            "in_contact").Eval(context)
+
+        tau_ctrl = contact_tau_ctrl if in_contact else pre_contact_tau_ctrl
+        output.SetFromVector(tau_ctrl) 
