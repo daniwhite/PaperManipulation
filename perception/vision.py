@@ -97,21 +97,10 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
     Calculates geometry terms based on vision outputs.
     """
 
-    def __init__(self, sys_params):
+    def __init__(self, sys_consts):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Physical parameters
-        self.v_stiction = sys_params['v_stiction']
-        self.I_L = sys_params['I_L']
-        self.w_L = sys_params['w_L']
-        self.h_L = paper.PAPER_HEIGHT
-        self.m_L = sys_params['m_L']
-        self.m_M = sys_params['m_M']
-        self.b_J = sys_params['b_J']
-        self.k_J = sys_params['k_J']
-        self.g = sys_params['g']
-        mu_paper = constants.FRICTION
-        self.mu = 2*mu_paper/(1+mu_paper)
-        self.r = manipulator.RADIUS
+        self.sys_consts = sys_consts
 
         self.d_N_thresh = -5e-4
         self.t_contact_start = None
@@ -294,7 +283,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
     def calc_p_LE(self, context):
         N_hat = self.calc_N_hat(context)
         T_hat = self.calc_T_hat(context)
-        p_LLE = N_hat * -self.h_L/2 + T_hat * self.w_L/2
+        p_LLE = N_hat * -self.sys_consts.h_L/2 + T_hat * self.sys_consts.w_L/2
         p_L = self.calc_p_L(context)
         p_LE = p_L + p_LLE
         return p_LE
@@ -387,12 +376,12 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         output.SetFromVector([d_theta_MZ])
 
     def output_F_GT(self, context, output):
-        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
+        F_G = np.array([[0, 0, -self.sys_consts.m_L*constants.g]]).T
         F_GT = self.get_T_proj(context, F_G)
         output.SetFromVector([F_GT])
 
     def output_F_GN(self, context, output):
-        F_G = np.array([[0, 0, -self.m_L*constants.g]]).T
+        F_G = np.array([[0, 0, -self.sys_consts.m_L*constants.g]]).T
         F_GN = self.get_N_proj(context, F_G)
         output.SetFromVector([F_GN])
 
@@ -436,7 +425,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         d_T = self.get_T_proj(context, d)
         
         v_MN = self.get_N_proj(context, v_M)
-        d_d_N = -d_theta_L*self.w_L/2-v_LN+v_MN-d_theta_L*d_T
+        d_d_N = -d_theta_L*self.sys_consts.w_L/2-v_LN+v_MN-d_theta_L*d_T
         output.SetFromVector([d_d_N])
     
     def output_d_d_T(self, context, output):
@@ -451,7 +440,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         v_MT = self.get_T_proj(context, v_M)
         d_N = self.get_N_proj(context, d)
 
-        d_d_T = -d_theta_L*self.h_L/2 - d_theta_L*self.r - v_LT + v_MT \
+        d_d_T = -d_theta_L*self.sys_consts.h_L/2 - d_theta_L*self.sys_consts.r - v_LT + v_MT \
             + d_theta_L*d_N
         output.SetFromVector([d_d_T])
 
@@ -464,7 +453,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
     def output_mu_S(self, context, output):
         v_S = self.calc_v_S(context)
         s_S = np.linalg.norm(v_S)
-        mu_S = self.stribeck(1, 1, s_S/self.v_stiction)
+        mu_S = self.stribeck(1, 1, s_S/self.sys_consts.v_stiction)
         output.SetFromVector([mu_S])
 
     def output_hats_T(self, context, output):

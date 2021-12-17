@@ -46,6 +46,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.Cv_entries = self.nq_manipulator
         self.J_entries = 6*self.nq_manipulator
         self.Jdot_qdot_entries = 6
+        self.joint_centering_torque_entries = self.nq_manipulator
+        self.tau_ctrl_entries = self.nq_manipulator
+        self.tau_out_entries = self.nq_manipulator
 
         # Start indices
         # PROGRAMMING: Make this into a for loop?
@@ -80,6 +83,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
         self.calc_in_contact_start_idx = self._size
         self._size += 1
+
+        self.joint_centering_torque_start_idx = self._size
+        self._size += self.joint_centering_torque_entries
+
+        self.tau_ctrl_start_idx = self._size
+        self._size += self.tau_ctrl_entries
+
+        self.tau_out_start_idx = self._size
+        self._size += self.tau_out_entries
 
 
         # Poses, velocities, accelerations, etc
@@ -124,6 +136,17 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "in_contact", pydrake.systems.framework.BasicVector(1))
 
+        # Other torque inputs
+        self.DeclareVectorInputPort(
+            "joint_centering_torque",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "tau_ctrl",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "tau_out",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
+
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -147,6 +170,10 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         J = self.GetInputPort("J").Eval(context)
         Jdot_qdot = self.GetInputPort("Jdot_qdot").Eval(context)
         in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+        joint_centering_torque = self.GetInputPort(
+            "joint_centering_torque").Eval(context)
+        tau_ctrl = self.GetInputPort("tau_ctrl").Eval(context)
+        tau_out = self.GetInputPort("tau_out").Eval(context)
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -228,6 +255,12 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(Jdot_qdot)
         assert(len(out) == self.calc_in_contact_start_idx)
         out += [in_contact]
+        assert(len(out) == self.joint_centering_torque_start_idx)
+        out += list(joint_centering_torque)
+        assert(len(out) == self.tau_ctrl_start_idx)
+        out += list(tau_ctrl)
+        assert(len(out) == self.tau_out_start_idx)
+        out += list(tau_out)
 
         output.SetFromVector(out)
 

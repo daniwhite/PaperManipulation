@@ -110,6 +110,7 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
     def __init__(self):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.nq = manipulator.data["nq"]
+        self.use_contact_ctrl = False
 
         self.DeclareVectorInputPort(
             "in_contact",
@@ -126,10 +127,11 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
     def CalcOutput(self, context, output):
         pre_contact_tau_ctrl = self.GetInputPort(
             "pre_contact_ctrl").Eval(context)
-        contact_tau_ctrl = self.GetInputPort(
-            "contact_ctrl").Eval(context)
-        in_contact = self.GetInputPort(
-            "in_contact").Eval(context)
+        contact_tau_ctrl = self.GetInputPort("contact_ctrl").Eval(context)
+        in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+        
+        if in_contact:
+            self.use_contact_ctrl = True
 
-        tau_ctrl = contact_tau_ctrl if in_contact else pre_contact_tau_ctrl
+        tau_ctrl = contact_tau_ctrl if self.use_contact_ctrl else pre_contact_tau_ctrl
         output.SetFromVector(tau_ctrl) 
