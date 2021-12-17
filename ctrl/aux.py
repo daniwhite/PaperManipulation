@@ -1,9 +1,9 @@
 """
-Systems that are not explicit control strategies but provide useful auxiliarly
+Systems that are not explicit control strategies but provide useful auxiliary
 functions.
 """
 # Drake imports
-import pydrake
+import pydrake  # pylint: disable=import-error
 import numpy as np
 import plant.manipulator as manipulator
 from plant.paper import settling_time
