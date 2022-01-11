@@ -3,7 +3,8 @@ import numpy as np
 from pydrake.geometry import Cylinder, Rgba
 from pydrake.math import RigidTransform, RotationMatrix
 
-# Taken from:
+
+# This function taken from:
 # https://github.com/RussTedrake/manipulation/blob/008cec6343dd39063705287e6664a3fee71a43b8/manipulation/meshcat_cpp_utils.py
 def AddMeshcatTriad(meshcat,
                     path,

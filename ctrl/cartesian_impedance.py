@@ -38,7 +38,7 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
 
         # Target values
         self.start_theta_MX = -0.25
-        self.end_theta_MX = np.pi/2
+        self.end_theta_MX = np.pi
 
         # Gains
         # Order is [theta_x, theta_y, theta_z, x, y, z]
@@ -106,18 +106,19 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
             self.d_theta_MXd = (self.end_theta_MX - self.start_theta_MX) / (
                 self.end_time - self.start_time)
             # self.dx0[0] = self.d_theta_MXd
+        self.initialized = True
 
         # ==================== CALCULATE INTERMEDIATE TERMS ===================
         # Desired values
         ## Interpolate theta_MXd
         theta_MXd = np.interp(
             context.get_time(),
-            [self.start_theta_MX, self.start_theta_MX],
-            [self.start_time, self.end_time]
+            [self.start_time, self.end_time],
+            [self.start_theta_MX, self.end_theta_MX],
         )
-        y_d = self.joint_position[1] + np.cos(theta_MXd)
-        z_d = self.joint_position[2] + np.sin(theta_MXd)
-        self.x0[0] = 0 #theta_MXd
+        y_d = self.joint_position[1] + np.cos(theta_MXd)*self.sys_consts.w_L/2
+        z_d = self.joint_position[2] + np.sin(theta_MXd)*self.sys_consts.w_L/2
+        self.x0[0] = theta_MXd
         self.x0[4] = y_d
         self.x0[5] = z_d
 
@@ -156,6 +157,7 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         # ======================== UPDATE DEBUG VALUES ========================
         self.debug["dx0"].append(self.dx0)
         self.debug["x0"].append(self.x0)
+        self.debug["theta_MXd"].append(theta_MXd)
         self.debug["times"].append(context.get_time())
 
         # ======================== UPDATE VISUALIZATION =======================
