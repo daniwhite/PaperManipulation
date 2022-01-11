@@ -4,14 +4,16 @@ from ctrl.common import SystemConstants
 import plant.manipulator
 import plant.pedestal
 import constants
+import visualization
 
 from collections import defaultdict
 
 # Drake imports
 import pydrake
+from pydrake.all import Meshcat, RigidTransform, RollPitchYaw, RotationMatrix
 
 class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
-    def __init__(self, sys_consts: SystemConstants):
+    def __init__(self, sys_consts: SystemConstants, meshcat: Meshcat):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # System constants/parameters
@@ -45,7 +47,9 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.x0 = np.zeros((6,1))
         self.dx0 = np.zeros((6,1))
 
+        # Other terms
         self.debug = defaultdict(list)
+        self.meshcat = meshcat
 
 
         # =========================== DECLARE INPUTS ==========================
@@ -153,5 +157,14 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.debug["dx0"].append(self.dx0)
         self.debug["x0"].append(self.x0)
         self.debug["times"].append(context.get_time())
+
+        # ======================== UPDATE VISUALIZATION =======================
+        visualization.AddMeshcatTriad(
+            self.meshcat, "impedance_setpoint",
+            X_PT=RigidTransform(
+                p=self.x0[3:].flatten(),
+                R=RotationMatrix(RollPitchYaw(self.x0[:3]))
+            )
+        )
 
         output.SetFromVector(tau_ctrl.flatten())
