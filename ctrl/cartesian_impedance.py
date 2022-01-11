@@ -137,22 +137,24 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
                     J.T
                 )
             )
-
-        # print(Mx.shape)
-        # print(J.shape)
+    
         # ===================== CALCULATE CONTROL OUTPUTS =====================
         # print(np.matmul(np.linalg.inv(Mq), Cv).shape)
-        tau_ctrl = np.matmul(J.T,
-            np.matmul(self.D, self.dx0 - d_x) \
+        Vq = Cv
+        compliance_terms = np.matmul(self.D, self.dx0 - d_x) \
             + \
-            np.matmul(self.K, self.x0 - x) \
-            # + \
-            # np.matmul(Mx,
-            #     np.matmul(J, np.matmul(np.linalg.inv(Mq), Cv))
-            #     -
-            #     Jdot_qdot
-            # )
+            np.matmul(self.K, self.x0 - x)
+        cancelation_terms = np.matmul(
+            Mx,
+            np.matmul(
+                np.matmul(J, np.linalg.inv(Mq)),
+                Vq
+            ) \
+            - \
+            Jdot_qdot
         )
+        F_ctrl = cancelation_terms + compliance_terms
+        tau_ctrl = np.matmul(J.T, F_ctrl)
 
         # ======================== UPDATE DEBUG VALUES ========================
         self.debug["dx0"].append(self.dx0)
