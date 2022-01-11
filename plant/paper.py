@@ -5,7 +5,7 @@ import numpy as np
 
 # Drake imports
 import pydrake
-from pydrake.all import RigidTransform, RotationMatrix
+from pydrake.all import RigidTransform, RotationMatrix, CollisionFilterDeclaration
 from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, RevoluteSpring
 
 # Imports of other project files
@@ -122,7 +122,9 @@ class Paper:
                 # Ignore collisions between adjacent links
                 geometries = self.plant.CollectRegisteredGeometries(
                     [paper1_body, paper2_body])
-                self.scene_graph.ExcludeCollisionsWithin(geometries)
+                self.scene_graph.collision_filter_manager().Apply(
+                    CollisionFilterDeclaration()
+                        .ExcludeWithin(geometries))
             self.link_idxs.append(int(paper_body.index()))
 
     def weld_paper_edge(self, pedestal_width, pedestal_height):
