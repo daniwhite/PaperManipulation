@@ -2,8 +2,6 @@ import numpy as np
 
 from ctrl.common import SystemConstants
 import plant.manipulator
-import plant.pedestal
-import constants
 import visualization
 
 from collections import defaultdict

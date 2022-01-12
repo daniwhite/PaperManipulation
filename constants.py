@@ -1,11 +1,5 @@
 """Constants used accross multiple project files."""
 
-# Standard imports
-import numpy as np
-
-# Imports of other project files
-from plant.pedestal import PEDESTAL_WIDTH
-
 g = 9.81
 
 EPSILON = 0.001
@@ -15,3 +9,8 @@ FRICTION = 0.2
 # Time constants
 DT = 0  # Means continuous time
 TSPAN = 10
+
+# Dimensions of physical pieces
+THIN_PLYWOOD_THICKNESS = IN_TO_M*3/8
+THICK_PLYWOOD_THICKNESS = IN_TO_M*3/4
+PLYWOOD_LENGTH = IN_TO_M*12

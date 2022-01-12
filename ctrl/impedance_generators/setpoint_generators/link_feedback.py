@@ -1,9 +1,5 @@
 import numpy as np
 
-from ctrl.common import SystemConstants
-import plant.manipulator
-import plant.pedestal
-
 # Drake imports
 import pydrake
 from pydrake.all import Meshcat, RigidTransform, RollPitchYaw, RotationMatrix

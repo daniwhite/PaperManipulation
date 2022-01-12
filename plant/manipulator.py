@@ -1,14 +1,11 @@
 # Drake imports
 import pydrake
-from pydrake.multibody.tree import SpatialInertia, UnitInertia, JacobianWrtVariable
-from pydrake.all import BasicVector, MultibodyPlant, ContactResults, SpatialVelocity, SpatialForce, FindResourceOrThrow, RigidTransform, RotationMatrix, AngleAxis, RollPitchYaw
-from pydrake.all import (
-    MathematicalProgram, Solve, eq, le, ge,
-)
-import constants
-import plant.pedestal as pedestal
+from pydrake.multibody.tree import SpatialInertia, UnitInertia
+from pydrake.all import RigidTransform, RotationMatrix
 
 import numpy as np
+
+from constants import IN_TO_M
 
 RADIUS = 0.05
 VOLUME = (4/3)*RADIUS**3*np.pi
@@ -18,33 +15,12 @@ INIT_Y = 0.2
 INIT_Z = 0.25
 
 
-# class ManipulatorPlant:
-#     def __init__(self, contact_body_name) -> None:
-#         self.contact_body_name = contact_body_name
-
-#     def addManipulator(self, plant, scene_graph=None):
-#         raise NotImplementedError
-    
-#     def get_contact_body_name(self):
-#         return self.contact_body_name
-
-# class SpherePlant(ManipulatorPlant):
-#     def __init__(self, contact_body_name="sphere_body") -> None:
-#         super().__init__(contact_body_name)
-    
-#     def addManipulator(self, plant, scene_graph=None):
-#         pass
-
-# class ArmPlant(ManipulatorPlant):
-#     def __init__(self, contact_body_name="panda_leftfinger") -> None:
-#         super().__init__(contact_body_name)
-
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
-    q0[0] = -np.pi/2
-    q0[1] = -0.6
-    q0[3] = 1.7 #-1.5
-    q0[5] = 0.6
+    q0[0] = np.pi/2
+    q0[1] = 0 #0.6
+    q0[3] = -np.pi
+    q0[5] = 1.5*np.pi
     q0[6] = -np.pi/4
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
@@ -60,7 +36,11 @@ def addArm(plant, scene_graph=None):
     jnt = plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [0, 0.7, 0])
+        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
+            0,
+            IN_TO_M*20,
+            0
+        ])
     )
 
     # Initialize sphere body
