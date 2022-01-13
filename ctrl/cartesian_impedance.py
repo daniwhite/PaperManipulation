@@ -147,4 +147,12 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
             )
         )
 
+        visualization.AddMeshcatTriad(
+            self.meshcat, "manipulator_pose",
+            X_PT=RigidTransform(
+                p=p_M.flatten(),
+                R=RotationMatrix(RollPitchYaw(rot_vec_M))
+            )
+        )
+
         output.SetFromVector(tau_ctrl.flatten())

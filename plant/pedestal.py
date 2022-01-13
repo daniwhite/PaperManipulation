@@ -8,7 +8,7 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 from constants import THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M
 
-bump_length = 6*IN_TO_M
+bump_length = 5*IN_TO_M
 PEDESTAL_X_DIM = PLYWOOD_LENGTH
 PEDESTAL_Y_DIM = PLYWOOD_LENGTH/2
 PEDESTAL_Z_DIM = PLYWOOD_LENGTH + bump_length

@@ -21,7 +21,7 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0[1] = 0 #0.6
     q0[3] = -np.pi
     q0[5] = 1.5*np.pi
-    q0[6] = -np.pi/4
+    q0[6] = -3*np.pi/4
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
@@ -62,10 +62,15 @@ def addArm(plant, scene_graph=None):
             pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
+
+    X_P_S = RigidTransform(
+        RotationMatrix.MakeZRotation(np.pi/4).multiply(RotationMatrix.MakeXRotation(-np.pi/2)),
+        [0, 0, 0.065]
+    ) # Roughly aligns axes with world axes
     plant.WeldFrames(
         plant.GetFrameByName("panda_link8", arm_instance),
         plant.GetFrameByName("sphere_body", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(3*np.pi/4), [0, 0, 0.065]) # Roughly aligns axes with world axes
+        X_P_S
     )
 
     return arm_instance
