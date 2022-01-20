@@ -1,19 +1,26 @@
 # Drake imports
+from plant.paper import NumLinks
 import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
-from pydrake.all import RigidTransform, RotationMatrix, Mesh
+from pydrake.all import RigidTransform, RotationMatrix, Mesh, \
+    CollisionFilterDeclaration
 
 import numpy as np
 
-from constants import IN_TO_M
+# Imports of other project files
+from constants import IN_TO_M, EPSILON
 
 RADIUS = 0.05
 VOLUME = (4/3)*RADIUS**3*np.pi
-MASS = VOLUME*1e3  # Assume finger is made of water
+MASS = EPSILON
 
-INIT_Y = 0.2
-INIT_Z = 0.25
-
+# For the panda, the end effector is always at least a hemisphere, but may be
+# more than that. This variable keeps track of home much of the second/lower
+# hemisphere to include, where 0 indicates just a hemisphere, and 1 indicates a
+# full sphere.
+fraction_of_lower_hemisphere = 0.5 # Only applies if not using mesh
+USE_MESH = False
+USE_BOX = False
 
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
@@ -25,33 +32,72 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
-def addArm(plant, scene_graph=None):
-    """
-    Creates the panda arm.
-    """
-    parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
-
-    # Weld panda to world
-    jnt = plant.WeldFrames(
-        plant.world_frame(),
-        plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
-            0,
-            IN_TO_M*22,
-            0
-        ])
+def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
+    end_effector_RT = RigidTransform(
+        p=[0,-fraction_of_lower_hemisphere*RADIUS,0]
     )
+    if plant.geometry_source_is_registered():
+        plant.RegisterCollisionGeometry(
+            sphere_body,
+            end_effector_RT,
+            pydrake.geometry.Sphere(RADIUS),
+            "sphere_body",
+            pydrake.multibody.plant.CoulombFriction(1, 1))
+        plant.RegisterVisualGeometry(
+            sphere_body,
+            end_effector_RT,
+            pydrake.geometry.Sphere(RADIUS),
+            "sphere_body",
+            [.9, .5, .5, 1.0])  # Color
 
+    if USE_BOX:
+        partial_radius = RADIUS * (
+            1 - fraction_of_lower_hemisphere**2)**0.5
+        box_side = partial_radius*2
+        box_height = RADIUS*(1-fraction_of_lower_hemisphere)
+        box = pydrake.geometry.Box(
+            box_side, box_side, box_height)
+        box_body = plant.AddRigidBody(
+            "box_body", arm_instance,
+            pydrake.multibody.tree.SpatialInertia(
+                mass=MASS,
+                p_PScm_E=np.array([0., 0., 0.]),
+                G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
+        if plant.geometry_source_is_registered():
+            plant.RegisterCollisionGeometry(
+                box_body,
+                RigidTransform(),
+                box,
+                "box_body",
+                pydrake.multibody.plant.CoulombFriction(1, 1))
+            plant.RegisterVisualGeometry(
+                box_body,
+                RigidTransform(),
+                box,
+                "box_body",
+                [.9, .5, .5, 1.0])  # Color
+
+            geometries = plant.CollectRegisteredGeometries(
+                [
+                    box_body,
+                    sphere_body,
+                    plant.GetBodyByName("panda_link8")
+                ])
+            scene_graph.collision_filter_manager().Apply(
+                CollisionFilterDeclaration()
+                    .ExcludeWithin(geometries))
+        plant.WeldFrames(
+            plant.GetFrameByName("panda_link8", arm_instance),
+            plant.GetFrameByName("box_body", arm_instance),
+            RigidTransform(
+                R=RotationMatrix.MakeZRotation(np.pi/4),
+                p=[0,0,0.065-box_height/2]
+        ))
+
+
+def addMeshEndEffector(plant, scene_graph, sphere_body):
     # Initialize sphere body
     partial_sphere_mesh = Mesh("models/partial_sphere.obj")
-    sphere_geo = pydrake.geometry.Sphere(RADIUS)
-    sphere_body = plant.AddRigidBody(
-        "sphere_body", arm_instance,
-        pydrake.multibody.tree.SpatialInertia(
-            mass=MASS,
-            p_PScm_E=np.array([0., 0., 0.]),
-            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
     if plant.geometry_source_is_registered():
         plant.RegisterCollisionGeometry(
             sphere_body,
@@ -66,6 +112,51 @@ def addArm(plant, scene_graph=None):
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
 
+        geometries = plant.CollectRegisteredGeometries(
+            [
+                sphere_body,
+                plant.GetBodyByName("panda_link8")
+            ])
+        scene_graph.collision_filter_manager().Apply(
+            CollisionFilterDeclaration()
+                .ExcludeWithin(geometries))
+
+
+def addArm(plant, num_links:NumLinks=None, scene_graph=None):
+    """
+    Creates the panda arm.
+    """
+    parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
+    arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
+
+    # Weld panda to world
+    plant.WeldFrames(
+        plant.world_frame(),
+        plant.GetFrameByName("panda_link0", arm_instance),
+        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
+            0,
+            IN_TO_M*22,
+            0
+        ])
+    )
+
+    sphere_body = plant.AddRigidBody(
+        "sphere_body", arm_instance,
+        pydrake.multibody.tree.SpatialInertia(
+            mass=MASS,
+            p_PScm_E=np.array([0., 0., 0.]),
+            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
+
+    if USE_MESH:
+        addMeshEndEffector(plant, scene_graph, sphere_body)
+    else:
+        addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance)
+
+    # init_offset = 0
+    # if num_links == NumLinks.TWO:
+    #     init_offset = 0.065
+    # elif num_links == NumLinks.FOUR:
+    #     init_offset = 0.1
     X_P_S = RigidTransform(
         RotationMatrix.MakeZRotation(np.pi/4).multiply(
             RotationMatrix.MakeXRotation(-np.pi/2)),
@@ -138,13 +229,13 @@ def addSphere(plant, scene_graph=None):
         plant.GetFrameByName("false_body0"),
         plant.GetFrameByName("false_body1"), [0, 1, 0], -1, 1))
     plant.AddJointActuator("sphere_y_translation", sphere_y_translation)
-    sphere_y_translation.set_default_translation(INIT_Y)
+    sphere_y_translation.set_default_translation(0.2)
     # Linear z control
     sphere_z_translation = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
         "sphere_z",
         plant.GetFrameByName("false_body1"),
         plant.GetFrameByName("false_body2"), [0, 0, 1], -1, 1))
-    sphere_z_translation.set_default_translation(INIT_Z)
+    sphere_z_translation.set_default_translation(0.25)
     plant.AddJointActuator("sphere_z", sphere_z_translation)
     # Rotational x control
     sphere_x_rotation = plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
