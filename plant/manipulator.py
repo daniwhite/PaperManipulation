@@ -134,7 +134,7 @@ def addArm(plant, scene_graph=None):
     if config.num_links == config.NumLinks.TWO:
         panda_offset = IN_TO_M*22
     elif config.num_links == config.NumLinks.FOUR:
-        panda_offset = IN_TO_M*40
+        panda_offset = IN_TO_M*22
     # Weld panda to world
     plant.WeldFrames(
         plant.world_frame(),

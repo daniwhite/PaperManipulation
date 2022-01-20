@@ -12,6 +12,7 @@ from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, Revol
 import constants
 from constants import THIN_PLYWOOD_THICKNESS, PLYWOOD_LENGTH
 import config
+from plant.pedestal import PEDESTAL_Y_DIM
 
 PAPER_X_DIM = PLYWOOD_LENGTH
 PAPER_Z_DIM = THIN_PLYWOOD_THICKNESS
@@ -36,7 +37,7 @@ class Paper:
         # PROGRAMMING: Refactor constants.FRICTION to be constants.mu
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
-        self.link_width = PLYWOOD_LENGTH/2
+        self.link_width = PEDESTAL_Y_DIM
         self.y_dim = self.link_width * config.num_links.value
         self.link_mass = self.x_dim*self.y_dim*self.z_dim*self.density
 
