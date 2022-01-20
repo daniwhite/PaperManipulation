@@ -1,5 +1,4 @@
 # Drake imports
-from plant.paper import NumLinks
 import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 from pydrake.all import RigidTransform, RotationMatrix, Mesh, \
@@ -9,6 +8,7 @@ import numpy as np
 
 # Imports of other project files
 from constants import IN_TO_M, EPSILON
+import config
 
 RADIUS = 0.05
 VOLUME = (4/3)*RADIUS**3*np.pi
@@ -122,20 +122,26 @@ def addMeshEndEffector(plant, scene_graph, sphere_body):
                 .ExcludeWithin(geometries))
 
 
-def addArm(plant, num_links:NumLinks=None, scene_graph=None):
+def addArm(plant, scene_graph=None):
     """
     Creates the panda arm.
     """
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
     arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
 
+
+    panda_offset = 0
+    if config.num_links == config.NumLinks.TWO:
+        panda_offset = IN_TO_M*22
+    elif config.num_links == config.NumLinks.FOUR:
+        panda_offset = IN_TO_M*40
     # Weld panda to world
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
         RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
             0,
-            IN_TO_M*22,
+            panda_offset,
             0
         ])
     )
@@ -152,11 +158,6 @@ def addArm(plant, num_links:NumLinks=None, scene_graph=None):
     else:
         addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance)
 
-    # init_offset = 0
-    # if num_links == NumLinks.TWO:
-    #     init_offset = 0.065
-    # elif num_links == NumLinks.FOUR:
-    #     init_offset = 0.1
     X_P_S = RigidTransform(
         RotationMatrix.MakeZRotation(np.pi/4).multiply(
             RotationMatrix.MakeXRotation(-np.pi/2)),

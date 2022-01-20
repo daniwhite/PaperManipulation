@@ -1,4 +1,4 @@
-import constants
+import config
 import plant.manipulator as manipulator
 
 import pydrake
@@ -14,7 +14,7 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
     def __init__(self):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Physical parameters
-        self.manipulator_plant = MultibodyPlant(constants.DT)
+        self.manipulator_plant = MultibodyPlant(config.DT)
         manipulator.data["add_plant_function"](self.manipulator_plant)
         self.manipulator_plant.Finalize()
         self.manipulator_plant_context = \

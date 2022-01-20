@@ -11,13 +11,7 @@ from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, Revol
 # Imports of other project files
 import constants
 from constants import THIN_PLYWOOD_THICKNESS, PLYWOOD_LENGTH
-
-# Other imports
-from enum import Enum
-
-class NumLinks(Enum):
-    TWO = 2
-    FOUR = 4
+import config
 
 PAPER_X_DIM = PLYWOOD_LENGTH
 PAPER_Z_DIM = THIN_PLYWOOD_THICKNESS
@@ -32,19 +26,18 @@ class Paper:
 
     hinge_diameter = (3/32)*constants.IN_TO_M
 
-    def __init__(self, plant, scene_graph, num_links:NumLinks, default_joint_angle=-np.pi/60,
+    def __init__(self, plant, scene_graph, default_joint_angle=-np.pi/60,
                  damping=1e-5, stiffness=1e-3):
         # Drake objects
         self.plant = plant
         self.scene_graph = scene_graph
 
         # Geometric and physical quantities
-        self.num_links = num_links
         # PROGRAMMING: Refactor constants.FRICTION to be constants.mu
         self.mu = constants.FRICTION
         self.default_joint_angle = default_joint_angle
         self.link_width = PLYWOOD_LENGTH/2
-        self.y_dim = self.link_width * num_links.value
+        self.y_dim = self.link_width * config.num_links.value
         self.link_mass = self.x_dim*self.y_dim*self.z_dim*self.density
 
         # Lists of internal Drake objects
@@ -54,7 +47,7 @@ class Paper:
         self.damping = damping
         self.stiffness = stiffness
         self.instance = self.plant.AddModelInstance(self.name)
-        for link_num in range(self.num_links.value):
+        for link_num in range(config.num_links.value):
             # Initialize bodies and instances
             
             paper_body = self.plant.AddRigidBody(
@@ -153,5 +146,5 @@ class Paper:
             self.plant.world_frame(),
             self.plant.get_body(BodyIndex(self.link_idxs[0])).body_frame(),
             RigidTransform(RotationMatrix(
-            ), [0, -(pedestal_y_dim/2-self.y_dim/4), pedestal_z_dim+self.z_dim/2])
+            ), [0, 0, pedestal_z_dim+self.z_dim/2])
         )
