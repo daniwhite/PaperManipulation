@@ -1,7 +1,7 @@
 # Drake imports
 import pydrake
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
-from pydrake.all import RigidTransform, RotationMatrix
+from pydrake.all import RigidTransform, RotationMatrix, Mesh
 
 import numpy as np
 
@@ -20,8 +20,8 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0[0] = np.pi/2
     q0[1] = 0 #0.6
     q0[3] = -np.pi
-    q0[5] = 1.5*np.pi
-    q0[6] = -3*np.pi/4
+    q0[5] = 1.5*np.pi+0.5
+    q0[6] = -3*np.pi/4-0.7
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
@@ -44,6 +44,7 @@ def addArm(plant, scene_graph=None):
     )
 
     # Initialize sphere body
+    hemisphere_mesh = Mesh("models/hemisphere.obj")
     sphere_body = plant.AddRigidBody(
         "sphere_body", arm_instance,
         pydrake.multibody.tree.SpatialInertia(
@@ -51,20 +52,23 @@ def addArm(plant, scene_graph=None):
             p_PScm_E=np.array([0., 0., 0.]),
             G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
     if plant.geometry_source_is_registered():
-        col_geom = plant.RegisterCollisionGeometry(
-            sphere_body, RigidTransform(),
+        plant.RegisterCollisionGeometry(
+            sphere_body,
+            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
             pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
             pydrake.multibody.plant.CoulombFriction(1, 1))
         plant.RegisterVisualGeometry(
             sphere_body,
-            RigidTransform(),
+            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
             pydrake.geometry.Sphere(RADIUS),
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
 
     X_P_S = RigidTransform(
-        RotationMatrix.MakeZRotation(np.pi/4).multiply(RotationMatrix.MakeXRotation(-np.pi/2)),
+        RotationMatrix.MakeZRotation(np.pi/4).multiply(
+            RotationMatrix.MakeXRotation(-np.pi/2)).multiply(
+            RotationMatrix.MakeYRotation(-np.pi/6)),
         [0, 0, 0.065]
     ) # Roughly aligns axes with world axes
     plant.WeldFrames(
