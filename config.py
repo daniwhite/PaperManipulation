@@ -12,4 +12,4 @@ TSPAN = 30
 class NumLinks(Enum):
     TWO = 2
     FOUR = 4
-num_links = NumLinks.FOUR
+num_links = NumLinks.TWO

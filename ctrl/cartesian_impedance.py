@@ -67,6 +67,10 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
             "dx0",
             pydrake.systems.framework.BasicVector(6)
         )
+        self.DeclareVectorInputPort(
+            "feedforward_wrench",
+            pydrake.systems.framework.BasicVector(6)
+        )
 
         # ========================== DECLARE OUTPUTS ==========================
         self.DeclareVectorOutputPort(
@@ -93,10 +97,14 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
             np.array(self.GetInputPort("Cv").Eval(context)), 1)
 
         # Impedance
-        K = np.diag(self.GetInputPort("K").Eval(context))
+        K_flat = self.GetInputPort("K").Eval(context)
+        K = np.diag(K_flat)
         D = np.diag(self.GetInputPort("D").Eval(context))
         x0 = np.expand_dims(self.GetInputPort("x0").Eval(context), 1)
         dx0 = np.expand_dims(self.GetInputPort("dx0").Eval(context), 1)
+
+        # Feedforward forces
+        ff_wrench = self.GetInputPort("feedforward_wrench").Eval(context)
 
         # ==================== CALCULATE INTERMEDIATE TERMS ===================
         # Actual values
@@ -114,6 +122,12 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
                     J.T
                 )
             )
+
+        # K_flat is N/m, since F = kx and F is N and x is m
+        # ff_wrench is N
+        # so ff_wrench / K_flat is (N) / (N/m) = N * m/N = ,
+        ff_diff = ff_wrench / K_flat
+        x0 += np.expand_dims(ff_diff, 1)
     
         # ===================== CALCULATE CONTROL OUTPUTS =====================
         # print(np.matmul(np.linalg.inv(Mq), Cv).shape)
