@@ -1,4 +1,4 @@
-name = "hemisphere.obj"
+name = "partial_sphere.obj"
 
 header_lines = 4
 

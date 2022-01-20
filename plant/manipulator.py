@@ -44,7 +44,7 @@ def addArm(plant, scene_graph=None):
     )
 
     # Initialize sphere body
-    hemisphere_mesh = Mesh("models/hemisphere.obj")
+    partial_sphere_mesh = Mesh("models/partial_sphere.obj")
     sphere_geo = pydrake.geometry.Sphere(RADIUS)
     sphere_body = plant.AddRigidBody(
         "sphere_body", arm_instance,
@@ -56,13 +56,13 @@ def addArm(plant, scene_graph=None):
         plant.RegisterCollisionGeometry(
             sphere_body,
             RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
-            hemisphere_mesh,
+            partial_sphere_mesh,
             "sphere_body",
             pydrake.multibody.plant.CoulombFriction(1, 1))
         plant.RegisterVisualGeometry(
             sphere_body,
             RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
-            hemisphere_mesh,
+            partial_sphere_mesh,
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
 

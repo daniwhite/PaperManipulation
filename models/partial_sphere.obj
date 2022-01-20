@@ -1,4 +1,4 @@
-mtllib hemisphere.mtl
+mtllib partial_sphere.mtl
 g Part 1
 usemtl 0.615686_0.811765_0.929412_0.000000_0.000000
 o mesh0
