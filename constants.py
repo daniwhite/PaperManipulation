@@ -8,7 +8,7 @@ FRICTION = 0.2
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 25
+TSPAN = 15
 
 # Dimensions of physical pieces
 THIN_PLYWOOD_THICKNESS = IN_TO_M*3/8

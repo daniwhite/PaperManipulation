@@ -19,9 +19,9 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
     q0[0] = np.pi/2
     q0[1] = 0 #0.6
-    q0[3] = -np.pi
-    q0[5] = 1.5*np.pi+0.5
-    q0[6] = -3*np.pi/4-0.7
+    q0[3] = -np.pi+0.4
+    q0[5] = 1.5*np.pi+0.2
+    q0[6] = -3*np.pi/4
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
@@ -38,7 +38,7 @@ def addArm(plant, scene_graph=None):
         plant.GetFrameByName("panda_link0", arm_instance),
         RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
             0,
-            IN_TO_M*20,
+            IN_TO_M*22,
             0
         ])
     )
@@ -67,8 +67,7 @@ def addArm(plant, scene_graph=None):
 
     X_P_S = RigidTransform(
         RotationMatrix.MakeZRotation(np.pi/4).multiply(
-            RotationMatrix.MakeXRotation(-np.pi/2)).multiply(
-            RotationMatrix.MakeYRotation(-np.pi/6)),
+            RotationMatrix.MakeXRotation(-np.pi/2)),
         [0, 0, 0.065]
     ) # Roughly aligns axes with world axes
     plant.WeldFrames(

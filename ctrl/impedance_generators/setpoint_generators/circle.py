@@ -62,7 +62,7 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
         z_d = self.joint_position[2] + np.sin(theta_MXd)*self.desired_radius
 
         x0 = np.zeros(6)
-        x0[0] = theta_MXd
+        x0[0] = theta_MXd - np.pi/6
         x0[4] = y_d
         x0[5] = z_d
         output.SetFromVector(x0)
