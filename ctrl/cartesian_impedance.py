@@ -113,11 +113,11 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
 
         Mq = M
         # TODO: Should this be pinv? (Copying from Sangbae's notes)
-        Mx = np.linalg.inv(
+        Mx = np.linalg.pinv(
                 np.matmul(
                     np.matmul(
                         J,
-                        np.linalg.inv(Mq)
+                        np.linalg.pinv(Mq)
                     ), 
                     J.T
                 )

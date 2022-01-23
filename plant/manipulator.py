@@ -24,11 +24,13 @@ USE_BOX = False
 
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
-    q0[0] = np.pi/2
-    q0[1] = 0 #0.6
-    q0[3] = -np.pi+0.4
-    q0[5] = 1.5*np.pi+0.2
-    q0[6] = -3*np.pi/4
+    q0[0] = -np.pi/2 # -np.pi/12 -> closer to physical
+    q0[1] = 0
+    q0[2] = np.pi/2
+    q0[3] = -np.pi
+    q0[4] = np.pi
+    q0[5] = np.pi/4 #1.5*np.pi+0.2
+    q0[6] = -3*np.pi/4-np.pi/2
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
@@ -81,7 +83,8 @@ def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
                 [
                     box_body,
                     sphere_body,
-                    plant.GetBodyByName("panda_link8")
+                    plant.GetBodyByName("panda_link8"),
+                    plant.GetBodyByName("panda_hand")
                 ])
             scene_graph.collision_filter_manager().Apply(
                 CollisionFilterDeclaration()
@@ -93,6 +96,17 @@ def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
                 R=RotationMatrix.MakeZRotation(np.pi/4),
                 p=[0,0,0.065-box_height/2]
         ))
+    else:
+        if plant.geometry_source_is_registered():
+            geometries = plant.CollectRegisteredGeometries(
+                [
+                    sphere_body,
+                    plant.GetBodyByName("panda_link8"),
+                    plant.GetBodyByName("panda_hand")
+                ])
+            scene_graph.collision_filter_manager().Apply(
+                CollisionFilterDeclaration()
+                    .ExcludeWithin(geometries))
 
 
 def addMeshEndEffector(plant, scene_graph, sphere_body):
@@ -115,7 +129,8 @@ def addMeshEndEffector(plant, scene_graph, sphere_body):
         geometries = plant.CollectRegisteredGeometries(
             [
                 sphere_body,
-                plant.GetBodyByName("panda_link8")
+                plant.GetBodyByName("panda_link8"),
+                plant.GetBodyByName("panda_hand")
             ])
         scene_graph.collision_filter_manager().Apply(
             CollisionFilterDeclaration()
@@ -139,7 +154,7 @@ def addArm(plant, scene_graph=None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(np.pi), [
+        RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
             0,
             panda_offset,
             0
@@ -158,9 +173,20 @@ def addArm(plant, scene_graph=None):
     else:
         addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance)
 
+    if plant.geometry_source_is_registered():
+        geometries = plant.CollectRegisteredGeometries(
+            [
+                plant.GetBodyByName("panda_link6"),
+                plant.GetBodyByName("panda_link8")
+            ])
+        scene_graph.collision_filter_manager().Apply(
+            CollisionFilterDeclaration()
+                .ExcludeWithin(geometries))
+
     X_P_S = RigidTransform(
-        RotationMatrix.MakeZRotation(np.pi/4).multiply(
-            RotationMatrix.MakeXRotation(-np.pi/2)),
+        RotationMatrix().MakeZRotation(-np.pi/4).multiply(
+            RotationMatrix().MakeXRotation(-np.pi/2)
+        ),
         [0, 0, 0.065]
     ) # Roughly aligns axes with world axes
     plant.WeldFrames(

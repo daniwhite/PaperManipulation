@@ -10,7 +10,7 @@ import config
 
 from constants import THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M
 
-bump_z = 10*IN_TO_M
+bump_z = 5*IN_TO_M
 PEDESTAL_X_DIM = PLYWOOD_LENGTH
 if config.num_links == config.NumLinks.TWO:
     PEDESTAL_Y_DIM = PLYWOOD_LENGTH/2
