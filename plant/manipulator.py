@@ -318,6 +318,8 @@ sphere_data = {
     "nq": 6,
 }
 
+# Rotation between link position and nominal manipulator position
+RotX_L_Md = -np.pi/2
 
 assert arm_data.keys() == expected_keys
 assert sphere_data.keys() == expected_keys
