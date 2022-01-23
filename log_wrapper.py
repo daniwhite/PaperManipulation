@@ -5,13 +5,15 @@ from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAc
 import numpy as np
 import plant.manipulator as manipulator
 
+PRINT_CONTACTS = False
+
 class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
     Wrapper system that converts RigidTransform and SpatialVelocity inputs into vector output so it
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, contact_body_idx, paper):
+    def __init__(self, num_bodies, contact_body_idx, paper, plant):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Offsets
         self.type_strs_to_offsets = {
@@ -31,6 +33,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.max_contacts = 10
         self.nq_manipulator = manipulator.data['nq']
         self.paper = paper
+        self.plant = plant
 
 
         # Numbers of entries
@@ -194,11 +197,22 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             assert len(out) == self.get_idx("acc", "rot", i)
             out += list(acc.rotational())
 
+        if contact_results.num_point_pair_contacts() > 0:
+            if PRINT_CONTACTS:
+                print()
+
         # Add contact results
         forces_found = 0
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
+
+            if PRINT_CONTACTS:
+                print(
+                    self.plant.get_body(point_pair_contact_info.bodyA_index()).name()
+                    ,
+                    self.plant.get_body(point_pair_contact_info.bodyB_index()).name()
+                )
 
             use_this_contact = False
             # Always take contact forces on manipulator
