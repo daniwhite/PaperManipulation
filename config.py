@@ -6,7 +6,7 @@ from enum import Enum
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 30
+TSPAN = 3
 
 # Number of links
 class NumLinks(Enum):
