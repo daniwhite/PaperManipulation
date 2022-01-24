@@ -19,6 +19,7 @@ MASS = EPSILON
 # hemisphere to include, where 0 indicates just a hemisphere, and 1 indicates a
 # full sphere.
 fraction_of_lower_hemisphere = 0.5 # Only applies if not using mesh
+dist_between_panda_hand_and_edge = 2*IN_TO_M
 USE_MESH = False
 USE_BOX = False
 
@@ -36,7 +37,7 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
 
 def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
     end_effector_RT = RigidTransform(
-        p=[0,-fraction_of_lower_hemisphere*RADIUS,0]
+        p=[0,0,0]
     )
     if plant.geometry_source_is_registered():
         plant.RegisterCollisionGeometry(
@@ -183,11 +184,18 @@ def addArm(plant, scene_graph=None):
             CollisionFilterDeclaration()
                 .ExcludeWithin(geometries))
 
+    half_panda_hand_height = 0.065
+    sphere_partiality_deduction = fraction_of_lower_hemisphere*RADIUS
     X_P_S = RigidTransform(
-        RotationMatrix().MakeZRotation(-np.pi/4).multiply(
-            RotationMatrix().MakeXRotation(-np.pi/2)
-        ),
-        [0, 0, 0.065]
+        RotationMatrix().MakeZRotation(-np.pi/4),
+        [
+            0,
+            0,
+            (
+                half_panda_hand_height \
+                + dist_between_panda_hand_and_edge \
+                + RADIUS - sphere_partiality_deduction
+            )]
     ) # Roughly aligns axes with world axes
     plant.WeldFrames(
         plant.GetFrameByName("panda_link8", arm_instance),
@@ -319,7 +327,7 @@ sphere_data = {
 }
 
 # Rotation between link position and nominal manipulator position
-RotX_L_Md = -np.pi/2
+RotX_L_Md = 0
 
 assert arm_data.keys() == expected_keys
 assert sphere_data.keys() == expected_keys

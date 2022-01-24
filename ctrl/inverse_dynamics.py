@@ -2,17 +2,18 @@ import numpy as np
 
 from ctrl.common import SystemConstants
 import plant.manipulator
+import visualization
 
 from collections import defaultdict
 
 # Drake imports
 import pydrake
 from pydrake.all import (
-    MathematicalProgram, eq, Solve
+    MathematicalProgram, eq, Solve, RigidTransform, RollPitchYaw, RotationMatrix, Meshcat
 )
 
 class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
-    def __init__(self, options, sys_consts: SystemConstants):
+    def __init__(self, options, sys_consts: SystemConstants, meshcat: Meshcat):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # System constants/parameters
@@ -31,6 +32,7 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.theta_MZd = None
 
         self.debug = defaultdict(list)
+        self.meshcat = meshcat
 
         # =========================== DECLARE INPUTS ==========================
         # Torque inputs
@@ -361,12 +363,15 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         ).evaluator().set_description("Desired dd_d_N constraint" + str(i))
 
         result = Solve(prog)
-        assert result.is_success()
-        tau_ctrl_result = []
-        for i in range(self.nq):
-            tau_ctrl_result.append(result.GetSolution()[
-                prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
-        tau_ctrl_result = np.expand_dims(tau_ctrl_result, 1)
+        if result.is_success():
+            tau_ctrl_result = []
+            for i in range(self.nq):
+                tau_ctrl_result.append(result.GetSolution()[
+                    prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
+            tau_ctrl_result = np.expand_dims(tau_ctrl_result, 1)
+        else:
+            print("[InverseDynamicsController] Result was not a success, so commanding zero")
+            tau_ctrl_result = np.zeros((self.nq, 1))
 
         # ======================== UPDATE DEBUG VALUES ========================
         self.debug["times"].append(context.get_time())
@@ -435,4 +440,15 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             self.debug["ddq_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(ddq[i,0])])
         self.debug["theta_MXd"].append(theta_MXd)
 
+        # ======================== UPDATE VISUALIZATION =======================
+        vis_rot_vec = [
+            theta_MXd, self.theta_MYd, self.theta_MZd
+        ]
+        visualization.AddMeshcatTriad(
+            self.meshcat, "impedance_setpoint",
+            X_PT=RigidTransform(
+                p=[0,0,0],
+                R=RotationMatrix(RollPitchYaw(vis_rot_vec[:3]))
+            )
+        )
         output.SetFromVector(tau_ctrl_result.flatten())

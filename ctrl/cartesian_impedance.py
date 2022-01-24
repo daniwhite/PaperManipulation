@@ -130,7 +130,6 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         x0 += np.expand_dims(ff_diff, 1)
     
         # ===================== CALCULATE CONTROL OUTPUTS =====================
-        # print(np.matmul(np.linalg.inv(Mq), Cv).shape)
         Vq = Cv
         compliance_terms = np.matmul(D, dx0 - d_x) \
             + \

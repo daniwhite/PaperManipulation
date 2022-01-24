@@ -478,7 +478,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         else:
             self.t_contact_start =  None
         in_contact = raw_in_contact and context.get_time() \
-            - self.t_contact_start > 0.5
+            - self.t_contact_start > 2
         output.SetFromVector([in_contact])
 
     # ========================== OTHER FUNCTIONS ==========================

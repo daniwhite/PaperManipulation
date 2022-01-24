@@ -96,11 +96,14 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
         v_MN = self.GetInputPort("v_MN").Eval(context)
         N_hat = np.expand_dims(self.GetInputPort("N_hat").Eval(context), 1)
 
-        F_CN = (self.v_MNd - v_MN)*self.K
+        v_MNd = 0
+        if context.get_time() > settling_time:
+            v_MNd = self.v_MNd
+
+        F_CN = (v_MNd - v_MN)*self.K
 
         F_d = np.zeros((6,1))
-        if context.get_time() > settling_time:
-            F_d[3:] += N_hat * F_CN
+        F_d[3:] += N_hat * F_CN
 
         tau_ctrl = J.T@F_d
         output.SetFromVector(tau_ctrl.flatten()) 
@@ -129,6 +132,10 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
             "pre_contact_ctrl").Eval(context)
         contact_tau_ctrl = self.GetInputPort("contact_ctrl").Eval(context)
         in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+        if in_contact:
+            if not self.use_contact_ctrl:
+                print("[CtrlSelector] Switching to contact ctrl")
+            self.use_contact_ctrl = in_contact
 
-        tau_ctrl = contact_tau_ctrl if in_contact else pre_contact_tau_ctrl
+        tau_ctrl = contact_tau_ctrl if self.use_contact_ctrl else pre_contact_tau_ctrl
         output.SetFromVector(tau_ctrl) 
