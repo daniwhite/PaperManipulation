@@ -374,7 +374,6 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
                     prog.FindDecisionVariableIndex(tau_ctrl[i,0])])
             tau_ctrl_result = np.expand_dims(tau_ctrl_result, 1)
         else:
-            print("[InverseDynamicsController] Result was not a success, so commanding zero")
             tau_ctrl_result = np.zeros((self.nq, 1))
 
         # ======================== UPDATE DEBUG VALUES ========================

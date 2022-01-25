@@ -65,7 +65,7 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
     Moves the controller towards the hinge.
     """
 
-    def __init__(self, v_MNd=0.1, K=10):
+    def __init__(self, v_MNd=0.1, K=100):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # System parameters
         self.nq = manipulator.data["nq"]
@@ -137,7 +137,7 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
                 print("[CtrlSelector] Switching to contact ctrl")
             self.use_contact_ctrl = in_contact
 
-        tau_ctrl = contact_tau_ctrl if self.use_contact_ctrl else pre_contact_tau_ctrl
+        tau_ctrl = contact_tau_ctrl if in_contact else pre_contact_tau_ctrl
         output.SetFromVector(tau_ctrl)
 
 
