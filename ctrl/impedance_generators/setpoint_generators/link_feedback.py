@@ -4,6 +4,8 @@ import numpy as np
 import pydrake
 from pydrake.all import Meshcat, RigidTransform, RollPitchYaw, RotationMatrix
 
+from ctrl.common import SystemConstants
+
 import plant.manipulator
 
 class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
@@ -11,8 +13,10 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
     Generates an impedance trajectory relative to the edge of the link.
     joint.
     """
-    def __init__(self):
+    def __init__(self, sys_consts: SystemConstants):
         pydrake.systems.framework.LeafSystem.__init__(self)
+
+        self.sys_consts = sys_consts
 
         # =========================== DECLARE INPUTS ==========================
         self.DeclareVectorInputPort(
@@ -49,7 +53,7 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
         offset_Z_rot = -np.pi/2 if offset_Z_rot < -np.pi/2 else offset_Z_rot
         X_L_SP = RigidTransform(
             R=RotationMatrix.MakeZRotation(offset_Z_rot),
-            p=[0, 0, 0]
+            p=[0, 0, -(self.sys_consts.h_L/2+self.sys_consts.r)]
         )
 
         # Calc X_W_L

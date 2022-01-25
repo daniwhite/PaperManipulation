@@ -19,7 +19,7 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.debug = defaultdict(list)
 
         # Other terms
-        self.debug = defaultdict(list)
+        self.x0 = np.zeros(6)
 
 
         # =========================== DECLARE INPUTS ==========================
@@ -73,6 +73,12 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorOutputPort(
             "tau_out", pydrake.systems.framework.BasicVector(self.nq),
             self.CalcOutput)
+        self.DeclareVectorOutputPort(
+            "adjusted_x0_pos", pydrake.systems.framework.BasicVector(3),
+            self.calc_adjusted_x0_pos)
+        self.DeclareVectorOutputPort(
+            "adjusted_x0_rot", pydrake.systems.framework.BasicVector(3),
+            self.calc_adjusted_x0_rot)
 
     def CalcOutput(self, context, output):
         # ============================ LOAD INPUTS ============================
@@ -148,4 +154,12 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.debug["x0"].append(x0)
         self.debug["times"].append(context.get_time())
 
+        self.x0 = x0
+
         output.SetFromVector(tau_ctrl.flatten())
+
+    def calc_adjusted_x0_pos(self, context, output):
+        output.SetFromVector(self.x0[3:])
+
+    def calc_adjusted_x0_rot(self, context, output):
+        output.SetFromVector(self.x0[:3])
