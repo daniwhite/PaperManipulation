@@ -1,8 +1,11 @@
 import numpy as np
 
+import pydrake
 from pydrake.geometry import Cylinder, Rgba
 from pydrake.math import RigidTransform, RotationMatrix
-
+from pydrake.all import (
+    RigidTransform, RollPitchYaw, RotationMatrix, Meshcat
+)
 
 # This function taken from:
 # https://github.com/RussTedrake/manipulation/blob/008cec6343dd39063705287e6664a3fee71a43b8/manipulation/meshcat_cpp_utils.py
@@ -32,3 +35,36 @@ def AddMeshcatTriad(meshcat,
     meshcat.SetTransform(path + "/z-axis", X_TG)
     meshcat.SetObject(path + "/z-axis", Cylinder(radius, length),
                       Rgba(0, 0, 1, opacity))
+
+class FrameVisualizer(pydrake.systems.framework.LeafSystem):
+    """
+    Take in a rotation and position and visualize the corresponding set of axes
+    in meshcat.
+    """
+    def __init__(self, meshcat: Meshcat, name: str):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        self.meshcat = meshcat
+        self.name = name
+
+        # =========================== DECLARE INPUTS ==========================
+        self.DeclareVectorInputPort(
+            "pos",
+            pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "rot",
+            pydrake.systems.framework.BasicVector(3))
+
+        # ========================== DECLARE UPDATES ==========================
+        self.DeclarePerStepEvent(
+            pydrake.systems.framework.PublishEvent(
+                self.update_frame))
+
+    def update_frame(self, context, event):
+        pos = np.expand_dims(
+            np.array(self.GetInputPort("pos").Eval(context)), 1)
+        rot = np.expand_dims(
+            np.array(self.GetInputPort("rot").Eval(context)), 1)
+
+        X = RigidTransform(p=pos, R=RotationMatrix(RollPitchYaw(rot)))
+
+        AddMeshcatTriad(self.meshcat, self.name, X_PT=X)

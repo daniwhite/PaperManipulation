@@ -2,18 +2,15 @@ import numpy as np
 
 from ctrl.common import SystemConstants
 import plant.manipulator
-import visualization
 
 from collections import defaultdict
 
 # Drake imports
 import pydrake
-from pydrake.all import (
-    MathematicalProgram, eq, Solve, RigidTransform, RollPitchYaw, RotationMatrix, Meshcat
-)
+from pydrake.all import MathematicalProgram, eq, Solve
 
 class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
-    def __init__(self, options, sys_consts: SystemConstants, meshcat: Meshcat):
+    def __init__(self, options, sys_consts: SystemConstants):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         # System constants/parameters
@@ -32,7 +29,6 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.theta_MZd = None
 
         self.debug = defaultdict(list)
-        self.meshcat = meshcat
 
         # =========================== DECLARE INPUTS ==========================
         # Torque inputs
@@ -123,6 +119,14 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorOutputPort(
             "tau_out", pydrake.systems.framework.BasicVector(self.nq),
             self.CalcOutput)
+        self.DeclareVectorOutputPort(
+            "XTNd", pydrake.systems.framework.BasicVector(3),
+            self.calc_XTNd
+        )
+        self.DeclareVectorOutputPort(
+            "rot_XYZd", pydrake.systems.framework.BasicVector(3),
+            self.calc_rot_XYZd
+        )
 
     def CalcOutput(self, context, output):
         # ============================ LOAD INPUTS ============================
@@ -440,15 +444,22 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             self.debug["ddq_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(ddq[i,0])])
         self.debug["theta_MXd"].append(theta_MXd)
 
-        # ======================== UPDATE VISUALIZATION =======================
-        vis_rot_vec = [
-            theta_MXd, self.theta_MYd, self.theta_MZd
-        ]
-        visualization.AddMeshcatTriad(
-            self.meshcat, "impedance_setpoint",
-            X_PT=RigidTransform(
-                p=[0,0,0],
-                R=RotationMatrix(RollPitchYaw(vis_rot_vec[:3]))
-            )
-        )
         output.SetFromVector(tau_ctrl_result.flatten())
+
+    def calc_XTNd(self, context, output):
+        out_vec = [
+            self.d_Xd,
+            self.d_Td+self.sys_consts.w_L/2,
+            0
+        ]
+        output.SetFromVector(out_vec)
+    
+    def calc_rot_XYZd(self, context, output):
+        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
+        theta_MXd = theta_L
+        out_vec = [
+            theta_MXd,
+            self.theta_MYd,
+            self.theta_MZd
+        ]
+        output.SetFromVector(out_vec)

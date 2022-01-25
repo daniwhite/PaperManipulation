@@ -138,4 +138,37 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
             self.use_contact_ctrl = in_contact
 
         tau_ctrl = contact_tau_ctrl if self.use_contact_ctrl else pre_contact_tau_ctrl
-        output.SetFromVector(tau_ctrl) 
+        output.SetFromVector(tau_ctrl)
+
+
+class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
+    """
+    Convert a translation vector of expressed in the XTN coordinates to XYZ
+    coordinates.
+    """
+    def __init__(self):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        self.nq = manipulator.data["nq"]
+        self.use_contact_ctrl = False
+
+        self.DeclareVectorInputPort(
+            "XTN",
+            pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "T_hat", pydrake.systems.framework.BasicVector(3))
+        self.DeclareVectorInputPort(
+            "N_hat", pydrake.systems.framework.BasicVector(3))
+
+        self.DeclareVectorOutputPort(
+            "XYZ", pydrake.systems.framework.BasicVector(3),
+            self.CalcOutput)
+
+    def CalcOutput(self, context, output):
+        [x, T, N] = self.GetInputPort("XTN").Eval(context)
+
+        x_hat = np.array([[1, 0, 0]]).T
+        T_hat = np.expand_dims(self.GetInputPort("T_hat").Eval(context), 1)
+        N_hat = np.expand_dims(self.GetInputPort("N_hat").Eval(context), 1)
+
+        xyz = x*x_hat + T*T_hat + N*N_hat
+        output.SetFromVector(xyz.flatten())
