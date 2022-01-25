@@ -36,14 +36,23 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
     def calc_x0(self, context, output):
         x0 = np.zeros(6)
 
-        # Calc X_L_SP, the transform from the link to the setpoint
-        X_L_SP = RigidTransform() # For now, just make them the same
-
-        # Calc X_W_L
+        # Evaluate inputs
         pose_L_rotational = self.GetInputPort(
             "pose_L_rotational").Eval(context)
         pose_L_translational = self.GetInputPort(
             "pose_L_translational").Eval(context)
+        theta_L = pose_L_rotational[0]
+
+        # Calc X_L_SP, the transform from the link to the setpoint
+        offset_Z_rot = -theta_L
+        offset_Z_rot = 0 if offset_Z_rot > 0 else offset_Z_rot
+        offset_Z_rot = -np.pi/2 if offset_Z_rot < -np.pi/2 else offset_Z_rot
+        X_L_SP = RigidTransform(
+            R=RotationMatrix.MakeZRotation(offset_Z_rot),
+            p=[0, 0, 0]
+        )
+
+        # Calc X_W_L
         X_W_L = RigidTransform(
             p=pose_L_translational,
             R=RotationMatrix(RollPitchYaw(pose_L_rotational))
