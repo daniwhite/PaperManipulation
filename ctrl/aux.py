@@ -4,6 +4,8 @@ functions.
 """
 # Drake imports
 import pydrake  # pylint: disable=import-error
+from pydrake.all import ContactResults
+
 import numpy as np
 import plant.manipulator as manipulator
 from plant.paper import settling_time
@@ -172,3 +174,46 @@ class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
 
         xyz = x*x_hat + T*T_hat + N*N_hat
         output.SetFromVector(xyz.flatten())
+
+class NormalForceSelector(pydrake.systems.framework.LeafSystem):
+    def __init__(self, ll_idx, contact_body_idx):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+
+        self.ll_idx = ll_idx
+        self.contact_body_idx = contact_body_idx
+
+        self.DeclareAbstractInputPort(
+            "contact_results",
+            pydrake.common.value.AbstractValue.Make(ContactResults()))
+        
+        self.DeclareVectorOutputPort(
+            "out", pydrake.systems.framework.BasicVector(1), self.CalcOutput)
+    
+    def CalcOutput(self, context, output):
+        contact_results = self.GetInputPort("contact_results").Eval(context)
+
+        F_N = 0
+        for i in range(contact_results.num_point_pair_contacts()):
+            point_pair_contact_info = \
+                contact_results.point_pair_contact_info(i)
+            body_A_is_contact_body = int(
+                point_pair_contact_info.bodyA_index()) == \
+                self.contact_body_idx
+            body_B_is_contact_body = int(
+                point_pair_contact_info.bodyB_index()) == \
+                self.contact_body_idx
+            body_A_is_last_link = int(
+                point_pair_contact_info.bodyA_index()) == \
+                self.ll_idx
+            body_B_is_last_link = int(
+                point_pair_contact_info.bodyB_index()) == \
+                self.ll_idx
+            if (body_A_is_contact_body and body_B_is_last_link) or \
+                    (body_B_is_contact_body and body_A_is_last_link):
+                contact_force = point_pair_contact_info.contact_force()
+                nhat = point_pair_contact_info.point_pair().nhat_BA_W
+                
+                F_N += np.dot(contact_force, nhat)
+        F_N = abs(F_N)
+        
+        output.SetFromVector([F_N])
