@@ -197,9 +197,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             assert len(out) == self.get_idx("acc", "rot", i)
             out += list(acc.rotational())
 
-        if contact_results.num_point_pair_contacts() > 0:
-            if PRINT_CONTACTS:
-                print()
+        if PRINT_CONTACTS:
+            print()
+            print("Time:", context.get_time())
 
         # Add contact results
         forces_found = 0
@@ -242,7 +242,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         while forces_found_idx < self.max_contacts:
             out += [np.nan]*self.entries_per_contact
             forces_found_idx += 1
-        if forces_found and PRINT_CONTACTS:
+        if not forces_found and PRINT_CONTACTS:
             print("No contacts")
 
         # Add joint forces
