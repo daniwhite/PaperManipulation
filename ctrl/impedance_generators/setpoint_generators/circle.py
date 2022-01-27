@@ -14,7 +14,7 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
     joint.
     """
     def __init__(self, sys_consts: SystemConstants, desired_radius: float,
-            end_time=60.0):
+            end_time=20.0):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.desired_radius = desired_radius

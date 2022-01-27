@@ -5,7 +5,7 @@ from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAc
 import numpy as np
 import plant.manipulator as manipulator
 
-PRINT_CONTACTS = False
+PRINT_CONTACTS = True
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
@@ -242,6 +242,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         while forces_found_idx < self.max_contacts:
             out += [np.nan]*self.entries_per_contact
             forces_found_idx += 1
+        if forces_found and PRINT_CONTACTS:
+            print("No contacts")
 
         # Add joint forces
         for i, j in enumerate(self.paper.joints):
