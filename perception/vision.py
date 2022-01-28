@@ -14,6 +14,9 @@ class VisionSystem(pydrake.systems.framework.LeafSystem):
     # PROGRAMMING: Clean up passed around references
     def __init__(self, ll_idx, contact_body_idx):
         pydrake.systems.framework.LeafSystem.__init__(self)
+        
+        self.ll_idx = ll_idx
+        self.contact_body_idx = contact_body_idx
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -44,9 +47,6 @@ class VisionSystem(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorOutputPort(
             "vel_M_rotational", pydrake.systems.framework.BasicVector(3),
             self.output_vel_M_rotational)
-        
-        self.ll_idx = ll_idx
-        self.contact_body_idx = contact_body_idx
 
     def output_pose_L_translational(self, context, output):
         poses = self.GetInputPort("poses").Eval(context)
