@@ -176,11 +176,12 @@ class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(xyz.flatten())
 
 class NormalForceSelector(pydrake.systems.framework.LeafSystem):
-    def __init__(self, ll_idx, contact_body_idx):
+    def __init__(self, ll_idx, contact_body_idx, ff_constant_force=10):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.ll_idx = ll_idx
         self.contact_body_idx = contact_body_idx
+        self.ff_constant_force = ff_constant_force
 
         self.DeclareAbstractInputPort(
             "contact_results",
@@ -214,6 +215,6 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
                 nhat = point_pair_contact_info.point_pair().nhat_BA_W
                 
                 F_N += np.dot(contact_force, nhat)
-        F_N = abs(F_N)
+        F_N = abs(F_N) + self.ff_constant_force
         
         output.SetFromVector([F_N])
