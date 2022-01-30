@@ -6,16 +6,11 @@ import pydrake
 from pydrake.all import RigidTransform, RotationMatrix
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
-import config
-
-from constants import THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M
+from constants import \
+    THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M, PEDESTAL_Y_DIM
 
 bump_z = 5*IN_TO_M
 PEDESTAL_X_DIM = PLYWOOD_LENGTH
-if config.num_links == config.NumLinks.TWO:
-    PEDESTAL_Y_DIM = PLYWOOD_LENGTH/2
-elif config.num_links == config.NumLinks.FOUR:
-    PEDESTAL_Y_DIM = PLYWOOD_LENGTH/4
 PEDESTAL_Z_DIM = PLYWOOD_LENGTH + bump_z
 
 def AddPedestal(plant):

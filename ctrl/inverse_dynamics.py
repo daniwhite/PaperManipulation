@@ -1,6 +1,6 @@
 import numpy as np
 
-from ctrl.common import SystemConstants
+from constants import SystemConstants
 import plant.manipulator
 
 from collections import defaultdict

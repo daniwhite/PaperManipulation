@@ -4,7 +4,7 @@ import numpy as np
 import pydrake
 from pydrake.all import Meshcat, RigidTransform, RollPitchYaw, RotationMatrix
 
-from ctrl.common import SystemConstants
+from constants import SystemConstants
 
 from collections import defaultdict
 

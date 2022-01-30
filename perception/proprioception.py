@@ -11,11 +11,11 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
     Calculates J, M, Cv, etc. based on arm state.
     """
 
-    def __init__(self):
+    def __init__(self, m_M, r, mu):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Physical parameters
         self.manipulator_plant = MultibodyPlant(config.DT)
-        manipulator.data["add_plant_function"](self.manipulator_plant)
+        manipulator.data["add_plant_function"](self.manipulator_plant, m_M, r, mu)
         self.manipulator_plant.Finalize()
         self.manipulator_plant_context = \
             self.manipulator_plant.CreateDefaultContext()

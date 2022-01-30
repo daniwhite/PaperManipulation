@@ -1,6 +1,6 @@
 import numpy as np
 
-from ctrl.common import SystemConstants
+import constants
 import plant.manipulator
 import plant.pedestal
 
@@ -13,8 +13,8 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
     Generates an impedance trajectory that follows a circular path about the
     joint.
     """
-    def __init__(self, sys_consts: SystemConstants, desired_radius: float,
-            end_time=20.0):
+    def __init__(self, sys_consts: constants.SystemConstants,
+            desired_radius: float, end_time=20.0):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.desired_radius = desired_radius
@@ -22,7 +22,7 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
 
         self.joint_position = [
             0,
-            sys_consts.w_L - plant.pedestal.PEDESTAL_Y_DIM/2,
+            sys_consts.w_L - constants.PEDESTAL_Y_DIM/2,
             plant.pedestal.PEDESTAL_Z_DIM + sys_consts.h_L/2
         ]
 

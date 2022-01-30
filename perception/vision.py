@@ -277,7 +277,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
     def calc_p_C(self, context):
         p_M = self.calc_p_M(context)
         N_hat = self.calc_N_hat(context)
-        p_C = p_M + N_hat*manipulator.RADIUS
+        p_C = p_M + N_hat*self.sys_consts.r
         return p_C
 
     def calc_p_LE(self, context):

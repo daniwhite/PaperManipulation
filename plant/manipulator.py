@@ -10,9 +10,7 @@ import numpy as np
 from constants import IN_TO_M, EPSILON
 import config
 
-RADIUS = 0.05
-VOLUME = (4/3)*RADIUS**3*np.pi
-MASS = EPSILON
+BOX_MASS = EPSILON
 
 # For the panda, the end effector is always at least a hemisphere, but may be
 # more than that. This variable keeps track of home much of the second/lower
@@ -35,44 +33,71 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
-def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
+def addPrimitivesEndEffector(
+        plant, scene_graph, main_end_effector_body, arm_instance, r, mu):
     end_effector_RT = RigidTransform(
         p=[0,0,0]
     )
-    if plant.geometry_source_is_registered():
-        plant.RegisterCollisionGeometry(
-            sphere_body,
-            end_effector_RT,
-            pydrake.geometry.Sphere(RADIUS),
-            "sphere_body",
-            pydrake.multibody.plant.CoulombFriction(1, 1))
-        plant.RegisterVisualGeometry(
-            sphere_body,
-            end_effector_RT,
-            pydrake.geometry.Sphere(RADIUS),
-            "sphere_body",
-            [.9, .5, .5, 1.0])  # Color
 
+    # Create box body, if using it
     if USE_BOX:
-        partial_radius = RADIUS * (
+        # Set up box dimensions
+        partial_radius = r * (
             1 - fraction_of_lower_hemisphere**2)**0.5
         box_side = partial_radius*2
-        box_height = RADIUS*(1-fraction_of_lower_hemisphere)
+        box_height = r*(1-fraction_of_lower_hemisphere)
+
+        # Create body
         box = pydrake.geometry.Box(
             box_side, box_side, box_height)
         box_body = plant.AddRigidBody(
             "box_body", arm_instance,
             pydrake.multibody.tree.SpatialInertia(
-                mass=MASS,
+                mass=BOX_MASS,
                 p_PScm_E=np.array([0., 0., 0.]),
                 G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
-        if plant.geometry_source_is_registered():
+
+    if plant.geometry_source_is_registered():
+        # Collision geometry for sphere
+        plant.RegisterCollisionGeometry(
+            main_end_effector_body,
+            end_effector_RT,
+            pydrake.geometry.Sphere(r),
+            "main_end_effector_body",
+            pydrake.multibody.plant.CoulombFriction(mu, mu))
+        
+        # Set up collision filter group
+        geometry_list = [
+            main_end_effector_body,
+            plant.GetBodyByName("panda_link8"),
+            plant.GetBodyByName("panda_hand")
+        ]
+
+        # Collision geometry for box
+        if USE_BOX:
             plant.RegisterCollisionGeometry(
                 box_body,
                 RigidTransform(),
                 box,
                 "box_body",
-                pydrake.multibody.plant.CoulombFriction(1, 1))
+                pydrake.multibody.plant.CoulombFriction(mu, mu))
+            geometry_list.append(box_body)
+        
+        # Create filters
+        geometries = plant.CollectRegisteredGeometries(geometry_list)
+        scene_graph.collision_filter_manager().Apply(
+            CollisionFilterDeclaration().ExcludeWithin(geometries))
+
+        # Visual geometry for sphere
+        plant.RegisterVisualGeometry(
+            main_end_effector_body,
+            end_effector_RT,
+            pydrake.geometry.Sphere(r),
+            "main_end_effector_body",
+            [.9, .5, .5, 1.0])  # Color
+
+        # Visual geometry for box
+        if USE_BOX:
             plant.RegisterVisualGeometry(
                 box_body,
                 RigidTransform(),
@@ -80,16 +105,8 @@ def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
                 "box_body",
                 [.9, .5, .5, 1.0])  # Color
 
-            geometries = plant.CollectRegisteredGeometries(
-                [
-                    box_body,
-                    sphere_body,
-                    plant.GetBodyByName("panda_link8"),
-                    plant.GetBodyByName("panda_hand")
-                ])
-            scene_graph.collision_filter_manager().Apply(
-                CollisionFilterDeclaration()
-                    .ExcludeWithin(geometries))
+    if USE_BOX:
+        # Weld box (but not sphere) to arm
         plant.WeldFrames(
             plant.GetFrameByName("panda_link8", arm_instance),
             plant.GetFrameByName("box_body", arm_instance),
@@ -97,39 +114,22 @@ def addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance):
                 R=RotationMatrix.MakeZRotation(np.pi/4),
                 p=[0,0,0.065-box_height/2]
         ))
-    else:
-        if plant.geometry_source_is_registered():
-            geometries = plant.CollectRegisteredGeometries(
-                [
-                    sphere_body,
-                    plant.GetBodyByName("panda_link8"),
-                    plant.GetBodyByName("panda_hand")
-                ])
-            scene_graph.collision_filter_manager().Apply(
-                CollisionFilterDeclaration()
-                    .ExcludeWithin(geometries))
 
 
-def addMeshEndEffector(plant, scene_graph, sphere_body):
-    # Initialize sphere body
+def addMeshEndEffector(plant, scene_graph, main_end_effector_body, mu):
     partial_sphere_mesh = Mesh("models/partial_sphere.obj")
     if plant.geometry_source_is_registered():
+        # Collision geometry
         plant.RegisterCollisionGeometry(
-            sphere_body,
+            main_end_effector_body,
             RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
             partial_sphere_mesh,
-            "sphere_body",
-            pydrake.multibody.plant.CoulombFriction(1, 1))
-        plant.RegisterVisualGeometry(
-            sphere_body,
-            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
-            partial_sphere_mesh,
-            "sphere_body",
-            [.9, .5, .5, 1.0])  # Color
+            "main_end_effector_body",
+            pydrake.multibody.plant.CoulombFriction(mu, mu))
 
         geometries = plant.CollectRegisteredGeometries(
             [
-                sphere_body,
+                main_end_effector_body,
                 plant.GetBodyByName("panda_link8"),
                 plant.GetBodyByName("panda_hand")
             ])
@@ -137,21 +137,31 @@ def addMeshEndEffector(plant, scene_graph, sphere_body):
             CollisionFilterDeclaration()
                 .ExcludeWithin(geometries))
 
+        # Visual geometry
+        plant.RegisterVisualGeometry(
+            main_end_effector_body,
+            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
+            partial_sphere_mesh,
+            "main_end_effector_body",
+            [.9, .5, .5, 1.0])  # Color
 
-def addArm(plant, scene_graph=None):
+
+def addArm(plant, m_M, r, mu, scene_graph=None):
     """
     Creates the panda arm.
     """
+
+    # =========================== ARM INITIALIZATION ==========================
+    # Load arm
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
     arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
 
-
+    # Weld to world (position depends on number of links)
     panda_offset = 0
     if config.num_links == config.NumLinks.TWO:
         panda_offset = IN_TO_M*22
     elif config.num_links == config.NumLinks.FOUR:
         panda_offset = IN_TO_M*22
-    # Weld panda to world
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
@@ -162,18 +172,8 @@ def addArm(plant, scene_graph=None):
         ])
     )
 
-    sphere_body = plant.AddRigidBody(
-        "sphere_body", arm_instance,
-        pydrake.multibody.tree.SpatialInertia(
-            mass=MASS,
-            p_PScm_E=np.array([0., 0., 0.]),
-            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
-
-    if USE_MESH:
-        addMeshEndEffector(plant, scene_graph, sphere_body)
-    else:
-        addPrimitivesEndEffector(plant, scene_graph, sphere_body, arm_instance)
-
+    # ====================== END EFFECTOR INITIALIZATION ======================
+    # Exclude collisions between additional panda links
     if plant.geometry_source_is_registered():
         geometries = plant.CollectRegisteredGeometries(
             [
@@ -184,8 +184,24 @@ def addArm(plant, scene_graph=None):
             CollisionFilterDeclaration()
                 .ExcludeWithin(geometries))
 
+    # Create the main body for the end effector, setting inertial properties
+    main_end_effector_body = plant.AddRigidBody(
+        "main_end_effector_body", arm_instance,
+        pydrake.multibody.tree.SpatialInertia(
+            mass=m_M,
+            p_PScm_E=np.array([0., 0., 0.]),
+            G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
+
+    # Set collision + visual geometry
+    if USE_MESH:
+        addMeshEndEffector(plant, scene_graph, main_end_effector_body, mu)
+    else:
+        addPrimitivesEndEffector(
+            plant, scene_graph, main_end_effector_body, arm_instance, r, mu)
+
+    # Weld
     half_panda_hand_height = 0.065
-    sphere_partiality_deduction = fraction_of_lower_hemisphere*RADIUS
+    sphere_partiality_deduction = fraction_of_lower_hemisphere*r
     X_P_S = RigidTransform(
         RotationMatrix().MakeZRotation(-np.pi/4),
         [
@@ -194,12 +210,12 @@ def addArm(plant, scene_graph=None):
             (
                 half_panda_hand_height \
                 + dist_between_panda_hand_and_edge \
-                + RADIUS - sphere_partiality_deduction
+                + r - sphere_partiality_deduction
             )]
     ) # Roughly aligns axes with world axes
     plant.WeldFrames(
         plant.GetFrameByName("panda_link8", arm_instance),
-        plant.GetFrameByName("sphere_body", arm_instance),
+        plant.GetFrameByName("main_end_effector_body", arm_instance),
         X_P_S
     )
 
@@ -208,7 +224,7 @@ def addArm(plant, scene_graph=None):
 def setSpherePositions(diagram, diagram_context, plant, manipulator_instance):
     pass
 
-def addSphere(plant, scene_graph=None):
+def addSphere(plant, m_M, r, mu, scene_graph=None):
     """Adds the manipulator."""
     sphere = plant.AddModelInstance("sphere")
 
@@ -216,7 +232,7 @@ def addSphere(plant, scene_graph=None):
     sphere_body = plant.AddRigidBody(
         "sphere_body", sphere,
         pydrake.multibody.tree.SpatialInertia(
-            mass=MASS,
+            mass=m_M,
             p_PScm_E=np.array([0., 0., 0.]),
             G_SP_E=pydrake.multibody.tree.UnitInertia(1.0, 1.0, 1.0)))
 
@@ -224,32 +240,21 @@ def addSphere(plant, scene_graph=None):
     empty_inertia = SpatialInertia(0, [0, 0, 0], UnitInertia(0, 0, 0))
     for i in range(5):
         # Add false bodies for control joints
-        false_body = plant.AddRigidBody("false_body{}".format(i), sphere, empty_inertia)
-        # plant.WeldFrames(
-        #     plant.world_frame(),
-        #     false_body.body_frame(),
-        #     RigidTransform()
-        # )
+        plant.AddRigidBody("false_body{}".format(i), sphere, empty_inertia)
 
     # Register geometry
     if plant.geometry_source_is_registered():
-        col_geom = plant.RegisterCollisionGeometry(
+        plant.RegisterCollisionGeometry(
             sphere_body, RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
+            pydrake.geometry.Sphere(r),
             "sphere_body",
-            pydrake.multibody.plant.CoulombFriction(1, 1))
+            pydrake.multibody.plant.CoulombFriction(mu, mu))
         plant.RegisterVisualGeometry(
             sphere_body,
             RigidTransform(),
-            pydrake.geometry.Sphere(RADIUS),
+            pydrake.geometry.Sphere(r),
             "sphere_body",
             [.9, .5, .5, 1.0])  # Color
-
-    # jnt = plant.AddJoint(pydrake.multibody.tree.Joint(
-    #     "sphere_joint",
-    #     plant.world_frame(),
-    #     sphere_body))
-    # plant.AddJointActuator("sphere_actuator", jnt)
 
     # Linear x control
     sphere_x_translation = plant.AddJoint(pydrake.multibody.tree.PrismaticJoint(
@@ -313,7 +318,7 @@ expected_keys = {
 }
 
 arm_data = {
-    "contact_body_name": "sphere_body",
+    "contact_body_name": "main_end_effector_body",
     "add_plant_function": addArm,
     "set_positions": setArmPositions,
     "nq": 7,
