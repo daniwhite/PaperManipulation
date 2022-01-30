@@ -66,6 +66,7 @@ class NHatForceCompensationSource(enum.Enum):
     NONE = enum.auto()
 
 class Simulation:
+    # ============================ PUBLIC FUNCTIONS ===========================
     def __init__(self,
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
@@ -99,7 +100,7 @@ class Simulation:
         self.plant.set_stiction_tolerance(constants.v_stiction)
         self.plant.set_penetration_allowance(0.001)
 
-        self.add_mbp_bodies()
+        self._add_mbp_bodies()
 
         # Init sys_consts
         self.sys_consts = constants.SystemConstants
@@ -117,20 +118,117 @@ class Simulation:
         self.sys_consts.r = self.params.r
         self.sys_consts.g = self.plant.gravity_field().gravity_vector()[-1]*-1
 
-
         contact_body = self.plant.GetBodyByName(
             manipulator.data["contact_body_name"])
         self.ll_idx = self.paper.link_idxs[-1]
         self.contact_body_idx = int(contact_body.index())
 
-        self.add_non_ctrl_systems()
+        self._add_non_ctrl_systems()
+        self._add_ctrl_systems()
+        self._connect()
+        self._context_specific_init()
 
-        self.add_ctrl_systems()
 
-        self.connect()
+    def get_viz_str(self):
+        # Regex processing
+        ## Remove objects we don't want to visualize
+        objects_to_remove = [
+            "VectorLogSink",
+            "LogWrapper",
+            "scene_graph",
+        ]
+        if self.meshcat is not None:
+            objects_to_remove.append("MeshcatVisualizer")
+            objects_to_remove.append("end_effector_frame_vis")
+            if self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
+                objects_to_remove.append("setpoint_vis")
+        viz_str = self.diagram.GetGraphvizString()
+        for obj in objects_to_remove:
+            expr = r'([0-9]{15}) \[[^\]]*label="[^"]*' + obj
+            ID = re.search(expr, viz_str).group(1)
+            viz_str = re.sub(r";[^;]*" + ID + r"[^;]+", "", viz_str)
+
+        ## Fix spacing
+        viz_str_split = viz_str.split("{", 1)
+        viz_str = viz_str_split[0] + "{" + "\nranksep=2" + viz_str_split[1]
+        
+        ## Grab some handy variables
+        plant_id = re.search(r'(\d+) .*plant', viz_str).group(1)
+        vision_id = re.search(r'(\d+) .*\bvision\b', viz_str).group(1)
+
+        # Loop processing
+        colored_edges = [
+            [plant_id]
+        ]
+
+        viz_str_new = ""
+        for l in viz_str.split("\n"):
+            if ("->" in l) and (l.strip().startswith(plant_id)):
+                out_l = l[:-1] + " [style=dotted];"
+            else:
+                out_l = l
+            viz_str_new += out_l + "\n"
+        viz_str = viz_str_new
+
+        # Human readable string
+        viz_str_human_readable = viz_str
+        viz_str_human_readable = re.sub(r' \{', "\n{", viz_str_human_readable)
+
+        viz_str_human_readable_new = ""
+        indent_level = 0
+        for l in viz_str_human_readable.split("\n"):
+            if l.strip() == "}":
+                indent_level -= 1
+            out_l = " "*4*indent_level + l + "\n"
+            if l.strip() == "{":
+                indent_level += 1
+            viz_str_human_readable_new += out_l
+            
+        viz_str_human_readable = viz_str_human_readable_new
+        # print(viz_str_human_readable)
+
+        return viz_str
 
 
-    def add_mbp_bodies(self):
+    def run_sim(self, clean_exit=True):
+        """
+        Run the actual simulation and return the log.
+
+        :param clean_exit: Whether or not to catch and print (but otherwise
+                           ignore) any errors that happen during the sim
+        """
+        # Finalize simulation and visualization
+        simulator = pydrake.systems.analysis.Simulator(
+            self.diagram, self.diagram_context)
+        simulator.Initialize()
+        if self.meshcat is not None:
+            self.vis.StartRecording()
+
+        if clean_exit:
+            try:
+                simulator.AdvanceTo(config.TSPAN)
+            except BaseException as e:
+                # Has to be BaseException to get KeyboardInterrupt
+                print(type(e))
+                print(e)
+                if self.meshcat is not None:
+                    self.vis.StopRecording()
+                    self.vis.PublishRecording()
+
+                return self.logger.FindLog(simulator.get_context())
+        else:
+            simulator.AdvanceTo(config.TSPAN)
+
+        if self.meshcat is not None:
+            self.vis.StopRecording()
+            self.vis.PublishRecording()
+
+        return self.logger.FindLog(simulator.get_context())
+
+
+    # =========================== PRIVATE FUNCTIONS ===========================
+
+    def _add_mbp_bodies(self):
         """
         Initialize and add to builder systems any systems that introduce new
         bodies to the multibody plant, so this needs to be called before
@@ -155,8 +253,8 @@ class Simulation:
 
         self.plant.Finalize()
 
-    
-    def add_non_ctrl_systems(self):
+ 
+    def _add_non_ctrl_systems(self):
         """
         Initialize and add to builder systems that don't add bodies to the
         plant (so they can be called after `plant.Finalize()`) that are also
@@ -196,7 +294,7 @@ class Simulation:
                 "end_effector_frame_vis", self.end_effector_frame_vis)
 
 
-    def add_inverse_dynamics_ctrl(self):
+    def _add_inverse_dynamics_ctrl(self):
         options = {
             'model_friction': True,
             'measure_joint_wrench': False,
@@ -217,12 +315,14 @@ class Simulation:
                 name="desired position", meshcat=self.meshcat, opacity=0.3)
             self.builder.AddNamedSystem("desired_pos_vis", self.desired_pos_vis)
 
-    def add_kinematic_ctrl(self):
+
+    def _add_kinematic_ctrl(self):
         self.fold_ctrl = ctrl.kinematic_ctrlr.KinematicController(
             sys_consts=self.sys_consts)
 
-    def add_impedance_ctrl(self):
-        self.add_impedance_n_hat_force_compensation()
+
+    def _add_impedance_ctrl(self):
+        self._add_impedance_n_hat_force_compensation()
 
         if self.impedance_type == ImpedanceType.OFFLINE_TRAJ:
             if config.num_links == config.NumLinks.TWO:
@@ -257,8 +357,9 @@ class Simulation:
         if self.meshcat is not None:
             self.setpoint_vis = visualization.FrameVisualizer(name="impedance_setpoint", meshcat=self.meshcat, opacity=0.3)
             self.builder.AddNamedSystem("setpoint_vis", self.setpoint_vis)
-    
-    def add_impedance_n_hat_force_compensation(self):
+
+
+    def _add_impedance_n_hat_force_compensation(self):
         """
         If we are using impedance control, initialize and add systems related
         to generating normal compensation.
@@ -290,14 +391,15 @@ class Simulation:
                 self.ff_force_N = ConstantVectorSource([10])
             
             self.builder.AddNamedSystem("ff_force_N", self.ff_force_N)
-    
-    def add_ctrl_systems(self):
+
+ 
+    def _add_ctrl_systems(self):
         if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
-            self.add_inverse_dynamics_ctrl()
+            self._add_inverse_dynamics_ctrl()
         elif self.ctrl_paradigm == CtrlParadigm.KINEMATIC:
-            self.add_kinematic_ctrl()
+            self._add_kinematic_ctrl()
         elif self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
-            self.add_impedance_ctrl()
+            self._add_impedance_ctrl()
         
         self.builder.AddNamedSystem("fold_ctrl", self.fold_ctrl)
         self.tau_g_adder = Adder(3, manipulator.data['nq'])
@@ -311,7 +413,8 @@ class Simulation:
         self.ctrl_selector = ctrl.aux.CtrlSelector()
         self.builder.AddNamedSystem("ctrl_selector", self.ctrl_selector)
 
-    def connect(self):
+
+    def _connect(self):
         # Set up self.vision
         self.builder.Connect(self.plant.get_body_poses_output_port(), self.vision.GetInputPort("poses"))
         self.builder.Connect(self.plant.get_body_spatial_velocities_output_port(), self.vision.GetInputPort("vels"))
@@ -502,62 +605,8 @@ class Simulation:
         self.diagram = self.builder.Build()
 
 
-    def get_viz_str(self):
-        # Regex processing
-        ## Remove objects we don't want to visualize
-        objects_to_remove = [
-            "VectorLogSink",
-            "LogWrapper",
-            "scene_graph",
-        ]
-        if self.meshcat is not None:
-            objects_to_remove.append("MeshcatVisualizer")
-            objects_to_remove.append("end_effector_frame_vis")
-            if self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
-                objects_to_remove.append("setpoint_vis")
-        viz_str = self.diagram.GetGraphvizString()
-        for obj in objects_to_remove:
-            expr = r'([0-9]{15}) \[[^\]]*label="[^"]*' + obj
-            ID = re.search(expr, viz_str).group(1)
-            viz_str = re.sub(r";[^;]*" + ID + r"[^;]+", "", viz_str)
-
-        ## Fix spacing
-        viz_str_split = viz_str.split("{", 1)
-        viz_str = viz_str_split[0] + "{" + "\nranksep=2" + viz_str_split[1]
-        
-        ## Grab some handy variables
-        plant_id = re.search(r'(\d+) .*plant', viz_str).group(1)
-        vision_id = re.search(r'(\d+) .*\bvision\b', viz_str).group(1)
-
-        # Loop processing
-        colored_edges = [
-            [plant_id]
-        ]
-
-        viz_str_new = ""
-        for l in viz_str.split("\n"):
-            if ("->" in l) and (l.strip().startswith(plant_id)):
-                out_l = l[:-1] + " [style=dotted];"
-            else:
-                out_l = l
-            viz_str_new += out_l + "\n"
-        viz_str = viz_str_new
-
-        # Human readable string
-        viz_str_human_readable = viz_str
-        viz_str_human_readable = re.sub(r' \{', "\n{", viz_str_human_readable)
-
-        viz_str_human_readable_new = ""
-        indent_level = 0
-        for l in viz_str_human_readable.split("\n"):
-            if l.strip() == "}":
-                indent_level -= 1
-            out_l = " "*4*indent_level + l + "\n"
-            if l.strip() == "{":
-                indent_level += 1
-            viz_str_human_readable_new += out_l
-            
-        viz_str_human_readable = viz_str_human_readable_new
-        # print(viz_str_human_readable)
-
-        return viz_str
+    def _context_specific_init(self):
+        self.diagram_context = self.diagram.CreateDefaultContext()
+        manipulator.data['set_positions'](
+            self.diagram, self.diagram_context, self.plant,
+            self.manipulator_instance)
