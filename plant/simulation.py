@@ -85,7 +85,7 @@ class Simulation:
 
         assert (impedance_type == ImpedanceType.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
-        assert (impedance_type == NHatForceCompensationSource.NONE) or \
+        assert (n_hat_force_compensation_source == NHatForceCompensationSource.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
         assert not((ctrl_paradigm == CtrlParadigm.IMPEDANCE) and \
             (impedance_type == ImpedanceType.NONE))
@@ -344,6 +344,7 @@ class Simulation:
         if self.impedance_stiffness is None:
             if config.num_links == config.NumLinks.TWO:
                 self.impedance_stiffness = [1000, 10, 10, 10, 1000, 1000]
+                # self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
             elif config.num_links == config.NumLinks.FOUR:
                 self.impedance_stiffness = [100, 1, 1, 1, 1000, 10]
         self.K_gen = ConstantVectorSource(self.impedance_stiffness)
@@ -366,8 +367,8 @@ class Simulation:
         """
         if self.n_hat_force_compensation_source == \
                 NHatForceCompensationSource.NONE:
-            ff_wrench_XYZ = ConstantVectorSource([0, 0, 0, 0, 0, 0])
-            self.builder.AddNamedSystem("ff_wrench_XYZ", ff_wrench_XYZ)
+            self.ff_wrench_XYZ = ConstantVectorSource([0, 0, 0, 0, 0, 0])
+            self.builder.AddNamedSystem("ff_wrench_XYZ", self.ff_wrench_XYZ)
         else:
             self.ff_force_XYZ = ctrl.aux.XTNtoXYZ()
             self.ff_torque_XYZ = ConstantVectorSource([0, 0, 0])

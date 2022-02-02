@@ -14,7 +14,7 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
     joint.
     """
     def __init__(self, sys_consts: constants.SystemConstants,
-            desired_radius: float, end_time=20.0):
+            desired_radius: float, end_time=60):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.desired_radius = desired_radius
@@ -55,13 +55,24 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
 
 
     def calc_x0(self, context, output):
+        x0 = self._calc_x0(context.get_time())
+        output.SetFromVector(x0)
+
+
+
+
+    def calc_dx0(self, context, output):
+        output.SetFromVector(np.zeros(6))
+
+
+    def _calc_x0(self, t):
         theta_MXd = np.interp(
-            context.get_time(),
+           t,
             [self.start_time, self.end_time],
             [self.start_theta_MX, self.end_theta_MX],
         )
         theta_MZd = np.interp(
-            context.get_time(),
+            t,
             [self.start_time, self.end_time/2],
             [self.start_theta_MZ, self.end_theta_MZ],
         )
@@ -76,8 +87,5 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
         x0[:3] = RollPitchYaw(R_).vector()
         x0[4] = y_d
         x0[5] = z_d
-        output.SetFromVector(x0)
-
-
-    def calc_dx0(self, context, output):
-        output.SetFromVector(np.zeros(6))
+        
+        return x0

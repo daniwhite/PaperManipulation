@@ -6,10 +6,10 @@ from enum import Enum
 
 # Time constants
 DT = 0  # Means continuous time
-TSPAN = 2 #10
+TSPAN = 70
 
 # Number of links
 class NumLinks(Enum):
     TWO = 2
     FOUR = 4
-num_links = NumLinks.FOUR
+num_links = NumLinks.TWO

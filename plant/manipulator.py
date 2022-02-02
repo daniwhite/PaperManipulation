@@ -21,6 +21,27 @@ dist_between_panda_hand_and_edge = 2*IN_TO_M
 USE_MESH = False
 USE_BOX = False
 
+neutral_q = [
+    0.00010707791913362024,
+    -0.7853274663373043,
+    6.881470455973932e-05,
+    -2.356330685498422,
+    -0.00014061049952148694,
+    1.5709792686628385,
+    0.7856590871546001
+]
+
+panda_offset = 0
+if config.num_links == config.NumLinks.TWO:
+    panda_offset = IN_TO_M*22
+elif config.num_links == config.NumLinks.FOUR:
+    panda_offset = IN_TO_M*22
+X_W_panda = RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
+    0,
+    panda_offset,
+    0
+])
+
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
     q0[0] = -np.pi/2 # -np.pi/12 -> closer to physical
@@ -30,6 +51,7 @@ def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0[4] = np.pi
     q0[5] = np.pi/4 #1.5*np.pi+0.2
     q0[6] = -3*np.pi/4-np.pi/2
+
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
 
@@ -157,19 +179,10 @@ def addArm(plant, m_M, r, mu, scene_graph=None):
     arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
 
     # Weld to world (position depends on number of links)
-    panda_offset = 0
-    if config.num_links == config.NumLinks.TWO:
-        panda_offset = IN_TO_M*22
-    elif config.num_links == config.NumLinks.FOUR:
-        panda_offset = IN_TO_M*22
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("panda_link0", arm_instance),
-        RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
-            0,
-            panda_offset,
-            0
-        ])
+        X_W_panda
     )
 
     # ====================== END EFFECTOR INITIALIZATION ======================
