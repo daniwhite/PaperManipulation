@@ -5,8 +5,10 @@ from ctrl.impedance_generators.setpoint_generators.circle import CircularSetpoin
 import constants
 
 import numpy as np
+import config
+import panda_config
 
-from pydrake.all import RollPitchYaw
+from pydrake.all import RollPitchYaw, RigidTransform
 import quaternion
 
 def get_traj(end_time, desired_radius):
@@ -25,21 +27,23 @@ def get_traj(end_time, desired_radius):
     positions = x0s[:,3:]
     rpys = x0s[:,:3]
 
-    quaternions = np.zeros((len(times), 4))
-    for i, t in enumerate(times):
-        quat = RollPitchYaw(rpys[0,:]).ToQuaternion()
-        quaternions[i,0] = quat.w()
-        quaternions[i,1] = quat.x()
-        quaternions[i,2] = quat.y()
-        quaternions[i,3] = quat.z()
-
     poses = []
-    for pos, quat in zip(positions, quaternions):
+    for i in range(len(times)):
+        rpy = RollPitchYaw(rpys[i,:])
+        X_SW = RigidTransform(
+            rpy=rpy, p=positions[i,:]
+        )
+        X_HW = panda_config.X_panda_SP_hw(X_SW)
+
         pos_dict = {}
-        pos_dict["position"]  = pos
-        pos_dict["orientation"] = quaternion.quaternion(*quat)
+        pos_dict["position"]  = X_HW.translation()
+        pos_dict["orientation"] = quaternion.quaternion(
+            X_HW.rotation().ToQuaternion().w(),
+            X_HW.rotation().ToQuaternion().x(),
+            X_HW.rotation().ToQuaternion().y(),
+            X_HW.rotation().ToQuaternion().z()
+        )
         poses.append(pos_dict)
-    
     return poses
 
 poses=get_traj(
