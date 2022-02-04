@@ -11,94 +11,256 @@
       <inertia ixx="0.00782229414331" ixy="-1.56191622996e-05" ixz="-0.00126005738123" iyy="0.0109027971813" iyz="1.08233858202e-05" izz="0.0102355503949"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.02 0.0 0.04"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link0.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.02 0.0 0.04"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.01 0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.01 0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.01 -0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.01 -0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.06 0.0 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.06 0.0 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.06 0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.06 0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.03 0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.03 0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.03 -0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.03 -0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.06 -0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.06 -0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.09 -0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.09 -0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.09 0.0 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.09 0.0 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.09 0.05 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.09 0.05 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.12 0.0 0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.12 0.0 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.113"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.113"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.083"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.083"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0 0 1.0"/>
+      </material>
     </collision>
   </link>
   <link name="panda_link1">
@@ -108,46 +270,112 @@
       <inertia ixx="0.0180416958283" ixy="0.0" ixz="0.0" iyy="0.0159136071891" iyz="0.0046758424612" izz="0.00620690827127"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.13"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link1.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.13"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.16"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.16"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.19"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.19"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.04 -0.06"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.04 -0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.0750 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.0750 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.0350 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.0350 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint1" type="revolute">
@@ -165,46 +393,112 @@
       <inertia ixx="0.0182856182281" ixy="0.0" ixz="0.0" iyy="0.00621358421175" iyz="-0.00472844221905" izz="0.0161514346309"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link2.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.035"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.035"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.075"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.075"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.1710 0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.1710 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.1360 0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.1360 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.070 0.040"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 -0.070 0.040"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint2" type="revolute">
@@ -222,40 +516,94 @@
       <inertia ixx="0.00771376630908" ixy="-0.00248490625138" ixz="-0.00332147581033" iyy="0.00989108008727" iyz="-0.00217796151484" izz="0.00811723558464"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.11"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link3.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.11"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.07"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.07"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0825 0.03 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0825 0.03 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0825 0.06 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0825 0.06 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.04 0.03 -0.03"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.04 0.03 -0.03"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint3" type="revolute">
@@ -273,52 +621,130 @@
       <inertia ixx="0.00799663881132" ixy="0.00347095570217" ixz="-0.00241222942995" iyy="0.00825390705278" iyz="0.00235774044121" izz="0.0102515004345"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.06"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link4.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.03"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.03"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.0350 0.03 0.04"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.0350 0.03 0.04"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.05 0.04 0.01"/>
+      <geometry>
+        <sphere radius="0.055"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.05 0.04 0.01"/>
       <geometry>
         <sphere radius="0.055"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.0825 0.0640 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.0825 0.0640 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.0825 0.1040 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="-0.0825 0.1040 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint4" type="revolute">
@@ -336,82 +762,220 @@
       <inertia ixx="0.030371374513" ixy="6.50283587108e-07" ixz="-1.05129179916e-05" iyy="0.0288752887402" iyz="-0.00775653445787" izz="0.00444134056164"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.24"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link5.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.24"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.21"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.21"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.09 -0.055"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.09 -0.055"/>
       <geometry>
         <sphere radius="0.035"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0850 -0.08"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0850 -0.08"/>
       <geometry>
         <sphere radius="0.035"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0850 -0.11"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0850 -0.11"/>
       <geometry>
         <sphere radius="0.035"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.08 -0.13"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.08 -0.13"/>
       <geometry>
         <sphere radius="0.035"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.08 -0.15"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.08 -0.15"/>
       <geometry>
         <sphere radius="0.035"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.07 -0.16"/>
+      <geometry>
+        <sphere radius="0.04"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.07 -0.16"/>
       <geometry>
         <sphere radius="0.04"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.08 -0.02"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.08 -0.02"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.08 -0.0"/>
+      <geometry>
+        <sphere radius="0.055"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.08 -0.0"/>
       <geometry>
         <sphere radius="0.055"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.05 -0.20"/>
+      <geometry>
+        <sphere radius="0.055"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.05 -0.20"/>
       <geometry>
         <sphere radius="0.055"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.07 -0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.07 -0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 1.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint5" type="revolute">
@@ -429,40 +993,94 @@
       <inertia ixx="0.00303336450376" ixy="-0.000437276865508" ixz="0.000629257294877" iyy="0.00404479911567" iyz="0.000130472021025" izz="0.00558234286039"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0.08 0.03 0.0"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link6.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.08 0.03 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.04 0.01 0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.04 0.01 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.04 0.0 0.0"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.04 0.0 0.0"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.01"/>
+      <geometry>
+        <sphere radius="0.06"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.01"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 -0.03"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 -0.03"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint6" type="revolute">
@@ -480,22 +1098,40 @@
       <inertia ixx="0.000888868887021" ixy="-0.00012239074652" ixz="3.98699829666e-05" iyy="0.000888001373233" iyz="-9.33825115206e-05" izz="0.0007176834609"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.06"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/link7.obj"/>
+        <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.06"/>
       <geometry>
         <sphere radius="0.06"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.01"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="1.0 1.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.01"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="1.0 1.0 0.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint7" type="revolute">
@@ -507,11 +1143,23 @@
     <limit effort="12" lower="-2.8973" upper="2.8973" velocity="2.610"/>
   </joint>
   <link name="panda_link8">
+    <visual>
+      <origin rpy="0 0 0" xyz="0.042 0.042 -0.02"/>
+      <geometry>
+        <sphere radius="0.04"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 0.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.042 0.042 -0.02"/>
       <geometry>
         <sphere radius="0.04"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 0.0 1.0"/>
+      </material>
     </collision>
   </link>
   <joint name="panda_joint8" type="fixed">
@@ -588,7 +1236,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="panda_joint7">
       <hardwareInterface>PositionJointInterface</hardwareInterface>
-    </joint>
+</joint>
     <actuator name="panda_motor7">
       <hardwareInterface>PositionJointInterface</hardwareInterface>
       <mechanicalReduction>1</mechanicalReduction>
@@ -601,17 +1249,50 @@
       <inertia ixx="0.00278560230025" ixy="0.0" ixz="0.0" iyy="0.000400033405336" iyz="0.0" izz="0.00256378041832"/>
     </inertial>
     <visual>
-      <origin rpy="1.57079632679 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.015"/>
       <geometry>
-        <mesh filename="/opt/drake/lib/../share/drake/manipulation/models/franka_description/meshes/visual/hand.obj"/>
+        <box size="0.063 0.203889 0.091571"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
       <geometry>
         <box size="0.063 0.203889 0.091571"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 -0.06 0.03"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 -0.06 0.03"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.08"/>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.08"/>
       <geometry>
@@ -621,35 +1302,45 @@
         <color rgba="0.0 1.0 1.0 1.0"/>
       </material>
     </collision>
-    <collision>
-      <origin rpy="0 0 0" xyz="0 -0.06 0.03"/>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.03"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
-    </collision>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0.03"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0.06 0.03"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0.06 0.03"/>
       <geometry>
         <sphere radius="0.05"/>
       </geometry>
+      <material>
+        <color rgba="0.0 1.0 1.0 1.0"/>
+      </material>
     </collision>
   </link>
   <drake:collision_filter_group name="group_link57">
-    <!-- <drake:member link="panda_link0"/>
-    <drake:member link="panda_link1"/>
-    <drake:member link="panda_link2"/>
-    <drake:member link="panda_link3"/>
-    <drake:member link="panda_link4"/> -->
     <drake:member link="panda_link5"/>
-    <!-- <drake:member link="panda_link6"/> -->
     <drake:member link="panda_link7"/>
-    <!-- <drake:member link="panda_hand"/> -->
-    <!-- <drake:ignored_collision_filter_group name="group_link57"/> -->
   </drake:collision_filter_group>
 </robot>
