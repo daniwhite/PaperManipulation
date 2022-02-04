@@ -154,6 +154,7 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         self.debug["x0"].append(x0)
         self.debug["times"].append(context.get_time())
         self.debug["F_ctrl"].append(F_ctrl)
+        self.debug["ff_wrench"].append(ff_wrench)
 
         self.x0 = x0
 

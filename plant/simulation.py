@@ -343,10 +343,9 @@ class Simulation:
         # Order is [theta_x, theta_y, theta_z, x, y, z]
         if self.impedance_stiffness is None:
             if config.num_links == config.NumLinks.TWO:
-                self.impedance_stiffness = [1000, 10, 10, 10, 1000, 1000]
-                # self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
+                self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
             elif config.num_links == config.NumLinks.FOUR:
-                self.impedance_stiffness = [100, 1, 1, 1, 1000, 10]
+                self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
         self.K_gen = ConstantVectorSource(self.impedance_stiffness)
         self.D_gen = ConstantVectorSource(2*np.sqrt(self.impedance_stiffness))
         self.demux_setpoint = Demultiplexer([3,3])
