@@ -31,13 +31,14 @@ neutral_q = [
     0.7856590871546001
 ]
 
+panda_x_offset = 0.25
 panda_offset = 0
 if config.num_links == config.NumLinks.TWO:
     panda_offset = IN_TO_M*22
 elif config.num_links == config.NumLinks.FOUR:
     panda_offset = IN_TO_M*22
 X_W_panda = RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
-    0,
+    panda_x_offset,
     panda_offset,
     0
 ])
@@ -176,8 +177,8 @@ def addArm(plant, m_M, r, mu, scene_graph=None):
     # =========================== ARM INITIALIZATION ==========================
     # Load arm
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
-    # arm_instance = parser.AddModelFromFile("models/panda_arm_collision_only.urdf")
+    # arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
+    arm_instance = parser.AddModelFromFile("models/panda_arm_collision_only.urdf")
 
     # Weld to world (position depends on number of links)
     plant.WeldFrames(
