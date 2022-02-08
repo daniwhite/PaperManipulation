@@ -177,8 +177,8 @@ def addArm(plant, m_M, r, mu, scene_graph=None):
     # =========================== ARM INITIALIZATION ==========================
     # Load arm
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    # arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
-    arm_instance = parser.AddModelFromFile("models/panda_arm_collision_only.urdf")
+    arm_instance = parser.AddModelFromFile("models/panda_arm.urdf")
+    # arm_instance = parser.AddModelFromFile("models/panda_arm_collision_only.urdf")
 
     # Weld to world (position depends on number of links)
     plant.WeldFrames(
