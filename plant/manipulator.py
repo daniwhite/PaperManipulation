@@ -5,6 +5,7 @@ from pydrake.all import RigidTransform, RotationMatrix, Mesh, \
     CollisionFilterDeclaration
 
 import numpy as np
+import json
 
 # Imports of other project files
 from constants import IN_TO_M, EPSILON
