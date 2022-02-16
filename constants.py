@@ -52,5 +52,5 @@ nominal_sys_consts = SystemConstants(
     b_J = 1e-1,
     k_J = stiffness_Nm_per_Rad,
     mu = 0.2,
-    r = 2*IN_TO_M,
+    r = 0.05,
 )

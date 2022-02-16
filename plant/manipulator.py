@@ -43,6 +43,12 @@ X_W_panda = RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
     0
 ])
 
+flange_to_sphere_list = json.load(open("panda/sphere_ee_config.json"))['transformation']
+X_flange_sphere = RigidTransform(np.array(flange_to_sphere_list).reshape(4,4).T)
+# Based off CAD measurement
+X_body7_flange = RigidTransform(p=[0,0,0.09881026])
+X_body7_sphere = X_body7_flange.multiply(X_flange_sphere)
+
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
     q0 = np.zeros(7)
     q0[0] = -np.pi/2 # -np.pi/12 -> closer to physical
@@ -145,7 +151,7 @@ def addMeshEndEffector(plant, scene_graph, main_end_effector_body, mu):
         # Collision geometry
         plant.RegisterCollisionGeometry(
             main_end_effector_body,
-            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
+            RigidTransform(p=[0,0,-0.025]),
             partial_sphere_mesh,
             "main_end_effector_body",
             pydrake.multibody.plant.CoulombFriction(mu, mu))
@@ -163,7 +169,7 @@ def addMeshEndEffector(plant, scene_graph, main_end_effector_body, mu):
         # Visual geometry
         plant.RegisterVisualGeometry(
             main_end_effector_body,
-            RigidTransform(R=RotationMatrix.MakeXRotation(np.pi/2)),
+            RigidTransform(p=[0,0,-0.025]),
             partial_sphere_mesh,
             "main_end_effector_body",
             [.9, .5, .5, 1.0])  # Color
@@ -215,23 +221,10 @@ def addArm(plant, m_M, r, mu, scene_graph=None):
             plant, scene_graph, main_end_effector_body, arm_instance, r, mu)
 
     # Weld
-    half_panda_hand_height = 0.065
-    sphere_partiality_deduction = fraction_of_lower_hemisphere*r
-    X_P_S = RigidTransform(
-        RotationMatrix().MakeZRotation(-np.pi/4),
-        [
-            0,
-            0,
-            (
-                half_panda_hand_height \
-                + dist_between_panda_hand_and_edge \
-                + r - sphere_partiality_deduction
-            )]
-    ) # Roughly aligns axes with world axes
     plant.WeldFrames(
-        plant.GetFrameByName("panda_link8", arm_instance),
+        plant.GetFrameByName("panda_link7", arm_instance),
         plant.GetFrameByName("main_end_effector_body", arm_instance),
-        X_P_S
+        X_body7_sphere
     )
 
     return arm_instance
