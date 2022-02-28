@@ -34,7 +34,7 @@ def get_traj(x0s):
     return poses
 
 
-x0s = np.load("x0s.npz")["x0s"]
+x0s = np.load("x0s_sim.npz")["x0s"]
 poses=get_traj(x0s)
-np.savez("poses.npz", poses=poses)
+np.savez("x0s_hw.npz", poses=poses)
 
