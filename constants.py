@@ -19,9 +19,9 @@ THICK_PLYWOOD_THICKNESS = IN_TO_M*3/4
 PLYWOOD_LENGTH = IN_TO_M*12
 PLYWOOD_DENSITY = 500 # kg/m^3
 if config.num_links == config.NumLinks.TWO:
-    PEDESTAL_Y_DIM = PLYWOOD_LENGTH/2
+    PEDESTAL_X_DIM = PLYWOOD_LENGTH/2
 elif config.num_links == config.NumLinks.FOUR:
-    PEDESTAL_Y_DIM = PLYWOOD_LENGTH/4
+    PEDESTAL_X_DIM = PLYWOOD_LENGTH/4
 
 Nm__PER_InLb = 0.112984833 # McMaster uses imperial units to a fault
 if config.num_links == config.NumLinks.TWO:
@@ -45,9 +45,9 @@ class SystemConstants:
     r: float
 
 nominal_sys_consts = SystemConstants(
-    w_L = PEDESTAL_Y_DIM,
+    w_L = PEDESTAL_X_DIM,
     h_L = THIN_PLYWOOD_THICKNESS,
-    m_L = PLYWOOD_LENGTH*PEDESTAL_Y_DIM*THIN_PLYWOOD_THICKNESS*PLYWOOD_DENSITY,
+    m_L = PLYWOOD_LENGTH*PEDESTAL_X_DIM*THIN_PLYWOOD_THICKNESS*PLYWOOD_DENSITY,
     m_M = 1e-3,
     b_J = 1e-1,
     k_J = stiffness_Nm_per_Rad,

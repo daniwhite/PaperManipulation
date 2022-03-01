@@ -38,11 +38,7 @@ if config.num_links == config.NumLinks.TWO:
     panda_offset = IN_TO_M*22
 elif config.num_links == config.NumLinks.FOUR:
     panda_offset = IN_TO_M*22
-X_W_panda = RigidTransform(RotationMatrix().MakeZRotation(-np.pi/2), [
-    panda_x_offset,
-    panda_offset,
-    0
-])
+X_W_panda = RigidTransform()
 
 base_path = "/Users/dani/Documents/lis/code/PaperManipulation/"
 
