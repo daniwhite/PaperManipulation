@@ -5,7 +5,7 @@ Configuration constants used accross many files.
 from enum import Enum
 
 # Time constants
-DT = 0  # Means continuous time
+DT = 0.001  # Means continuous time
 TSPAN = 10
 
 # Number of links

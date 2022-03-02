@@ -8,6 +8,8 @@ import pydrake
 from pydrake.all import RigidTransform, RotationMatrix, CollisionFilterDeclaration
 from pydrake.multibody.tree import BodyIndex, SpatialInertia, UnitInertia, RevoluteSpring
 
+import plant.pedestal
+
 # Imports of other project files
 import constants
 from constants import THIN_PLYWOOD_THICKNESS, PLYWOOD_LENGTH
@@ -136,14 +138,20 @@ class Paper:
                         .ExcludeWithin(geometries))
             self.link_idxs.append(int(paper_body.index()))
 
-    def weld_paper_edge(self, pedestal_y_dim, pedestal_z_dim):
+    def weld_paper_edge(self, pedestal_instance):
         """
         Fixes an edge of the paper to the pedestal
         """
         # Fix paper to object
         self.plant.WeldFrames(
-            self.plant.world_frame(),
+            self.plant.GetFrameByName(plant.pedestal.pedestal_base_name, pedestal_instance),
             self.plant.get_body(BodyIndex(self.link_idxs[0])).body_frame(),
-            RigidTransform(RotationMatrix(
-            ), [0, 0, pedestal_z_dim+self.h_L/2])
+            RigidTransform(
+                RotationMatrix().MakeZRotation(-np.pi/2),
+                [0, 0, PLYWOOD_LENGTH+self.h_L/2+plant.pedestal.PEDESTAL_BASE_Z_DIM/2])
         )
+
+    # TODO: rename these functions?
+    def set_positions(self, diagram, diagram_context):
+        plant_context = diagram.GetMutableSubsystemContext(self.plant, diagram_context)
+        self.plant.SetPositions(plant_context, self.instance, [np.pi/12])

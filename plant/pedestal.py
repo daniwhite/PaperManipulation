@@ -9,12 +9,11 @@ from pydrake.multibody.tree import SpatialInertia, UnitInertia
 from constants import \
     THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M, PEDESTAL_X_DIM
 
-bump_z = 5*IN_TO_M
+PEDESTAL_BASE_Z_DIM = 5*IN_TO_M
 PEDESTAL_Y_DIM = PLYWOOD_LENGTH
-PEDESTAL_Z_DIM = PLYWOOD_LENGTH + bump_z
+PEDESTAL_Z_DIM = PLYWOOD_LENGTH + PEDESTAL_BASE_Z_DIM
 
-PEDESTAL_X_OFFSET = IN_TO_M*22
-PEDESTAL_Y_OFFSET = -0.25
+PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load("pedestal_xyz.npz")['pedestal_xyz']
 
 pedestal_base_name = "pedestal_bottom_body"
 
@@ -35,7 +34,7 @@ def AddPedestal(plant, weld_base=True):
                         G_SP_E=UnitInertia.SolidBox(
                             PEDESTAL_X_DIM,
                             PEDESTAL_Y_DIM,
-                            bump_z)
+                            PEDESTAL_BASE_Z_DIM)
     ))
 
     if plant.geometry_source_is_registered():
@@ -45,7 +44,7 @@ def AddPedestal(plant, weld_base=True):
             pydrake.geometry.Box(
                 PEDESTAL_X_DIM,
                 PEDESTAL_Y_DIM,
-                bump_z
+                PEDESTAL_BASE_Z_DIM
             ),
             bottom_name,
             pydrake.multibody.plant.CoulombFriction(1, 1)
@@ -57,7 +56,7 @@ def AddPedestal(plant, weld_base=True):
             pydrake.geometry.Box(
                 PEDESTAL_X_DIM,
                 PEDESTAL_Y_DIM,
-                bump_z
+                PEDESTAL_BASE_Z_DIM
             ),
             bottom_name,
             [0.4, 0.4, 0.4, 1])  # RGBA color
@@ -69,7 +68,7 @@ def AddPedestal(plant, weld_base=True):
                 RigidTransform(RotationMatrix.MakeZRotation(np.pi), [
                     PEDESTAL_X_OFFSET,
                     PEDESTAL_Y_OFFSET,
-                    bump_z/2
+                    PEDESTAL_Z_OFFSET
                 ]
             ))
 
@@ -122,7 +121,7 @@ def AddPedestal(plant, weld_base=True):
                 RigidTransform(RotationMatrix(), [
                     0,
                     y_position,
-                    PLYWOOD_LENGTH/2+ bump_z/2
+                    PLYWOOD_LENGTH/2+ PEDESTAL_BASE_Z_DIM/2
                 ]
             ))
 

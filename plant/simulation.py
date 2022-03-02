@@ -235,7 +235,7 @@ class Simulation:
         `plant.Finalize()`, which is called at the end of the function.
         """
         # Pedestal
-        pedestal.AddPedestal(self.plant)
+        pedestal_instance = pedestal.AddPedestal(self.plant)
 
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
@@ -243,8 +243,7 @@ class Simulation:
             k_J=self.params.k_J, b_J=self.params.b_J,
             m_L=self.params.m_L, w_L=self.params.w_L, h_L=self.params.h_L,
             mu=self.params.mu)
-        self.paper.weld_paper_edge(
-            constants.PEDESTAL_Y_DIM, pedestal.PEDESTAL_Z_DIM)
+        self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
         self.manipulator_instance = manipulator.data["add_plant_function"](
@@ -610,3 +609,4 @@ class Simulation:
         manipulator.data['set_positions'](
             self.diagram, self.diagram_context, self.plant,
             self.manipulator_instance)
+        self.paper.set_positions(self.diagram, self.diagram_context)
