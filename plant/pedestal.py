@@ -18,7 +18,7 @@ PEDESTAL_Y_OFFSET = -0.25
 
 pedestal_base_name = "pedestal_bottom_body"
 
-def AddPedestal(plant):
+def AddPedestal(plant, weld_base=True):
     """
     Creates the pedestal.
     """
@@ -30,7 +30,7 @@ def AddPedestal(plant):
     body =  plant.AddRigidBody(
         bottom_name,
         pedestal_instance,
-        SpatialInertia(mass=1, # Doesn't matter because it's welded
+        SpatialInertia(mass=1e9, # So that it's effectively immovable
                         p_PScm_E=np.array([0., 0., 0.]),
                         G_SP_E=UnitInertia.SolidBox(
                             PEDESTAL_X_DIM,
@@ -62,15 +62,16 @@ def AddPedestal(plant):
             bottom_name,
             [0.4, 0.4, 0.4, 1])  # RGBA color
 
-        plant.WeldFrames(
-            plant.world_frame(),
-            plant.GetFrameByName(bottom_name, pedestal_instance),
-            RigidTransform(RotationMatrix(), [
-                PEDESTAL_X_OFFSET,
-                PEDESTAL_Y_OFFSET,
-                bump_z/2
-            ]
-        ))
+        if weld_base:
+            plant.WeldFrames(
+                plant.world_frame(),
+                plant.GetFrameByName(bottom_name, pedestal_instance),
+                RigidTransform(RotationMatrix.MakeZRotation(np.pi), [
+                    PEDESTAL_X_OFFSET,
+                    PEDESTAL_Y_OFFSET,
+                    bump_z/2
+                ]
+            ))
 
     names = ["left", "right"]
     y_positions = [

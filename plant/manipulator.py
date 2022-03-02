@@ -49,14 +49,7 @@ X_body7_flange = RigidTransform(p=[0,0,0.09881026])
 X_body7_sphere = X_body7_flange.multiply(X_flange_sphere)
 
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
-    q0 = np.zeros(7)
-    q0[0] = -np.pi/2 # -np.pi/12 -> closer to physical
-    q0[1] = 0
-    q0[2] = np.pi/2
-    q0[3] = -np.pi
-    q0[4] = np.pi
-    q0[5] = np.pi/4 #1.5*np.pi+0.2
-    q0[6] = -3*np.pi/4-np.pi/2
+    q0 = np.load(base_path + "starting_q.npz")['starting_q']
 
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
