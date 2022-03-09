@@ -22,7 +22,7 @@ class CircularSetpointGenerator(pydrake.systems.framework.LeafSystem):
 
         self.joint_position = [
             0,
-            sys_consts.w_L - constants.PEDESTAL_Y_DIM/2,
+            sys_consts.w_L - constants.PEDESTAL_X_DIM/2,
             plant.pedestal.PEDESTAL_Z_DIM + sys_consts.h_L/2
         ]
 

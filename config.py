@@ -5,8 +5,8 @@ Configuration constants used accross many files.
 from enum import Enum
 
 # Time constants
-DT = 0.001  # Means continuous time
-TSPAN = 10
+DT = 0 #0.0001
+TSPAN = 3
 
 # Number of links
 class NumLinks(Enum):

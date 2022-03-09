@@ -5,7 +5,7 @@ from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAc
 import numpy as np
 import plant.manipulator as manipulator
 
-PRINT_CONTACTS = False
+PRINT_CONTACTS = True
 
 class LogWrapper(pydrake.systems.framework.LeafSystem):
     """

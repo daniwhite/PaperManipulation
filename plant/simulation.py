@@ -133,8 +133,8 @@ class Simulation:
         # Regex processing
         ## Remove objects we don't want to visualize
         objects_to_remove = [
-            "VectorLogSink",
-            "LogWrapper",
+            # "VectorLogSink",
+            # "LogWrapper",
             "scene_graph",
         ]
         if self.meshcat is not None:
