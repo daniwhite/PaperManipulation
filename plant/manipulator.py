@@ -40,16 +40,16 @@ elif config.num_links == config.NumLinks.FOUR:
     panda_offset = IN_TO_M*22
 X_W_panda = RigidTransform()
 
-base_path = "/Users/dani/Documents/lis/code/PaperManipulation/"
-
-flange_to_sphere_list = json.load(open(base_path + "panda/sphere_ee_config.json"))['transformation']
+flange_to_sphere_list = json.load(open(config.base_path + "panda/sphere_ee_config.json"))['transformation']
 X_flange_sphere = RigidTransform(np.array(flange_to_sphere_list).reshape(4,4).T)
 # Based off CAD measurement
 X_body7_flange = RigidTransform(p=[0,0,0.09881026])
 X_body7_sphere = X_body7_flange.multiply(X_flange_sphere)
 
+starting_q = np.load(config.base_path + "starting_q.npz")['starting_q']
+
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance):
-    q0 = np.load(base_path + "starting_q.npz")['starting_q']
+    q0 = starting_q
 
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)
@@ -175,7 +175,7 @@ def addArm(plant, m_M, r, mu, scene_graph=None):
     # =========================== ARM INITIALIZATION ==========================
     # Load arm
     parser = pydrake.multibody.parsing.Parser(plant, scene_graph)
-    arm_instance = parser.AddModelFromFile(base_path + "models/panda_arm.urdf")
+    arm_instance = parser.AddModelFromFile(config.base_path + "models/panda_arm.urdf")
     # arm_instance = parser.AddModelFromFile("models/panda_arm_collision_only.urdf")
 
     # Weld to world (position depends on number of links)

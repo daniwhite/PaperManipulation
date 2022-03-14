@@ -6,7 +6,9 @@ from enum import Enum
 
 # Time constants
 DT = 0 #0.0001
-TSPAN = 3
+TSPAN = 10
+
+base_path = "/Users/dani/Documents/lis/code/PaperManipulation/"
 
 # Number of links
 class NumLinks(Enum):

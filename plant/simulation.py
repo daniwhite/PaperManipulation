@@ -24,7 +24,7 @@ import ctrl.kinematic_ctrlr
 import ctrl.inverse_dynamics
 import ctrl.kinematic_ctrlr
 import ctrl.cartesian_impedance
-import ctrl.impedance_generators.setpoint_generators.circle
+import ctrl.impedance_generators.setpoint_generators.offline_loader
 import ctrl.impedance_generators.setpoint_generators.link_feedback
 
 from log_wrapper import LogWrapper
@@ -324,13 +324,8 @@ class Simulation:
         self._add_impedance_n_hat_force_compensation()
 
         if self.impedance_type == ImpedanceType.OFFLINE_TRAJ:
-            if config.num_links == config.NumLinks.TWO:
-                desired_radius = self.sys_consts.w_L/2
-            elif config.num_links == config.NumLinks.FOUR:
-                desired_radius = 3*self.sys_consts.w_L
             self.setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
-                    circle.CircularSetpointGenerator(
-                sys_consts=self.sys_consts, desired_radius=desired_radius)
+                    offline_loader.OfflineTrajLoader()
         elif self.impedance_type == ImpedanceType.LINK_FB:
             self.setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     link_feedback.LinkFeedbackSetpointGenerator(
@@ -540,8 +535,7 @@ class Simulation:
 
                 if self.n_hat_force_compensation_source == NHatForceCompensationSource.MEASURED:
                     self.builder.Connect(self.plant.get_contact_results_output_port(), self.ff_force_N.get_input_port())
-                    
-                
+
             self.builder.Connect(self.ff_wrench_XYZ.get_output_port(), self.fold_ctrl.GetInputPort("feedforward_wrench"))
             
             self.builder.Connect(self.setpoint_gen.GetOutputPort("x0"), self.demux_setpoint.get_input_port())
