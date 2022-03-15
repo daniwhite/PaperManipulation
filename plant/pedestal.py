@@ -26,10 +26,11 @@ def AddPedestal(plant, weld_base=True):
 
     # Add bump at the bottom
     bottom_name = pedestal_base_name
+    bottom_body_mass = 1 if weld_base else 1e9
     body =  plant.AddRigidBody(
         bottom_name,
         pedestal_instance,
-        SpatialInertia(mass=1e9, # So that it's effectively immovable
+        SpatialInertia(mass=bottom_body_mass,
                         p_PScm_E=np.array([0., 0., 0.]),
                         G_SP_E=UnitInertia.SolidBox(
                             PEDESTAL_X_DIM,
