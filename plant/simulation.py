@@ -2,7 +2,7 @@ import pydrake
 # TODO: pull these out
 from pydrake.all import (
     BodyIndex, Adder, ConstantVectorSource, Multiplexer, Demultiplexer, Gain,
-    LogVectorOutput, MeshcatVisualizerParams, MeshcatVisualizerCpp
+    LogVectorOutput, MeshcatVisualizerParams, MeshcatVisualizerCpp, Saturation
 )
 
 import numpy as np
@@ -388,6 +388,8 @@ class Simulation:
                 self.ff_force_N = ConstantVectorSource([10])
             
             self.builder.AddNamedSystem("ff_force_N", self.ff_force_N)
+            self.ff_force_N_Sat = Saturation(min_value=[0],max_value=[50])
+            self.builder.AddNamedSystem("ff_force_N_Sat", self.ff_force_N_Sat)
 
  
     def _add_ctrl_systems(self):
@@ -534,7 +536,14 @@ class Simulation:
                 self.builder.Connect(self.ff_torque_XYZ.get_output_port(), self.ff_wrench_XYZ.get_input_port(0))
                 self.builder.Connect(self.ff_force_XYZ.get_output_port(), self.ff_wrench_XYZ.get_input_port(1))
                 self.builder.Connect(self.ff_force_XT.get_output_port(), self.ff_force_XTN.get_input_port(0))
-                self.builder.Connect(self.ff_force_N.get_output_port(), self.ff_force_XTN.get_input_port(1))
+                self.builder.Connect(
+                    self.ff_force_N.get_output_port(),
+                    self.ff_force_N_Sat.get_input_port()
+                )
+
+                self.builder.Connect(
+                    self.ff_force_N_Sat.get_output_port(),
+                    self.ff_force_XTN.get_input_port(1))
 
                 if self.n_hat_force_compensation_source == NHatForceCompensationSource.MEASURED:
                     self.builder.Connect(self.plant.get_contact_results_output_port(), self.ff_force_N.get_input_port())
