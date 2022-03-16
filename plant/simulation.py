@@ -2,7 +2,8 @@ import pydrake
 # TODO: pull these out
 from pydrake.all import (
     BodyIndex, Adder, ConstantVectorSource, Multiplexer, Demultiplexer, Gain,
-    LogVectorOutput, MeshcatVisualizerParams, MeshcatVisualizerCpp, Saturation
+    LogVectorOutput, MeshcatVisualizerParams, MeshcatVisualizerCpp, Saturation,
+    OutputPort, InputPort
 )
 
 import numpy as np
@@ -125,7 +126,7 @@ class Simulation:
 
         self._add_non_ctrl_systems()
         self._add_ctrl_systems()
-        self._connect()
+        self._wire()
         self._context_specific_init()
 
 
@@ -412,41 +413,88 @@ class Simulation:
         self.ctrl_selector = ctrl.aux.CtrlSelector()
         self.builder.AddNamedSystem("ctrl_selector", self.ctrl_selector)
 
+    def _context_specific_init(self):
+        self.diagram_context = self.diagram.CreateDefaultContext()
+        manipulator.data['set_positions'](
+            self.diagram, self.diagram_context, self.plant,
+            self.manipulator_instance)
+        self.paper.set_positions(self.diagram, self.diagram_context)
 
-    def _connect(self):
+
+    def _connect(self, out_data, inp_data):
+        # Get output port
+        if isinstance(out_data, str):
+            output_port = self._get_system(out_data).get_output_port()
+        elif isinstance(out_data, OutputPort):
+            output_port = out_data
+        else:
+            output_sys = self._get_system(out_data[0])
+            if isinstance(out_data[1], int):
+                output_port = output_sys.get_output_port(out_data[1])
+            else:
+                output_port = output_sys.GetOutputPort(out_data[1])
+
+        # Get input port
+        if isinstance(inp_data, str):
+            input_port = self._get_system(inp_data).get_input_port()
+        elif isinstance(inp_data, InputPort):
+            input_port = inp_data
+        else:
+            input_sys = self._get_system(inp_data[0])
+            if isinstance(inp_data[1], int):
+                input_port = input_sys.get_input_port(inp_data[1])
+            else:
+                input_port = input_sys.GetInputPort(inp_data[1])
+        self.builder.Connect(output_port, input_port)
+
+    def _get_system(self, sys_name):
+        systems = self.builder.GetMutableSystems()
+        for sys in systems:
+            if sys.get_name() == sys_name:
+                return sys
+        raise KeyError(f"No system in builder with name \"{sys_name}\"")
+
+    def _wire(self):
         # Set up self.vision
-        self.builder.Connect(self.plant.get_body_poses_output_port(), self.vision.GetInputPort("poses"))
-        self.builder.Connect(self.plant.get_body_spatial_velocities_output_port(), self.vision.GetInputPort("vels"))
+        self._connect(["plant", "body_poses"], ["vision", "poses"])
+        self._connect(["plant", "spatial_velocities"], ["vision", "vels"])
 
         # Set up self.vision processor
-        self.builder.Connect(self.vision.GetOutputPort("pose_L_translational"), self.vision_processor.GetInputPort("pose_L_translational"))
-        self.builder.Connect(self.vision.GetOutputPort("pose_L_rotational"), self.vision_processor.GetInputPort("pose_L_rotational"))
-        self.builder.Connect(self.vision.GetOutputPort("vel_L_translational"), self.vision_processor.GetInputPort("vel_L_translational"))
-        self.builder.Connect(self.vision.GetOutputPort("vel_L_rotational"), self.vision_processor.GetInputPort("vel_L_rotational"))
-        self.builder.Connect(self.vision.GetOutputPort("pose_M_translational"), self.vision_processor.GetInputPort("pose_M_translational"))
-        self.builder.Connect(self.vision.GetOutputPort("pose_M_rotational"), self.vision_processor.GetInputPort("pose_M_rotational"))
-        self.builder.Connect(self.vision.GetOutputPort("vel_M_translational"), self.vision_processor.GetInputPort("vel_M_translational"))
-        self.builder.Connect(self.vision.GetOutputPort("vel_M_rotational"), self.vision_processor.GetInputPort("vel_M_rotational"))
+        for i in range(self._get_system("vision").num_output_ports()):
+            # Hypothetically, we could go by index. But, I want to be robust
+            # to them having different orders (although they should always
+            # have the same names for parts)
+            name = self._get_system("vision").get_output_port(i).get_name()
+            self._connect(["vision", name], ["vision_processor", name])
 
         # Set up self.proprioception
-        self.builder.Connect(self.plant.get_state_output_port(self.manipulator_instance), self.proprioception.GetInputPort("state"))
+        self._connect(
+            self.plant.get_state_output_port(self.manipulator_instance),
+            ["proprioception", "state"]
+        )
 
         # Set up logger
-        self.builder.Connect(self.plant.get_body_poses_output_port(), self.log_wrapper.GetInputPort("poses"))
-        self.builder.Connect(self.plant.get_body_spatial_velocities_output_port(), self.log_wrapper.GetInputPort("vels"))
-        self.builder.Connect(self.plant.get_body_spatial_accelerations_output_port(), self.log_wrapper.GetInputPort("accs")) 
-        self.builder.Connect(self.plant.get_contact_results_output_port(), self.log_wrapper.GetInputPort("contact_results"))
-        self.builder.Connect(self.plant.get_reaction_forces_output_port(), self.log_wrapper.GetInputPort("joint_forces"))
-        self.builder.Connect(self.plant.get_generalized_acceleration_output_port(self.manipulator_instance),
-                        self.log_wrapper.GetInputPort("manipulator_accs"))
-        self.builder.Connect(self.plant.get_state_output_port(self.manipulator_instance), self.log_wrapper.GetInputPort("state"))
-        self.builder.Connect(self.proprioception.GetOutputPort("tau_g"), self.log_wrapper.GetInputPort("tau_g"))
-        self.builder.Connect(self.proprioception.GetOutputPort("M"), self.log_wrapper.GetInputPort("M"))
-        self.builder.Connect(self.proprioception.GetOutputPort("Cv"), self.log_wrapper.GetInputPort("Cv"))
-        self.builder.Connect(self.proprioception.GetOutputPort("J"), self.log_wrapper.GetInputPort("J"))
-        self.builder.Connect(self.proprioception.GetOutputPort("Jdot_qdot"), self.log_wrapper.GetInputPort("Jdot_qdot"))
-        self.builder.Connect(self.vision_processor.GetOutputPort("in_contact"), self.log_wrapper.GetInputPort("in_contact"))
-        self.builder.Connect(self.joint_centering_ctrl.get_output_port(), self.log_wrapper.GetInputPort("joint_centering_torque"))
+        self._connect(["plant", "body_poses"], ["LogWrapper", "poses"])
+        self._connect(["plant", "spatial_velocities"], ["LogWrapper", "vels"])
+        self._connect(
+            ["plant", "spatial_accelerations"], ["LogWrapper", "accs"])
+        self._connect(
+            ["plant", "contact_results"], ["LogWrapper", "contact_results"])
+        self._connect(
+            ["plant", "reaction_forces"], ["LogWrapper", "joint_forces"])
+        self._connect(self.plant.get_generalized_acceleration_output_port(
+                self.manipulator_instance), ["LogWrapper", "manipulator_accs"])
+        self._connect(self.plant.get_state_output_port(
+                self.manipulator_instance), ["LogWrapper", "state"])
+        self._connect(["proprioception", "tau_g"], ["LogWrapper", "tau_g"])
+        self._connect(["proprioception", "M"], ["LogWrapper", "M"])
+        self._connect(["proprioception", "Cv"], ["LogWrapper", "Cv"])
+        self._connect(["proprioception", "J"], ["LogWrapper", "J"])
+        self._connect(["proprioception", "Jdot_qdot"],
+            ["LogWrapper", "Jdot_qdot"])
+        self._connect(["vision_processor", "in_contact"],
+            ["LogWrapper", "in_contact"])
+        self._connect("joint_centering_ctrl", ["LogWrapper", "joint_centering_torque"])
 
         # Set up visualization
         if self.meshcat is not None:
@@ -590,7 +638,10 @@ class Simulation:
         self.builder.Connect(self.ctrl_selector.get_output_port(), self.tau_g_adder.get_input_port(1))
         self.builder.Connect(self.tau_g_gain.get_output_port(), self.tau_g_adder.get_input_port(2))
 
-        self.builder.Connect(self.tau_g_adder.get_output_port(), self.plant.get_actuation_input_port())
+        self.builder.Connect(
+            self._get_system("adder").get_output_port(),
+            self._get_system("plant").get_actuation_input_port()
+        )
         self.builder.Connect(self.tau_g_adder.get_output_port(), self.log_wrapper.GetInputPort("tau_out"))
 
         # Visualization and logging
@@ -608,11 +659,3 @@ class Simulation:
 
         # Build diagram
         self.diagram = self.builder.Build()
-
-
-    def _context_specific_init(self):
-        self.diagram_context = self.diagram.CreateDefaultContext()
-        manipulator.data['set_positions'](
-            self.diagram, self.diagram_context, self.plant,
-            self.manipulator_instance)
-        self.paper.set_positions(self.diagram, self.diagram_context)
