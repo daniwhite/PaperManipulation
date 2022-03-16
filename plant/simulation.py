@@ -447,6 +447,18 @@ class Simulation:
                 input_port = input_sys.GetInputPort(inp_data[1])
         self.builder.Connect(output_port, input_port)
 
+    def _connect_all_inputs(self, out_sys_name, inp_sys_name,
+            skipped_ports=set()):
+        inp_sys = self._get_system(inp_sys_name)
+        for i in range(inp_sys.num_input_ports()):
+            # Hypothetically, we could go by index. But, I want to be robust
+            # to them having different orders (although they should always
+            # have the same names for parts)
+            name = inp_sys.get_input_port(i).get_name()
+            if name in skipped_ports:
+                continue
+            self._connect([out_sys_name, name], [inp_sys_name, name])
+
     def _connect_all_outputs(self, out_sys_name, in_sys_name,
             skipped_ports=set()):
         out_sys = self._get_system(out_sys_name)
@@ -534,103 +546,78 @@ class Simulation:
                 self._connect(
                     ["fold_ctrl", "rot_XYZd"], ["desired_pos_vis", "rot"])
         elif (self.ctrl_paradigm == CtrlParadigm.KINEMATIC):
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_L"), self.fold_ctrl.GetInputPort("theta_L"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_L"), self.fold_ctrl.GetInputPort("d_theta_L"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MX"), self.fold_ctrl.GetInputPort("theta_MX"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MY"), self.fold_ctrl.GetInputPort("theta_MY"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MZ"), self.fold_ctrl.GetInputPort("theta_MZ"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MX"), self.fold_ctrl.GetInputPort("d_theta_MX"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MY"), self.fold_ctrl.GetInputPort("d_theta_MY"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MZ"), self.fold_ctrl.GetInputPort("d_theta_MZ"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("F_GN"), self.fold_ctrl.GetInputPort("F_GN"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_X"), self.fold_ctrl.GetInputPort("d_X"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_d_X"), self.fold_ctrl.GetInputPort("d_d_X"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_T"), self.fold_ctrl.GetInputPort("d_T"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_d_T"), self.fold_ctrl.GetInputPort("d_d_T"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("T_hat"), self.fold_ctrl.GetInputPort("T_hat"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("N_hat"), self.fold_ctrl.GetInputPort("N_hat"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J_translational"), self.fold_ctrl.GetInputPort("J_translational"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J_rotational"), self.fold_ctrl.GetInputPort("J_rotational"))
+            self._connect_all_inputs("vis_proc", "fold_ctrl",
+                skipped_ports={"J_translational", "J_rotational"})
+            self._connect(
+                ["prop", "J_translational"], ["fold_ctrl", "J_translational"])
+            self._connect(
+                ["prop", "J_rotational"], ["fold_ctrl", "J_rotational"])
         elif (self.ctrl_paradigm == CtrlParadigm.IMPEDANCE):
-            self.builder.Connect(self.vision.GetOutputPort("pose_M_translational"), self.fold_ctrl.GetInputPort("pose_M_translational"))
-            self.builder.Connect(self.vision.GetOutputPort("pose_M_rotational"), self.fold_ctrl.GetInputPort("pose_M_rotational"))
-            self.builder.Connect(self.vision.GetOutputPort("vel_M_translational"), self.fold_ctrl.GetInputPort("vel_M_translational"))
-            self.builder.Connect(self.vision.GetOutputPort("vel_M_rotational"), self.fold_ctrl.GetInputPort("vel_M_rotational"))
-            self.builder.Connect(self.proprioception.GetOutputPort("M"), self.fold_ctrl.GetInputPort("M"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J"), self.fold_ctrl.GetInputPort("J"))
-            self.builder.Connect(self.proprioception.GetOutputPort("Jdot_qdot"), self.fold_ctrl.GetInputPort("Jdot_qdot"))
-            self.builder.Connect(self.proprioception.GetOutputPort("Cv"), self.fold_ctrl.GetInputPort("Cv"))
-            
-            self.builder.Connect(self.K_gen.get_output_port(), self.fold_ctrl.GetInputPort("K"))
-            self.builder.Connect(self.D_gen.get_output_port(), self.fold_ctrl.GetInputPort("D"))
-            self.builder.Connect(self.setpoint_gen.GetOutputPort("x0"), self.fold_ctrl.GetInputPort("x0"))
-            self.builder.Connect(self.setpoint_gen.GetOutputPort("dx0"), self.fold_ctrl.GetInputPort("dx0"))
+            for k in ["pose_M_translational", "pose_M_rotational",
+                    "vel_M_translational", "vel_M_rotational"]:
+                self._connect(["vision", k], ["fold_ctrl", k])
+            for k in ["M", "J", "Jdot_qdot", "Cv"]:
+                self._connect(["prop", k], ["fold_ctrl", k])
+            self._connect("K_gen", ["fold_ctrl", "K"])
+            self._connect("D_gen", ["fold_ctrl", "D"])
+            self._connect(["setpoint_gen", "x0"], ["fold_ctrl", "x0"])
+            self._connect(["setpoint_gen", "dx0"], ["fold_ctrl", "dx0"])
             if self.n_hat_force_compensation_source != NHatForceCompensationSource.NONE:
-                self.builder.Connect(self.ff_force_XTN.get_output_port(), self.ff_force_XYZ.GetInputPort("XTN"))
-                self.builder.Connect(self.vision_processor.GetOutputPort("T_hat"), self.ff_force_XYZ.GetInputPort("T_hat"))
-                self.builder.Connect(self.vision_processor.GetOutputPort("N_hat"), self.ff_force_XYZ.GetInputPort("N_hat"))
-                self.builder.Connect(self.ff_torque_XYZ.get_output_port(), self.ff_wrench_XYZ.get_input_port(0))
-                self.builder.Connect(self.ff_force_XYZ.get_output_port(), self.ff_wrench_XYZ.get_input_port(1))
-                self.builder.Connect(self.ff_force_XT.get_output_port(), self.ff_force_XTN.get_input_port(0))
-                self.builder.Connect(
-                    self.ff_force_N.get_output_port(),
-                    self.ff_force_N_Sat.get_input_port()
-                )
+                self._connect("ff_force_XTN", ["ff_force_XYZ", "XTN"])
+                self._connect(["vis_proc", "T_hat"], ["ff_force_XYZ", "T_hat"])
+                self._connect(["vis_proc", "N_hat"], ["ff_force_XYZ", "N_hat"])
+                self._connect("ff_torque_XYZ", ["ff_wrench_XYZ", 0])
+                self._connect("ff_force_XYZ", ["ff_wrench_XYZ", 1])
+                self._connect("ff_force_XT", ["ff_force_XTN", 0])
+                self._connect("ff_force_N", "ff_force_N_Sat")
+                self._connect("ff_force_N_Sat", ["ff_force_XTN", 1])
 
-                self.builder.Connect(
-                    self.ff_force_N_Sat.get_output_port(),
-                    self.ff_force_XTN.get_input_port(1))
-
-                if self.n_hat_force_compensation_source == NHatForceCompensationSource.MEASURED:
-                    self.builder.Connect(self.plant.get_contact_results_output_port(), self.ff_force_N.get_input_port())
-
-            self.builder.Connect(self.ff_wrench_XYZ.get_output_port(), self.fold_ctrl.GetInputPort("feedforward_wrench"))
+                if self.n_hat_force_compensation_source == \
+                        NHatForceCompensationSource.MEASURED:
+                    self._connect(["plant", "contact_results"], "ff_force_N")
+            self._connect("ff_wrench_XYZ", ["fold_ctrl", "feedforward_wrench"])
             
-            self.builder.Connect(self.setpoint_gen.GetOutputPort("x0"), self.demux_setpoint.get_input_port())
+            self._connect(["setpoint_gen", "x0"], "demux_setpoint")
             if self.meshcat is not None:
-                self.builder.Connect(self.fold_ctrl.GetOutputPort("adjusted_x0_pos"), self.setpoint_vis.GetInputPort("pos"))
-                self.builder.Connect(self.fold_ctrl.GetOutputPort("adjusted_x0_rot"), self.setpoint_vis.GetInputPort("rot"))
+                self._connect(["fold_ctrl", "adjusted_x0_pos"],
+                    ["setpoint_vis", "pos"])
+                self._connect(["fold_ctrl", "adjusted_x0_rot"],
+                    ["setpoint_vis", "rot"])
             
             if type(self.setpoint_gen) is \
                     ctrl.impedance_generators.setpoint_generators.link_feedback.LinkFeedbackSetpointGenerator:
-                self.builder.Connect(
-                    self.vision.GetOutputPort("pose_L_translational"),
-                    self.setpoint_gen.GetInputPort("pose_L_translational")
-                )
-                self.builder.Connect(
-                    self.vision.GetOutputPort("pose_L_rotational"),
-                    self.setpoint_gen.GetInputPort("pose_L_rotational")
-                )
+                self._connect_all_inputs("vision", "setpoint_gen")
 
         # Controller connections
-        self.builder.Connect(self.vision_processor.GetOutputPort("in_contact"), self.ctrl_selector.GetInputPort("in_contact"))
-        self.builder.Connect(self.fold_ctrl.GetOutputPort("tau_out"), self.ctrl_selector.GetInputPort("contact_ctrl"))
+        ## Controller mux
+        self._connect(["vis_proc", "in_contact"],
+            ["ctrl_selector", "in_contact"])
+        self._connect(["fold_ctrl", "tau_out"],
+            ["ctrl_selector", "contact_ctrl"])
         if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
-            self.builder.Connect(self.pre_contact_ctrl.get_output_port(), self.ctrl_selector.GetInputPort("pre_contact_ctrl"))
+            self._connect("pre_contact_ctrl",
+                ["ctrl_selector", "pre_contact_ctrl"])
         else:
-            self.builder.Connect(self.fold_ctrl.get_output_port(0), self.ctrl_selector.GetInputPort("pre_contact_ctrl"))
+            self._connect(["fold_ctrl", "tau_out"],
+                ["ctrl_selector", "pre_contact_ctrl"])
+        self._connect("ctrl_selector", ["log", "tau_ctrl"])
 
-        self.builder.Connect(self.ctrl_selector.get_output_port(), self.log_wrapper.GetInputPort("tau_ctrl"))
+        ## Wire pre contact control
+        self._connect(["prop", "J"], ["pre_contact_ctrl", "J"])
+        self._connect(["vis_proc", "v_MN"], ["pre_contact_ctrl", "v_MN"])
+        self._connect(["vis_proc", "N_hat"], ["pre_contact_ctrl", "N_hat"])
 
-        self.builder.Connect(self.proprioception.GetOutputPort("J"), self.pre_contact_ctrl.GetInputPort("J"))
-        self.builder.Connect(self.vision_processor.GetOutputPort("v_MN"), self.pre_contact_ctrl.GetInputPort("v_MN"))
-        self.builder.Connect(self.vision_processor.GetOutputPort("N_hat"), self.pre_contact_ctrl.GetInputPort("N_hat"))
+        ## Set up joint centering control
+        self._connect_all_inputs("prop", "joint_centering_ctrl")
 
-        self.builder.Connect(self.proprioception.GetOutputPort("J"), self.joint_centering_ctrl.GetInputPort("J"))
-        self.builder.Connect(self.proprioception.GetOutputPort("q"), self.joint_centering_ctrl.GetInputPort("q"))
-        self.builder.Connect(self.proprioception.GetOutputPort("v"), self.joint_centering_ctrl.GetInputPort("v"))
+        ## Wire gravity compensation + final adder
+        self._connect(["prop", "tau_g"], ["tau_g_gain", 0])
+        self._connect("joint_centering_ctrl", ["adder", 0])
+        self._connect("ctrl_selector", ["adder", 1])
+        self._connect("tau_g_gain", ["adder", 2])
 
-        self.builder.Connect(self.proprioception.GetOutputPort("tau_g"), self.tau_g_gain.get_input_port())
-
-        self.builder.Connect(self.joint_centering_ctrl.get_output_port(), self.tau_g_adder.get_input_port(0))
-        self.builder.Connect(self.ctrl_selector.get_output_port(), self.tau_g_adder.get_input_port(1))
-        self.builder.Connect(self.tau_g_gain.get_output_port(), self.tau_g_adder.get_input_port(2))
-
-        self.builder.Connect(
-            self._get_system("adder").get_output_port(),
-            self._get_system("plant").get_actuation_input_port()
-        )
-        self.builder.Connect(self.tau_g_adder.get_output_port(), self.log_wrapper.GetInputPort("tau_out"))
+        self._connect("adder", ["plant", "panda_actuation"])
+        self._connect("adder", ["log", "tau_out"])
 
         # Visualization and logging
         self.logger = LogVectorOutput(self.log_wrapper.get_output_port(), self.builder)
