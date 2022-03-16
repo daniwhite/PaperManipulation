@@ -3,10 +3,12 @@ import numpy as np
 # Drake imports
 import pydrake
 from pydrake.all import Meshcat, RigidTransform, RollPitchYaw, RotationMatrix
+import config
 
 from constants import SystemConstants
 
 from collections import defaultdict
+import scipy.interpolate
 
 import plant.manipulator
 
@@ -20,6 +22,12 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
 
         self.sys_consts = sys_consts
         self.debug = defaultdict(list)
+        orientation_map = np.load(config.base_path + "orientation_map.npz")
+        self.get_theta_Z_func = scipy.interpolate.interp1d(
+            orientation_map['theta_Ls'],
+            orientation_map['theta_L_EE'],
+            fill_value='extrapolate'
+        )
 
         # =========================== DECLARE INPUTS ==========================
         self.DeclareVectorInputPort(
@@ -39,27 +47,6 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
             self.calc_dx0
         )
 
-    def smoothing_func(self, x):
-        """
-        Function for smoothing desired theta_Z setpoint.
-
-        Without smoothing, I want the following behavior:
-             /--
-             | -pi/2    x < -pi/2
-        x = <  0        x > 0
-             | x        otherwise
-             \--
-
-        However, the point where the derivative because discontinuous,
-        a very large torque is commanded. So I implement the following
-        smoothing function to give the behavior above.
-
-        It's a member function so that I can also evaluate while debugging.
-        """
-        a = 4/np.pi
-        sig_term = 1/(1+np.exp(-a*x))
-        return (sig_term-0.5)*(4/a)
-
     def calc_x0(self, context, output):
         x0 = np.zeros(6)
 
@@ -71,7 +58,7 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
         theta_L = pose_L_rotational[0]
 
         # Calc X_L_SP, the transform from the link to the setpoint
-        offset_Z_rot = self.smoothing_func(-theta_L)
+        offset_Z_rot = self.get_theta_Z_func(theta_L)
         X_L_SP = RigidTransform(
             R=RotationMatrix.MakeZRotation(offset_Z_rot),
             p=[0, 0, -(self.sys_consts.h_L/2+self.sys_consts.r)]
