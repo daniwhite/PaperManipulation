@@ -379,7 +379,10 @@ class Simulation:
             if self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.MEASURED:
                 self.ff_force_N = ctrl.aux.NormalForceSelector(
-                    ll_idx=self.ll_idx, contact_body_idx=self.contact_body_idx)
+                    ll_idx=self.ll_idx,
+                    contact_body_idx=self.contact_body_idx,
+                    ff_constant_force=1
+                )
             elif self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONSTANT:
                 self.ff_force_N = ConstantVectorSource([10])

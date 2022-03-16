@@ -29,6 +29,15 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
             fill_value='extrapolate'
         )
 
+        # If I want the contact point to moving in an arc of
+        # `desired_contact_distance`, then I need the end effector to be
+        # moving in an arc of radius `desired_radius`.
+        # TODO: switch to end effector frame at the tip of the end effector?
+        desired_contact_distance = self.sys_consts.w_L/2
+        desired_radius = np.sqrt(
+            self.sys_consts.r**2 + desired_contact_distance**2)
+        self.offset_y = desired_radius - desired_contact_distance
+
         # =========================== DECLARE INPUTS ==========================
         self.DeclareVectorInputPort(
             "pose_L_rotational", pydrake.systems.framework.BasicVector(3))
@@ -61,7 +70,7 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
         offset_Z_rot = self.get_theta_Z_func(theta_L)
         X_L_SP = RigidTransform(
             R=RotationMatrix.MakeZRotation(offset_Z_rot),
-            p=[0, 0, -(self.sys_consts.h_L/2+self.sys_consts.r)]
+            p=[0, self.offset_y, -(self.sys_consts.h_L/2+self.sys_consts.r)]
         )
 
         # Calc X_W_L
