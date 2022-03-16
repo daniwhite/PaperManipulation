@@ -604,8 +604,7 @@ class Simulation:
 
         ## Wire pre contact control
         self._connect(["prop", "J"], ["pre_contact_ctrl", "J"])
-        self._connect(["vis_proc", "v_MN"], ["pre_contact_ctrl", "v_MN"])
-        self._connect(["vis_proc", "N_hat"], ["pre_contact_ctrl", "N_hat"])
+        self._connect(["vision", "vel_M_translational"], ["pre_contact_ctrl", "v_M"])
 
         ## Set up joint centering control
         self._connect_all_inputs("prop", "joint_centering_ctrl")

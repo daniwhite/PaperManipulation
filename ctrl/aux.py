@@ -67,13 +67,13 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
     Moves the controller towards the hinge.
     """
 
-    def __init__(self, v_MNd=0.1, K=100):
+    def __init__(self, v_MZd=0.1, K=100):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # System parameters
         self.nq = manipulator.data["nq"]
 
         # Gains
-        self.v_MNd = v_MNd
+        self.v_MZd = v_MZd
         self.K = K
 
         # Intermediary terms
@@ -83,9 +83,7 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
             "J",
             pydrake.systems.framework.BasicVector(6*self.nq))
         self.DeclareVectorInputPort(
-            "v_MN", pydrake.systems.framework.BasicVector(1))
-        self.DeclareVectorInputPort(
-            "N_hat", pydrake.systems.framework.BasicVector(3))
+            "v_M", pydrake.systems.framework.BasicVector(3))
 
         self.DeclareVectorOutputPort(
             "tau_out", pydrake.systems.framework.BasicVector(self.nq),
@@ -95,17 +93,18 @@ class PreContactCtrl(pydrake.systems.framework.LeafSystem):
         # Load inputs
         J = self.GetInputPort("J").Eval(context).reshape(
             (6, self.nq))
-        v_MN = self.GetInputPort("v_MN").Eval(context)
-        N_hat = np.expand_dims(self.GetInputPort("N_hat").Eval(context), 1)
+        v_M = self.GetInputPort("v_M").Eval(context)
 
-        v_MNd = 0
+        # Defaults to int w/ no dtype
+        v_Md = np.array([0, 0, 0], dtype=np.float64)
+
         if context.get_time() > settling_time:
-            v_MNd = self.v_MNd
+            v_Md[-1] = self.v_MZd
 
-        F_CN = (v_MNd - v_MN)*self.K
+        F_C = (v_Md - v_M)*self.K
 
         F_d = np.zeros((6,1))
-        F_d[3:] += N_hat * F_CN
+        F_d[3:] += np.expand_dims(F_C, 1)
 
         tau_ctrl = J.T@F_d
         output.SetFromVector(tau_ctrl.flatten()) 
