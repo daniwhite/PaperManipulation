@@ -135,7 +135,7 @@ class Simulation:
         ## Remove objects we don't want to visualize
         objects_to_remove = [
             # "VectorLogSink",
-            # "LogWrapper",
+            # "log",
             "scene_graph",
         ]
         if self.meshcat is not None:
@@ -267,7 +267,7 @@ class Simulation:
             self.paper,
             self.plant
         )
-        self.builder.AddNamedSystem("LogWrapper", self.log_wrapper)
+        self.builder.AddNamedSystem("log", self.log_wrapper)
 
         # Proprioception
         self.proprioception = perception.proprioception.ProprioceptionSystem(
@@ -275,13 +275,13 @@ class Simulation:
             r=self.params.r,
             mu=self.params.mu
         )
-        self.builder.AddNamedSystem("proprioception", self.proprioception)
+        self.builder.AddNamedSystem("prop", self.proprioception)
 
         # Vision
         self.vision_processor = perception.vision.VisionProcessor(
             self.sys_consts)
         self.builder.AddNamedSystem(
-            "vision_processor", self.vision_processor)
+            "vis_proc", self.vision_processor)
         self.vision = perception.vision.VisionSystem(
             ll_idx=self.ll_idx, contact_body_idx=self.contact_body_idx)
         self.builder.AddNamedSystem("vision", self.vision)
@@ -447,6 +447,18 @@ class Simulation:
                 input_port = input_sys.GetInputPort(inp_data[1])
         self.builder.Connect(output_port, input_port)
 
+    def _connect_all_outputs(self, out_sys_name, in_sys_name,
+            skipped_ports=set()):
+        out_sys = self._get_system(out_sys_name)
+        for i in range(out_sys.num_output_ports()):
+            # Hypothetically, we could go by index. But, I want to be robust
+            # to them having different orders (although they should always
+            # have the same names for parts)
+            name = out_sys.get_output_port(i).get_name()
+            if name in skipped_ports:
+                continue
+            self._connect([out_sys_name, name], [in_sys_name, name])
+
     def _get_system(self, sys_name):
         systems = self.builder.GetMutableSystems()
         for sys in systems:
@@ -460,91 +472,67 @@ class Simulation:
         self._connect(["plant", "spatial_velocities"], ["vision", "vels"])
 
         # Set up self.vision processor
-        for i in range(self._get_system("vision").num_output_ports()):
-            # Hypothetically, we could go by index. But, I want to be robust
-            # to them having different orders (although they should always
-            # have the same names for parts)
-            name = self._get_system("vision").get_output_port(i).get_name()
-            self._connect(["vision", name], ["vision_processor", name])
+        self._connect_all_outputs("vision", "vis_proc")
 
         # Set up self.proprioception
         self._connect(
             self.plant.get_state_output_port(self.manipulator_instance),
-            ["proprioception", "state"]
+            ["prop", "state"]
         )
 
         # Set up logger
-        self._connect(["plant", "body_poses"], ["LogWrapper", "poses"])
-        self._connect(["plant", "spatial_velocities"], ["LogWrapper", "vels"])
-        self._connect(
-            ["plant", "spatial_accelerations"], ["LogWrapper", "accs"])
-        self._connect(
-            ["plant", "contact_results"], ["LogWrapper", "contact_results"])
-        self._connect(
-            ["plant", "reaction_forces"], ["LogWrapper", "joint_forces"])
+        self._connect(["plant", "body_poses"], ["log", "poses"])
+        self._connect(["plant", "spatial_velocities"], ["log", "vels"])
+        self._connect(["plant", "spatial_accelerations"], ["log", "accs"])
+        self._connect(["plant", "contact_results"], ["log", "contact_results"])
+        self._connect(["plant", "reaction_forces"], ["log", "joint_forces"])
         self._connect(self.plant.get_generalized_acceleration_output_port(
-                self.manipulator_instance), ["LogWrapper", "manipulator_accs"])
+                self.manipulator_instance), ["log", "manipulator_accs"])
         self._connect(self.plant.get_state_output_port(
-                self.manipulator_instance), ["LogWrapper", "state"])
-        self._connect(["proprioception", "tau_g"], ["LogWrapper", "tau_g"])
-        self._connect(["proprioception", "M"], ["LogWrapper", "M"])
-        self._connect(["proprioception", "Cv"], ["LogWrapper", "Cv"])
-        self._connect(["proprioception", "J"], ["LogWrapper", "J"])
-        self._connect(["proprioception", "Jdot_qdot"],
-            ["LogWrapper", "Jdot_qdot"])
-        self._connect(["vision_processor", "in_contact"],
-            ["LogWrapper", "in_contact"])
-        self._connect("joint_centering_ctrl", ["LogWrapper", "joint_centering_torque"])
+                self.manipulator_instance), ["log", "state"])
+        self._connect(["prop", "tau_g"], ["log", "tau_g"])
+        self._connect(["prop", "M"], ["log", "M"])
+        self._connect(["prop", "Cv"], ["log", "Cv"])
+        self._connect(["prop", "J"], ["log", "J"])
+        self._connect(["prop", "Jdot_qdot"], ["log", "Jdot_qdot"])
+        self._connect(["vis_proc", "in_contact"], ["log", "in_contact"])
+        self._connect("joint_centering_ctrl",
+            ["log", "joint_centering_torque"])
 
         # Set up visualization
         if self.meshcat is not None:
-            self.builder.Connect(self.vision.GetOutputPort("pose_M_translational"), self.end_effector_frame_vis.GetInputPort("pos"))
-            self.builder.Connect(self.vision.GetOutputPort("pose_M_rotational"), self.end_effector_frame_vis.GetInputPort("rot"))
+            self._connect(["vision", "pose_M_translational"],
+                ["end_effector_frame_vis", "pos"])
+            self._connect(["vision", "pose_M_rotational"],
+                ["end_effector_frame_vis", "rot"])
 
         if (self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS):
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_L"), self.fold_ctrl.GetInputPort("theta_L"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_L"), self.fold_ctrl.GetInputPort("d_theta_L"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("p_LN"), self.fold_ctrl.GetInputPort("p_LN"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("p_LT"), self.fold_ctrl.GetInputPort("p_LT"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MX"), self.fold_ctrl.GetInputPort("theta_MX"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MY"), self.fold_ctrl.GetInputPort("theta_MY"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("theta_MZ"), self.fold_ctrl.GetInputPort("theta_MZ"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MX"), self.fold_ctrl.GetInputPort("d_theta_MX"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MY"), self.fold_ctrl.GetInputPort("d_theta_MY"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_MZ"), self.fold_ctrl.GetInputPort("d_theta_MZ"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("F_GT"), self.fold_ctrl.GetInputPort("F_GT"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("F_GN"), self.fold_ctrl.GetInputPort("F_GN"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_X"), self.fold_ctrl.GetInputPort("d_X"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_d_X"), self.fold_ctrl.GetInputPort("d_d_X"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_N"), self.fold_ctrl.GetInputPort("d_N"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_d_N"), self.fold_ctrl.GetInputPort("d_d_N"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_T"), self.fold_ctrl.GetInputPort("d_T"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("d_d_T"), self.fold_ctrl.GetInputPort("d_d_T"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("p_CN"), self.fold_ctrl.GetInputPort("p_CN"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("p_CT"), self.fold_ctrl.GetInputPort("p_CT"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("p_MConM"), self.fold_ctrl.GetInputPort("p_MConM"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("mu_S"), self.fold_ctrl.GetInputPort("mu_S"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("hats_T"), self.fold_ctrl.GetInputPort("hats_T"))
-            self.builder.Connect(self.vision_processor.GetOutputPort("s_hat_X"), self.fold_ctrl.GetInputPort("s_hat_X"))
-            self.builder.Connect(self.proprioception.GetOutputPort("tau_g"), self.fold_ctrl.GetInputPort("tau_g"))
-            self.builder.Connect(self.proprioception.GetOutputPort("M"), self.fold_ctrl.GetInputPort("M"))
-            self.builder.Connect(self.proprioception.GetOutputPort("Cv"), self.fold_ctrl.GetInputPort("Cv"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J"), self.fold_ctrl.GetInputPort("J"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J_translational"), self.fold_ctrl.GetInputPort("J_translational"))
-            self.builder.Connect(self.proprioception.GetOutputPort("J_rotational"), self.fold_ctrl.GetInputPort("J_rotational"))
-            self.builder.Connect(self.proprioception.GetOutputPort("Jdot_qdot"), self.fold_ctrl.GetInputPort("Jdot_qdot"))
-            self.builder.Connect(self.joint_centering_ctrl.get_output_port(), self.fold_ctrl.GetInputPort("joint_centering_torque"))
+            skipped_ports = {"T_hat", "N_hat", "in_contact", "v_LN", "v_MN"}
+            self._connect_all_outputs(
+                "vis_proc", "fold_ctrl", skipped_ports=skipped_ports)
+
+            self._connect_all_outputs(
+                "prop", "fold_ctrl", skipped_ports={"q", "v"})
+
+            self._connect("joint_centering_ctrl",
+                ["fold_ctrl", "joint_centering_torque"])
             
             if self.meshcat is not None:
-                self.builder.Connect(self.fold_ctrl.GetOutputPort("XTNd"), self.desired_position_XYZ.GetInputPort("XTN"))
-                self.builder.Connect(self.vision_processor.GetOutputPort("T_hat"), self.desired_position_XYZ.GetInputPort("T_hat"))
-                self.builder.Connect(self.vision_processor.GetOutputPort("N_hat"), self.desired_position_XYZ.GetInputPort("N_hat"))
-            
-                self.builder.Connect(self.vision.GetOutputPort("pose_L_translational"), self.desired_pos_adder.get_input_port(0))
-                self.builder.Connect(self.desired_position_XYZ.GetOutputPort("XYZ"), self.desired_pos_adder.get_input_port(1))
-                self.builder.Connect(self.desired_pos_adder.get_output_port(), self.desired_pos_vis.GetInputPort("pos"))
-            
-                self.builder.Connect(self.fold_ctrl.GetOutputPort("rot_XYZd"), self.desired_pos_vis.GetInputPort("rot"))
+                self._connect(
+                    ["fold_ctrl", "XTNd"], ["desired_position_XYZ", "XTN"])
+                self._connect(
+                    ["vis_proc", "T_hat"], ["desired_position_XYZ", "T_hat"])
+                self._connect(
+                    ["vis_proc", "N_hat"], ["desired_position_XYZ", "N_hat"])
+                self._connect(
+                    ["vision", "pose_L_translational"],
+                    ["desired_pos_adder", 0])
+                self._connect(
+                    ["desired_position_XYZ", "XYZ"],
+                    ["desired_pos_adder", 1])
+                self._connect("desired_pos_adder", ["desired_pos_vis", "pos"])
+                self._connect(
+                    ["fold_ctrl", "rot_XYZd"], ["desired_pos_vis", "rot"])
         elif (self.ctrl_paradigm == CtrlParadigm.KINEMATIC):
             self.builder.Connect(self.vision_processor.GetOutputPort("theta_L"), self.fold_ctrl.GetInputPort("theta_L"))
             self.builder.Connect(self.vision_processor.GetOutputPort("d_theta_L"), self.fold_ctrl.GetInputPort("d_theta_L"))
