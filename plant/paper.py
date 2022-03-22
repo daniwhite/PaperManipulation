@@ -47,38 +47,35 @@ class Paper:
         self.b_J = b_J
         self.k_J = k_J
         self.instance = self.plant.AddModelInstance(self.name)
+        box_dims = [0, 0, self.h_L]
+        box_dims[config.hinge_rotation_axis] = self.x_dim
+        box_dims[1-config.hinge_rotation_axis] = self.w_L
+        link_inertia = SpatialInertia(mass=self.m_L,
+            # CoM at origin of body frame
+            p_PScm_E=np.array([0., 0., 0.]),
+            # Default moment of inertia for a solid box
+            G_SP_E=UnitInertia.SolidBox(*box_dims))
         for link_num in range(config.num_links.value):
             # Initialize bodies and instances
-            
             paper_body = self.plant.AddRigidBody(
                 self.name + "_body" + str(link_num),
-                self.instance,
-                SpatialInertia(mass=self.m_L,
-                               # CoM at origin of body frame
-                               p_PScm_E=np.array([0., 0., 0.]),
-                               # Default moment of inertia for a solid box
-                               G_SP_E=UnitInertia.SolidBox(
-                                   self.x_dim, self.w_L, self.h_L))
-            )
+                self.instance,link_inertia)
 
             if self.plant.geometry_source_is_registered():
                 # Set a box with link dimensions for collision geometry
                 self.plant.RegisterCollisionGeometry(
                     paper_body,
-                    RigidTransform(),  # Pose in body frame
-                    pydrake.geometry.Box(
-                        self.x_dim, self.w_L, self.h_L),  # Actual shape
+                    RigidTransform(),
+                    pydrake.geometry.Box(*box_dims),
                     self.name + "_body" + str(link_num),
-                    pydrake.multibody.plant.CoulombFriction(
-                        self.mu, self.mu)  # Friction parameters
+                    pydrake.multibody.plant.CoulombFriction(self.mu, self.mu)
                 )
 
-                # Set Set a box with link dimensions for visual geometry
+                # Set a box with link dimensions for visual geometry
                 self.plant.RegisterVisualGeometry(
                     paper_body,
                     RigidTransform(),
-                    pydrake.geometry.Box(
-                        self.x_dim, self.w_L, self.h_L),
+                    pydrake.geometry.Box(*box_dims),
                     self.name + "_body" + str(link_num),
                     [0, 1, 0, 1])  # RGBA color
 
@@ -91,34 +88,32 @@ class Paper:
                     self.name + "_body" + str(link_num), self.instance)
 
                 # Set up joints
+                hinge_trans_1 = [0,0,(self.h_L+self.hinge_diameter)/2]
+                hinge_trans_1[1-config.hinge_rotation_axis] = \
+                    -(self.w_L+self.hinge_diameter)/2
                 paper1_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     paper1_body,
-                    RigidTransform(RotationMatrix(),
-                        [
-                            0,
-                            (self.w_L+self.hinge_diameter)/2,
-                            (self.h_L+self.hinge_diameter)/2
-                        ])
+                    RigidTransform(p=hinge_trans_1)
                 )
                 self.plant.AddFrame(paper1_hinge_frame)
+                hinge_trans_2 = [0,0,(self.h_L+self.hinge_diameter)/2]
+                hinge_trans_2[1-config.hinge_rotation_axis] = \
+                    (self.w_L+self.hinge_diameter)/2
                 paper2_hinge_frame = pydrake.multibody.tree.FixedOffsetFrame(
                     "paper_hinge_frame",
                     paper2_body,
-                    RigidTransform(RotationMatrix(),
-                        [
-                            0,
-                            -(self.w_L+self.hinge_diameter)/2,
-                            (self.h_L+self.hinge_diameter)/2
-                        ])
+                    RigidTransform(p=hinge_trans_2)
                 )
                 self.plant.AddFrame(paper2_hinge_frame)
 
+                axis = [0,0,0]
+                axis[config.hinge_rotation_axis] = 1
                 joint = self.plant.AddJoint(pydrake.multibody.tree.RevoluteJoint(
                     "paper_hinge_" + str(link_num),
                     paper1_hinge_frame,
                     paper2_hinge_frame,
-                    [1, 0, 0],
+                    axis,
                     damping=b_J))
 
                 if isinstance(default_joint_angle, list):
@@ -147,8 +142,8 @@ class Paper:
             self.plant.GetFrameByName(plant.pedestal.pedestal_base_name, pedestal_instance),
             self.plant.get_body(BodyIndex(self.link_idxs[0])).body_frame(),
             RigidTransform(
-                RotationMatrix().MakeZRotation(-np.pi/2),
-                [0, 0, PLYWOOD_LENGTH+self.h_L/2+plant.pedestal.PEDESTAL_BASE_Z_DIM/2])
+                R=RotationMatrix.MakeZRotation(np.pi),
+                p=[0, 0, PLYWOOD_LENGTH+self.h_L/2+plant.pedestal.PEDESTAL_BASE_Z_DIM/2])
         )
 
     # TODO: rename these functions?

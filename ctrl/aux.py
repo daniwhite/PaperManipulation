@@ -9,6 +9,7 @@ from pydrake.all import ContactResults
 import numpy as np
 import plant.manipulator as manipulator
 from plant.paper import settling_time
+from config import hinge_rotation_axis
 
 class JointCenteringCtrl(pydrake.systems.framework.LeafSystem):
     """
@@ -142,9 +143,9 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(tau_ctrl)
 
 
-class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
+class HTNtoXYZ(pydrake.systems.framework.LeafSystem):
     """
-    Convert a translation vector of expressed in the XTN coordinates to XYZ
+    Convert a translation vector of expressed in the HTN coordinates to XYZ
     coordinates.
     """
     def __init__(self):
@@ -153,7 +154,7 @@ class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
         self.use_contact_ctrl = False
 
         self.DeclareVectorInputPort(
-            "XTN",
+            "HTN",
             pydrake.systems.framework.BasicVector(3))
         self.DeclareVectorInputPort(
             "T_hat", pydrake.systems.framework.BasicVector(3))
@@ -165,13 +166,14 @@ class XTNtoXYZ(pydrake.systems.framework.LeafSystem):
             self.CalcOutput)
 
     def CalcOutput(self, context, output):
-        [x, T, N] = self.GetInputPort("XTN").Eval(context)
+        [H, T, N] = self.GetInputPort("HTN").Eval(context)
 
-        x_hat = np.array([[1, 0, 0]]).T
+        H_hat = np.array([[0, 0, 0]]).T
+        H_hat[hinge_rotation_axis] = 1
         T_hat = np.expand_dims(self.GetInputPort("T_hat").Eval(context), 1)
         N_hat = np.expand_dims(self.GetInputPort("N_hat").Eval(context), 1)
 
-        xyz = x*x_hat + T*T_hat + N*N_hat
+        xyz = H*H_hat + T*T_hat + N*N_hat
         output.SetFromVector(xyz.flatten())
 
 class NormalForceSelector(pydrake.systems.framework.LeafSystem):

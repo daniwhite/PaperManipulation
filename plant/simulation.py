@@ -141,6 +141,7 @@ class Simulation:
         if self.meshcat is not None:
             objects_to_remove.append("MeshcatVisualizer")
             objects_to_remove.append("end_effector_frame_vis")
+            objects_to_remove.append("link_frame_vis")
             if self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
                 objects_to_remove.append("setpoint_vis")
         viz_str = self.diagram.GetGraphvizString()
@@ -292,7 +293,9 @@ class Simulation:
                 name="end_effector", meshcat=self.meshcat)
             self.builder.AddNamedSystem(
                 "end_effector_frame_vis", self.end_effector_frame_vis)
-
+            self.link_frame_vis = visualization.FrameVisualizer(
+                name="last_link", meshcat=self.meshcat)
+            self.builder.AddNamedSystem("link_frame_vis", self.link_frame_vis)
 
     def _add_inverse_dynamics_ctrl(self):
         options = {
@@ -303,7 +306,7 @@ class Simulation:
             sys_consts=self.sys_consts, options=options)
 
         if self.meshcat is not None:
-            self.desired_position_XYZ = ctrl.aux.XTNtoXYZ()
+            self.desired_position_XYZ = ctrl.aux.HTNtoXYZ()
             self.desired_pos_adder = Adder(2, 3)
 
             self.builder.AddNamedSystem(
@@ -364,15 +367,15 @@ class Simulation:
             self.ff_wrench_XYZ = ConstantVectorSource([0, 0, 0, 0, 0, 0])
             self.builder.AddNamedSystem("ff_wrench_XYZ", self.ff_wrench_XYZ)
         else:
-            self.ff_force_XYZ = ctrl.aux.XTNtoXYZ()
+            self.ff_force_XYZ = ctrl.aux.HTNtoXYZ()
             self.ff_torque_XYZ = ConstantVectorSource([0, 0, 0])
             self.ff_wrench_XYZ = Multiplexer([3,3])
             
-            self.ff_force_XT = ConstantVectorSource([0, 0])
-            self.ff_force_XTN = Multiplexer([2, 1])
+            self.ff_force_HT = ConstantVectorSource([0, 0])
+            self.ff_force_HTN = Multiplexer([2, 1])
             
-            self.builder.AddNamedSystem("ff_force_XT", self.ff_force_XT)
-            self.builder.AddNamedSystem("ff_force_XTN", self.ff_force_XTN)
+            self.builder.AddNamedSystem("ff_force_HT", self.ff_force_HT)
+            self.builder.AddNamedSystem("ff_force_HTN", self.ff_force_HTN)
             self.builder.AddNamedSystem("ff_force_XYZ", self.ff_force_XYZ)
             self.builder.AddNamedSystem("ff_torque_XYZ", self.ff_torque_XYZ)
             self.builder.AddNamedSystem("ff_wrench_XYZ", self.ff_wrench_XYZ)
@@ -386,7 +389,7 @@ class Simulation:
                 )
             elif self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONSTANT:
-                self.ff_force_N = ConstantVectorSource([10])
+                self.ff_force_N = ConstantVectorSource([5])
             
             self.builder.AddNamedSystem("ff_force_N", self.ff_force_N)
             self.ff_force_N_Sat = Saturation(min_value=[0],max_value=[50])
@@ -517,6 +520,10 @@ class Simulation:
                 ["end_effector_frame_vis", "pos"])
             self._connect(["vision", "pose_M_rotational"],
                 ["end_effector_frame_vis", "rot"])
+            self._connect(["vision", "pose_L_translational"],
+                ["link_frame_vis", "pos"])
+            self._connect(["vision", "pose_L_rotational"],
+                ["link_frame_vis", "rot"])
 
         if (self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS):
             skipped_ports = {"T_hat", "N_hat", "in_contact", "v_LN", "v_MN"}
@@ -531,7 +538,7 @@ class Simulation:
             
             if self.meshcat is not None:
                 self._connect(
-                    ["fold_ctrl", "XTNd"], ["desired_position_XYZ", "XTN"])
+                    ["fold_ctrl", "HTNd"], ["desired_position_XYZ", "HTN"])
                 self._connect(
                     ["vis_proc", "T_hat"], ["desired_position_XYZ", "T_hat"])
                 self._connect(
@@ -563,14 +570,14 @@ class Simulation:
             self._connect(["setpoint_gen", "x0"], ["fold_ctrl", "x0"])
             self._connect(["setpoint_gen", "dx0"], ["fold_ctrl", "dx0"])
             if self.n_hat_force_compensation_source != NHatForceCompensationSource.NONE:
-                self._connect("ff_force_XTN", ["ff_force_XYZ", "XTN"])
+                self._connect("ff_force_HTN", ["ff_force_XYZ", "HTN"])
                 self._connect(["vis_proc", "T_hat"], ["ff_force_XYZ", "T_hat"])
                 self._connect(["vis_proc", "N_hat"], ["ff_force_XYZ", "N_hat"])
                 self._connect("ff_torque_XYZ", ["ff_wrench_XYZ", 0])
                 self._connect("ff_force_XYZ", ["ff_wrench_XYZ", 1])
-                self._connect("ff_force_XT", ["ff_force_XTN", 0])
+                self._connect("ff_force_HT", ["ff_force_HTN", 0])
                 self._connect("ff_force_N", "ff_force_N_Sat")
-                self._connect("ff_force_N_Sat", ["ff_force_XTN", 1])
+                self._connect("ff_force_N_Sat", ["ff_force_HTN", 1])
 
                 if self.n_hat_force_compensation_source == \
                         NHatForceCompensationSource.MEASURED:
@@ -626,6 +633,7 @@ class Simulation:
             self.vis = MeshcatVisualizerCpp.AddToBuilder(self.builder, self.scene_graph.get_query_output_port(), self.meshcat, meshcat_params)
 
             self.end_effector_frame_vis.set_animation(self.vis.get_mutable_recording())
+            self.link_frame_vis.set_animation(self.vis.get_mutable_recording())
             if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
                 self.desired_pos_vis.set_animation(self.vis.get_mutable_recording())
             elif self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:

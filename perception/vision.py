@@ -5,6 +5,7 @@ import numpy as np
 import plant.paper as paper
 import constants
 import plant.manipulator as manipulator
+from config import hinge_rotation_axis
 
 class VisionSystem(pydrake.systems.framework.LeafSystem):
     """
@@ -171,11 +172,11 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
             "F_GN", pydrake.systems.framework.BasicVector(1),
             self.output_F_GN)
         self.DeclareVectorOutputPort(
-            "d_X", pydrake.systems.framework.BasicVector(1),
-            self.output_d_X)
+            "d_H", pydrake.systems.framework.BasicVector(1),
+            self.output_d_H)
         self.DeclareVectorOutputPort(
-            "d_d_X", pydrake.systems.framework.BasicVector(1),
-            self.output_d_d_X)
+            "d_d_H", pydrake.systems.framework.BasicVector(1),
+            self.output_d_d_H)
         self.DeclareVectorOutputPort(
             "d_N", pydrake.systems.framework.BasicVector(1),
             self.output_d_N)
@@ -204,8 +205,8 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
             "hats_T", pydrake.systems.framework.BasicVector(1),
             self.output_hats_T)
         self.DeclareVectorOutputPort(
-            "s_hat_X", pydrake.systems.framework.BasicVector(1),
-            self.output_s_hat_X)
+            "s_hat_H", pydrake.systems.framework.BasicVector(1),
+            self.output_s_hat_H)
         self.DeclareVectorOutputPort(
             "in_contact", pydrake.systems.framework.BasicVector(1),
             self.output_in_contact)
@@ -259,20 +260,34 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         omega_vec_M = np.array([self.GetInputPort(
             "vel_M_rotational").Eval(context)[0:3]]).T
         return omega_vec_M
-    
+
+    def calc_theta_L(self, context):
+        rot_vec_L = self.calc_rot_vec_L(context).flatten() # TODO: is this flatten needed?
+        theta_L = rot_vec_L[hinge_rotation_axis]
+        theta_Z = rot_vec_L[2]
+        # Fix issue in RPY singularity
+        if theta_Z > np.pi/2:
+            theta_L = theta_L*-1 + np.pi
+        return theta_L
+
+    def calc_d_theta_L(self, context):
+        omega_vec_L = self.calc_omega_vec_L(context).flatten() # TODO: is this flatten needed?
+        d_theta_L = omega_vec_L[hinge_rotation_axis]
+        return d_theta_L
+
     def calc_T_hat(self, context):
-        rot_vec_L = self.calc_rot_vec_L(context)
-        R = RotationMatrix(RollPitchYaw(rot_vec_L)).matrix()
-        y_hat = np.array([[0, 1, 0]]).T
-        T_hat = R@y_hat
-        return T_hat
+        rpy = [0,0,0]
+        rpy[hinge_rotation_axis] = self.calc_theta_L(context) - np.pi/2
+        R = RotationMatrix(RollPitchYaw(rpy)).matrix()
+        z_hat = np.array([[0, 0, 1]]).T
+        return np.matmul(R, z_hat)
 
     def calc_N_hat(self, context):
-        rot_vec_L = self.calc_rot_vec_L(context)
-        R = RotationMatrix(RollPitchYaw(rot_vec_L)).matrix()
+        rpy = [0,0,0]
+        rpy[hinge_rotation_axis] = self.calc_theta_L(context)
+        R = RotationMatrix(RollPitchYaw(rpy)).matrix()
         z_hat = np.array([[0, 0, 1]]).T
-        N_hat = R@z_hat
-        return N_hat
+        return np.matmul(R, z_hat)
 
     def calc_p_C(self, context):
         p_M = self.calc_p_M(context)
@@ -324,11 +339,11 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(N_hat.flatten())
 
     def output_theta_L(self, context, output):
-        theta_L = self.GetInputPort("pose_L_rotational").Eval(context)[0]
+        theta_L = self.calc_theta_L(context)
         output.SetFromVector([theta_L])
 
     def output_d_theta_L(self, context, output):
-        d_theta_L = self.GetInputPort("vel_L_rotational").Eval(context)[0]
+        d_theta_L = self.calc_d_theta_L(context)
         output.SetFromVector([d_theta_L])
 
     def output_p_LN(self, context, output):
@@ -385,13 +400,15 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         F_GN = self.get_N_proj(context, F_G)
         output.SetFromVector([F_GN])
 
-    def output_d_X(self, context, output):
-        d_X = self.GetInputPort("pose_M_translational").Eval(context)[0]
-        output.SetFromVector([d_X])
+    def output_d_H(self, context, output):
+        d_H = self.GetInputPort(
+            "pose_M_translational").Eval(context)[hinge_rotation_axis]
+        output.SetFromVector([d_H])
 
-    def output_d_d_X(self, context, output):
-        d_d_X = self.GetInputPort("vel_M_translational").Eval(context)[0]
-        output.SetFromVector([d_d_X])
+    def output_d_d_H(self, context, output):
+        d_d_H = self.GetInputPort(
+            "vel_M_translational").Eval(context)[hinge_rotation_axis]
+        output.SetFromVector([d_d_H])
 
     def output_d_N(self, context, output):
         d = self.calc_d(context)
@@ -462,11 +479,11 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         hats_T = self.get_T_proj(context, s_hat)
         output.SetFromVector([hats_T])
 
-    def output_s_hat_X(self, context, output):
+    def output_s_hat_H(self, context, output):
         v_S = self.calc_v_S(context)
         s_hat = v_S/np.linalg.norm(v_S)
-        s_hat_X = s_hat[0]
-        output.SetFromVector([s_hat_X])
+        s_hat_H = s_hat[hinge_rotation_axis]
+        output.SetFromVector([s_hat_H])
 
     def output_in_contact(self, context, output):
         d = self.calc_d(context)

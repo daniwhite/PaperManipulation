@@ -222,21 +222,31 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 out += list(-point_pair_contact_info.contact_force())
                 out += list(point_pair_contact_info.point_pair().p_WCa)
                 out += list(point_pair_contact_info.point_pair().p_WCb)
+                # TODO: probably wrong signs?
+                out += [point_pair_contact_info.separation_speed(),
+                        point_pair_contact_info.slip_speed()]
+                out += list(point_pair_contact_info.contact_point())
+
+                pen_point_pair = point_pair_contact_info.point_pair()
+                out += list(-pen_point_pair.nhat_BA_W)
                 use_this_contact = True
             elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
                     and int(point_pair_contact_info.bodyB_index()) == self.contact_body_idx:
                 out += list(point_pair_contact_info.contact_force())
                 out += list(point_pair_contact_info.point_pair().p_WCb)
                 out += list(point_pair_contact_info.point_pair().p_WCa)
+                # TODO: probably wrong signs?
+                out += [point_pair_contact_info.separation_speed(),
+                        point_pair_contact_info.slip_speed()]
+                out += list(point_pair_contact_info.contact_point())
+
+
+                pen_point_pair = point_pair_contact_info.point_pair()
+                out += list(pen_point_pair.nhat_BA_W)
                 use_this_contact = True
             if use_this_contact:
                 forces_found += 1
                 assert  self.max_contacts >= forces_found
-                out += [point_pair_contact_info.separation_speed(),
-                        point_pair_contact_info.slip_speed()]
-                out += list(point_pair_contact_info.contact_point())
-                pen_point_pair = point_pair_contact_info.point_pair()
-                out += list(pen_point_pair.nhat_BA_W)
                 out += [pen_point_pair.depth]
         forces_found_idx = forces_found
         while forces_found_idx < self.max_contacts:
