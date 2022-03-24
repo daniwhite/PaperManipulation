@@ -608,6 +608,7 @@ class Simulation:
             self._connect(["fold_ctrl", "tau_out"],
                 ["ctrl_selector", "pre_contact_ctrl"])
         self._connect("ctrl_selector", ["log", "tau_ctrl"])
+        self._connect(["fold_ctrl", "tau_out"], ["log", "tau_contact_ctrl"])
 
         ## Wire pre contact control
         self._connect(["prop", "J"], ["pre_contact_ctrl", "J"])

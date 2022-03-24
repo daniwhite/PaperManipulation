@@ -52,6 +52,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.joint_centering_torque_entries = self.nq_manipulator
         self.tau_ctrl_entries = self.nq_manipulator
         self.tau_out_entries = self.nq_manipulator
+        self.tau_contact_ctrl_entries = self.nq_manipulator
 
         # Start indices
         # PROGRAMMING: Make this into a for loop?
@@ -95,6 +96,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
         self.tau_out_start_idx = self._size
         self._size += self.tau_out_entries
+
+        self.tau_contact_ctrl_idx = self._size
+        self._size += self.tau_contact_ctrl_entries
 
 
         # Poses, velocities, accelerations, etc
@@ -149,6 +153,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "tau_out",
             pydrake.systems.framework.BasicVector(self.nq_manipulator))
+        self.DeclareVectorInputPort(
+            "tau_contact_ctrl",
+            pydrake.systems.framework.BasicVector(self.nq_manipulator))
 
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
@@ -177,6 +184,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "joint_centering_torque").Eval(context)
         tau_ctrl = self.GetInputPort("tau_ctrl").Eval(context)
         tau_out = self.GetInputPort("tau_out").Eval(context)
+        tau_contact_ctrl = self.GetInputPort("tau_contact_ctrl").Eval(context)
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -287,6 +295,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(tau_ctrl)
         assert(len(out) == self.tau_out_start_idx)
         out += list(tau_out)
+        assert(len(out) == self.tau_contact_ctrl_idx)
+        out += list(tau_contact_ctrl)
 
         output.SetFromVector(out)
 
