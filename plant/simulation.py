@@ -280,7 +280,8 @@ class Simulation:
 
         # Vision
         self.vision_processor = perception.vision.VisionProcessor(
-            self.sys_consts)
+            self.sys_consts, X_LJ_L=self.paper.joints[
+                0].frame_on_child().GetFixedPoseInBodyFrame())
         self.builder.AddNamedSystem(
             "vis_proc", self.vision_processor)
         self.vision = perception.vision.VisionSystem(
@@ -526,9 +527,18 @@ class Simulation:
                 ["link_frame_vis", "rot"])
 
         if (self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS):
-            skipped_ports = {"T_hat", "N_hat", "in_contact", "v_LN", "v_MN"}
+            skipped_ports = {"in_contact", "v_LN", "v_MN"}
             self._connect_all_outputs(
                 "vis_proc", "fold_ctrl", skipped_ports=skipped_ports)
+
+            self._connect(
+                ["vision", "pose_L_rotational"],
+                ["fold_ctrl", "pose_L_rotational"]
+            )
+            self._connect(
+                ["vision", "pose_L_translational"],
+                ["fold_ctrl", "pose_L_translational"]
+            )
 
             self._connect_all_outputs(
                 "prop", "fold_ctrl", skipped_ports={"q", "v"})
