@@ -13,7 +13,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, contact_body_idx, paper, plant):
+    def __init__(self, num_bodies, contact_body_idx, paper, plant,
+            z_thresh_offset, exit_when_folded):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Offsets
         self.type_strs_to_offsets = {
@@ -28,6 +29,10 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.translational_offset = 0
         self.rotational_offset = 3
 
+        self.z_thresh_offset = z_thresh_offset
+        self.exit_when_folded = exit_when_folded
+        self.start_t__d_theta_L_below_thresh = None
+        self.d_theta_L_thresh = 0.005
 
         # General constants/members
         self.max_contacts = 10
@@ -157,6 +162,16 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             "tau_contact_ctrl",
             pydrake.systems.framework.BasicVector(self.nq_manipulator))
 
+        # Other inputs
+        # TODO: move these elsewhere?
+        self.DeclareVectorInputPort(
+            "theta_L",
+            pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_L",
+            pydrake.systems.framework.BasicVector(1))
+        
+
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
                 self._size),
@@ -185,6 +200,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         tau_ctrl = self.GetInputPort("tau_ctrl").Eval(context)
         tau_out = self.GetInputPort("tau_out").Eval(context)
         tau_contact_ctrl = self.GetInputPort("tau_contact_ctrl").Eval(context)
+        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
+        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -297,6 +314,22 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(tau_out)
         assert(len(out) == self.tau_contact_ctrl_idx)
         out += list(tau_contact_ctrl)
+
+        # Check for exit criteria
+        p_LL = poses[self.ll_idx].translation()
+        p_FL = poses[self.paper.link_idxs[0]].translation()
+        z_thresh = p_FL[-1] + self.z_thresh_offset
+
+        if self.exit_when_folded:
+            if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
+                assert False, "Finish condition reached (success)"
+            if abs(d_theta_L) < self.d_theta_L_thresh:
+                if self.start_t__d_theta_L_below_thresh is None:
+                    self.start_t__d_theta_L_below_thresh = context.get_time()
+                if (context.get_time() - self.start_t__d_theta_L_below_thresh > 0.5):
+                    assert False, "Finish condition reached (failure)"
+            else:
+                self.start_t__d_theta_L_below_thresh = None
 
         output.SetFromVector(out)
 

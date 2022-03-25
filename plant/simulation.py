@@ -3,7 +3,7 @@ import pydrake
 from pydrake.all import (
     BodyIndex, Adder, ConstantVectorSource, Multiplexer, Demultiplexer, Gain,
     LogVectorOutput, MeshcatVisualizerParams, MeshcatVisualizerCpp, Saturation,
-    OutputPort, InputPort
+    OutputPort, InputPort, DiscreteTimeDelay
 )
 
 import numpy as np
@@ -71,7 +71,8 @@ class Simulation:
     def __init__(self,
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
-            params=None, meshcat=None, impedance_stiffness=None):
+            params=None, meshcat=None, impedance_stiffness=None,
+            exit_when_folded=False):
         # Take in inputs
         if params is None:
             self.params = constants.nominal_sys_consts
@@ -83,6 +84,7 @@ class Simulation:
         self.n_hat_force_compensation_source = n_hat_force_compensation_source
         self.meshcat = meshcat
         self.impedance_stiffness = impedance_stiffness
+        self.exit_when_folded = exit_when_folded
 
         assert (impedance_type == ImpedanceType.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
@@ -261,14 +263,6 @@ class Simulation:
         plant (so they can be called after `plant.Finalize()`) that are also
         not controllers.
         """
-        # Logger
-        self.log_wrapper = LogWrapper(
-            self.plant.num_bodies(),
-            self.contact_body_idx,
-            self.paper,
-            self.plant
-        )
-        self.builder.AddNamedSystem("log", self.log_wrapper)
 
         # Proprioception
         self.proprioception = perception.proprioception.ProprioceptionSystem(
@@ -287,6 +281,20 @@ class Simulation:
         self.vision = perception.vision.VisionSystem(
             ll_idx=self.ll_idx, contact_body_idx=self.contact_body_idx)
         self.builder.AddNamedSystem("vision", self.vision)
+
+
+        link_z = self.vision_processor.X_LJ_L.translation()[-1]
+        z_thresh_offset = 2*link_z + self.sys_consts.h_L
+        # Logger
+        self.log_wrapper = LogWrapper(
+            self.plant.num_bodies(),
+            self.contact_body_idx,
+            self.paper,
+            self.plant,
+            z_thresh_offset=z_thresh_offset,
+            exit_when_folded=self.exit_when_folded
+        )
+        self.builder.AddNamedSystem("log", self.log_wrapper)
 
         if self.meshcat is not None:
             # Visualization
@@ -417,6 +425,10 @@ class Simulation:
         self.ctrl_selector = ctrl.aux.CtrlSelector()
         self.builder.AddNamedSystem("ctrl_selector", self.ctrl_selector)
 
+        self.delay = DiscreteTimeDelay(config.DT, 1, manipulator.data['nq'])
+        self.builder.AddNamedSystem("delay", self.delay)
+
+
     def _context_specific_init(self):
         self.diagram_context = self.diagram.CreateDefaultContext()
         manipulator.data['set_positions'](
@@ -514,6 +526,8 @@ class Simulation:
         self._connect(["vis_proc", "in_contact"], ["log", "in_contact"])
         self._connect("joint_centering_ctrl",
             ["log", "joint_centering_torque"])
+        self._connect(["vis_proc", "theta_L"], ["log", "theta_L"])
+        self._connect(["vis_proc", "d_theta_L"], ["log", "d_theta_L"])
 
         # Set up visualization
         if self.meshcat is not None:
@@ -633,7 +647,10 @@ class Simulation:
         self._connect("ctrl_selector", ["adder", 1])
         self._connect("tau_g_gain", ["adder", 2])
 
-        self._connect("adder", ["plant", "panda_actuation"])
+        self._connect("adder", "delay")
+
+        self._connect("delay", ["plant", "panda_actuation"])
+
         self._connect("adder", ["log", "tau_out"])
 
         # Visualization and logging
