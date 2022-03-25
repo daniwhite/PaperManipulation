@@ -72,7 +72,7 @@ class Simulation:
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
-            exit_when_folded=False):
+            exit_when_folded=False, N_constant_ff_F=5):
         # Take in inputs
         if params is None:
             self.params = constants.nominal_sys_consts
@@ -85,6 +85,9 @@ class Simulation:
         self.meshcat = meshcat
         self.impedance_stiffness = impedance_stiffness
         self.exit_when_folded = exit_when_folded
+
+        # TODO: better name?
+        self.N_constant_ff_F = N_constant_ff_F
 
         assert (impedance_type == ImpedanceType.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
@@ -349,10 +352,7 @@ class Simulation:
 
         # Order is [theta_x, theta_y, theta_z, x, y, z]
         if self.impedance_stiffness is None:
-            if config.num_links == config.NumLinks.TWO:
-                self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
-            elif config.num_links == config.NumLinks.FOUR:
-                self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
+            self.impedance_stiffness = [40, 40, 40, 400, 400, 400]
         self.K_gen = ConstantVectorSource(self.impedance_stiffness)
         self.D_gen = ConstantVectorSource(2*np.sqrt(self.impedance_stiffness))
         self.demux_setpoint = Demultiplexer([3,3])
@@ -394,11 +394,11 @@ class Simulation:
                 self.ff_force_N = ctrl.aux.NormalForceSelector(
                     ll_idx=self.ll_idx,
                     contact_body_idx=self.contact_body_idx,
-                    ff_constant_force=1
+                    ff_constant_force=self.N_constant_ff_F
                 )
             elif self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONSTANT:
-                self.ff_force_N = ConstantVectorSource([5])
+                self.ff_force_N = ConstantVectorSource([self.N_constant_ff_F])
             
             self.builder.AddNamedSystem("ff_force_N", self.ff_force_N)
             self.ff_force_N_Sat = Saturation(min_value=[0],max_value=[50])
