@@ -149,4 +149,5 @@ class Paper:
     # TODO: rename these functions?
     def set_positions(self, diagram, diagram_context):
         plant_context = diagram.GetMutableSubsystemContext(self.plant, diagram_context)
-        self.plant.SetPositions(plant_context, self.instance, [np.pi/12])
+        position = [np.pi/12]*(config.num_links.value-1)
+        self.plant.SetPositions(plant_context, self.instance, position)

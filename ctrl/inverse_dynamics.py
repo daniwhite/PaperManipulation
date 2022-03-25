@@ -607,10 +607,42 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             self.debug["F_FMH"].append(F_FMH)
             self.debug["F_FLT"].append(F_FLT)
             self.debug["F_FLX"].append(F_FLH)
+
+        F_ContactL_XYZ_out = np.array([[
+            -result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMX[0,0])],
+            -result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMY[0,0])],
+            -result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMZ[0,0])],
+        ]]).T
+
+        F_ContactM_XYZ_out = np.array([[
+            result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMX[0,0])],
+            result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMY[0,0])],
+            result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMZ[0,0])],
+        ]]).T
+        tau_contact_trn_out = np.matmul(
+            J_translational.T, F_ContactM_XYZ_out)
+        tau_contact_rot_out = np.matmul(
+            J_rotational.T, np.cross(p_MConM, F_ContactM_XYZ_out, axis=0))
+        tau_contact_out = tau_contact_trn_out + tau_contact_rot_out
+        self.debug["tau_contact"].append(tau_contact_out)
+        self.debug["tau_g"].append(tau_g)
+        self.debug["joint_centering_torque"].append(joint_centering_torque)
+        
+        contact_torque_about_joint_out = np.cross(p_JC,
+            F_ContactL_XYZ_out,
+            axis=0).flatten()[hinge_rotation_axis]
+        self.debug["gravity_torque_about_joint"].append(gravity_torque_about_joint)
+        self.debug["contact_torque_about_joint_out"].append(contact_torque_about_joint_out)
         self.debug["F_OT"].append(result.GetSolution()[
             prog.FindDecisionVariableIndex(F_OT[0,0])])
         self.debug["F_ON"].append(result.GetSolution()[
             prog.FindDecisionVariableIndex(F_ON[0,0])])
+        self.debug["mu_S"].append(mu_S)
+        self.debug["mu"].append(self.sys_consts.mu)
+        self.debug["M"].append(M)
+        self.debug["Cv"].append(Cv)
+        self.debug["s_hat_T"].append(hats_T)
+
         self.debug["a_MH"].append(result.GetSolution()[
             prog.FindDecisionVariableIndex(a_MH[0,0])])
         self.debug["F_NM"].append(result.GetSolution()[
@@ -661,9 +693,9 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.printed_yet = True
         output.SetFromVector(tau_ctrl_result.flatten())
 
-    def calc_XTNd(self, context, output):
+    def calc_HTNd(self, context, output):
         out_vec = [
-            self.d_Xd,
+            self.d_Hd,
             self.d_Td+self.sys_consts.w_L/2,
             0
         ]
@@ -672,9 +704,5 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
     def calc_rot_XYZd(self, context, output):
         theta_L = self.GetInputPort("theta_L").Eval(context)[0]
         theta_MXd = theta_L
-        out_vec = [
-            theta_MXd,
-            self.theta_MYd,
-            self.theta_MZd
-        ]
+        out_vec = [0,0,0]
         output.SetFromVector(out_vec)

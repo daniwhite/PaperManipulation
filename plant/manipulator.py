@@ -32,12 +32,6 @@ neutral_q = [
     0.7856590871546001
 ]
 
-panda_x_offset = 0.25
-panda_offset = 0
-if config.num_links == config.NumLinks.TWO:
-    panda_offset = IN_TO_M*22
-elif config.num_links == config.NumLinks.FOUR:
-    panda_offset = IN_TO_M*22
 X_W_panda = RigidTransform()
 
 flange_to_sphere_list = json.load(open(config.base_path + "panda/sphere_ee_config.json"))['transformation']
