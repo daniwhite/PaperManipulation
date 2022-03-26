@@ -425,8 +425,9 @@ class Simulation:
         self.ctrl_selector = ctrl.aux.CtrlSelector()
         self.builder.AddNamedSystem("ctrl_selector", self.ctrl_selector)
 
-        self.delay = DiscreteTimeDelay(config.DT, 1, manipulator.data['nq'])
-        self.builder.AddNamedSystem("delay", self.delay)
+        if config.DT > 0:
+            self.delay = DiscreteTimeDelay(config.DT, 1, manipulator.data['nq'])
+            self.builder.AddNamedSystem("delay", self.delay)
 
 
     def _context_specific_init(self):
@@ -647,9 +648,11 @@ class Simulation:
         self._connect("ctrl_selector", ["adder", 1])
         self._connect("tau_g_gain", ["adder", 2])
 
-        self._connect("adder", "delay")
-
-        self._connect("delay", ["plant", "panda_actuation"])
+        if config.DT > 0:
+            self._connect("adder", "delay")
+            self._connect("delay", ["plant", "panda_actuation"])
+        else:
+            self._connect("adder", ["plant", "panda_actuation"])
 
         self._connect("adder", ["log", "tau_out"])
 

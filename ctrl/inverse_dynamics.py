@@ -279,52 +279,26 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         theta_MYd = rotation[1]
         theta_MZd = rotation[2]
 
-        # Fix singularities to keep things smooth
-        if self.last_theta_MX is not None:
-            if theta_MX - self.last_theta_MX > np.pi:
-                theta_MX -= 2*np.pi
-            if  self.last_theta_MX - theta_MX > np.pi:
-                theta_MX += 2*np.pi
-        self.last_theta_MX = theta_MX
-        if self.last_theta_MXd is not None:
-            if theta_MXd - self.last_theta_MXd > np.pi:
-                theta_MXd -= 2*np.pi
-            if  self.last_theta_MXd - theta_MXd > np.pi:
-                theta_MXd += 2*np.pi
-        self.last_theta_MXd = theta_MXd
-        if self.last_theta_MY is not None:
-            if theta_MY - self.last_theta_MY > np.pi:
-                theta_MY -= 2*np.pi
-            if  self.last_theta_MY - theta_MY > np.pi:
-                theta_MY += 2*np.pi
-        self.last_theta_MY = theta_MY
-        if self.last_theta_MYd is not None:
-            if theta_MYd - self.last_theta_MYd > np.pi:
-                theta_MYd -= 2*np.pi
-            if  self.last_theta_MYd - theta_MYd > np.pi:
-                theta_MYd += 2*np.pi
-        self.last_theta_MYd = theta_MYd
-        if self.last_theta_MZ is not None:
-            if theta_MZ - self.last_theta_MZ > np.pi:
-                theta_MZ -= 2*np.pi
-            if  self.last_theta_MZ - theta_MZ > np.pi:
-                theta_MZ += 2*np.pi
-        self.last_theta_MZ = theta_MZ
-        if self.last_theta_MZd is not None:
-            if theta_MZd - self.last_theta_MZd > np.pi:
-                theta_MZd -= 2*np.pi
-            if  self.last_theta_MZd - theta_MZd > np.pi:
-                theta_MZd += 2*np.pi
-        self.last_theta_MZd = theta_MZd
-
         # Calculate desired values
+        d_theta_MXd = 10*(theta_MXd - theta_MX)
+        d_theta_MYd = 10*(theta_MYd - theta_MY)
+        d_theta_MZd = 10*(theta_MZd - theta_MZ)
+        d_Theta_d = np.array([[d_theta_MXd, d_theta_MYd, d_theta_MZd]]).T
+        R = RollPitchYaw(theta_MX, theta_MY, theta_MZ).ToRotationMatrix().matrix()
+        B_inv = np.array([
+            [1,  0,              -np.sin(theta_MY)],
+            [0,  np.cos(theta_MX), np.cos(theta_MY)*np.sin(theta_MX)],
+            [0, -np.sin(theta_MX), np.cos(theta_MY)*np.cos(theta_MX)],
+        ])
+        omega_vec_d = np.matmul(R, np.matmul(B_inv, d_Theta_d))
+
         Kp_dd_d_Td = 1000
         dd_d_Td = Kp_dd_d_Td*(self.d_Td - d_T) - 2*np.sqrt(Kp_dd_d_Td)*d_d_T
         dd_theta_Ld = 10*(self.d_theta_Ld - d_theta_L)
         a_MH_d = 1000*(self.d_Hd - d_H) - 2*np.sqrt(1000)*d_d_H
-        alpha_MYd = 10*(theta_MYd - theta_MY) - 2*np.sqrt(10)*d_theta_MY
-        alpha_MXd = 100*(theta_MXd - theta_MX) - 20*d_theta_MX
-        alpha_MZd = 10*(theta_MZd - theta_MZ) - 2*np.sqrt(10)*d_theta_MZ
+        alpha_MXd = 10*(omega_vec_d[0] - d_theta_MX)
+        alpha_MYd = 10*(omega_vec_d[1] - d_theta_MY)
+        alpha_MZd = 10*(omega_vec_d[2] - d_theta_MZ)
         dd_d_Nd = 0
 
         # =========================== SOLVE PROGRAM ===========================
