@@ -111,11 +111,11 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.DeclareVectorInputPort(
             "d_theta_L", pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
-            "d_theta_MX", pydrake.systems.framework.BasicVector(1))
+            "omega_MX", pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
-            "d_theta_MY", pydrake.systems.framework.BasicVector(1))
+            "omega_MY", pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
-            "d_theta_MZ", pydrake.systems.framework.BasicVector(1))
+            "omega_MZ", pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
             "d_d_T", pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
@@ -213,9 +213,9 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
 
         # Velocities
         d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
-        d_theta_MX = self.GetInputPort("d_theta_MX").Eval(context)[0]
-        d_theta_MY = self.GetInputPort("d_theta_MY").Eval(context)[0]
-        d_theta_MZ = self.GetInputPort("d_theta_MZ").Eval(context)[0]
+        omega_MX = self.GetInputPort("omega_MX").Eval(context)[0]
+        omega_MY = self.GetInputPort("omega_MY").Eval(context)[0]
+        omega_MZ = self.GetInputPort("omega_MZ").Eval(context)[0]
         d_d_T = self.GetInputPort("d_d_T").Eval(context)[0]
         d_d_N = self.GetInputPort("d_d_N").Eval(context)[0]
         d_d_H = self.GetInputPort("d_d_H").Eval(context)[0]
@@ -270,35 +270,47 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         # Calc X_W_SP
         X_W_SP = X_W_L.multiply(X_L_SP)
 
-        translation = X_W_SP.translation()
         rotation = RollPitchYaw(X_W_SP.rotation()).vector()
         rotation[0] += plant.manipulator.RotX_L_Md
 
-        # ============================= OTHER PREP ============================
+        # ========================= CALC DESIRED VALS =========================
+        # Load in the values that we got from our link offset
+        # TODO: move this to its own thing?
         theta_MXd = rotation[0]
         theta_MYd = rotation[1]
         theta_MZd = rotation[2]
 
-        # Calculate desired values
+        # Calculated desired roll, pitch, and yaw rates.
+        # Overall angular velocity math here comes from equation 3.35 on p. 76
+        # of MR and this link:
+        # http://personal.maths.surrey.ac.uk/T.Bridges/SLOSH/3-2-1-Eulerangles.pdf
+        # (Specifically, bottom of page 6.)
         d_theta_MXd = 10*(theta_MXd - theta_MX)
         d_theta_MYd = 10*(theta_MYd - theta_MY)
         d_theta_MZd = 10*(theta_MZd - theta_MZ)
         d_Theta_d = np.array([[d_theta_MXd, d_theta_MYd, d_theta_MZd]]).T
-        R = RollPitchYaw(theta_MX, theta_MY, theta_MZ).ToRotationMatrix().matrix()
+        R = RollPitchYaw(
+            theta_MX, theta_MY, theta_MZ).ToRotationMatrix().matrix()
         B_inv = np.array([
             [1,  0,              -np.sin(theta_MY)],
             [0,  np.cos(theta_MX), np.cos(theta_MY)*np.sin(theta_MX)],
             [0, -np.sin(theta_MX), np.cos(theta_MY)*np.cos(theta_MX)],
         ])
-        omega_vec_d = np.matmul(R, np.matmul(B_inv, d_Theta_d))
+        # Calculate desired angular velocity based on desired roll, pitch, and
+        # yaw rates. We multiply by B_inv to convert to angular velocity in the
+        # body frame, and multiply by R to move it from the body frame to the
+        # world frame.
+        omega_MXd, omega_MYd, omega_MZd = np.matmul(
+            R, np.matmul(B_inv, d_Theta_d)).flatten()
 
+        # Calculate desired accelerations.
         Kp_dd_d_Td = 1000
         dd_d_Td = Kp_dd_d_Td*(self.d_Td - d_T) - 2*np.sqrt(Kp_dd_d_Td)*d_d_T
         dd_theta_Ld = 10*(self.d_theta_Ld - d_theta_L)
         a_MH_d = 1000*(self.d_Hd - d_H) - 2*np.sqrt(1000)*d_d_H
-        alpha_MXd = 10*(omega_vec_d[0] - d_theta_MX)
-        alpha_MYd = 10*(omega_vec_d[1] - d_theta_MY)
-        alpha_MZd = 10*(omega_vec_d[2] - d_theta_MZ)
+        alpha_MXd = 10*(omega_MXd - omega_MX)
+        alpha_MYd = 10*(omega_MYd - omega_MY)
+        alpha_MZd = 10*(omega_MZd -omega_MZ)
         dd_d_Nd = 0
 
         # =========================== SOLVE PROGRAM ===========================
@@ -580,7 +592,7 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             self.debug["F_FMT"].append(F_FMT)
             self.debug["F_FMH"].append(F_FMH)
             self.debug["F_FLT"].append(F_FLT)
-            self.debug["F_FLX"].append(F_FLH)
+            self.debug["F_FLH"].append(F_FLH)
 
         F_ContactL_XYZ_out = np.array([[
             -result.GetSolution()[prog.FindDecisionVariableIndex(F_ContactMX[0,0])],
@@ -659,6 +671,12 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             prog.FindDecisionVariableIndex(dd_d_T[0,0])])
         for i in range(self.nq):
             self.debug["ddq_" + str(i)].append(result.GetSolution()[prog.FindDecisionVariableIndex(ddq[i,0])])
+        self.debug["d_theta_MXd"].append(d_theta_MXd)
+        self.debug["d_theta_MYd"].append(d_theta_MYd)
+        self.debug["d_theta_MZd"].append(d_theta_MZd)
+        self.debug["omega_MXd"].append(omega_MXd)
+        self.debug["omega_MYd"].append(omega_MYd)
+        self.debug["omega_MZd"].append(omega_MZd)
         self.debug["theta_MXd"].append(theta_MXd)
         self.debug["theta_MYd"].append(theta_MYd)
         self.debug["theta_MZd"].append(theta_MZd)

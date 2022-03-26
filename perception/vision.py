@@ -166,14 +166,14 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
             "theta_MZ", pydrake.systems.framework.BasicVector(1),
             self.output_theta_MZ)
         self.DeclareVectorOutputPort(
-            "d_theta_MX", pydrake.systems.framework.BasicVector(1),
-            self.output_d_theta_MX)
+            "omega_MX", pydrake.systems.framework.BasicVector(1),
+            self.output_omega_MX)
         self.DeclareVectorOutputPort(
-            "d_theta_MY", pydrake.systems.framework.BasicVector(1),
-            self.output_d_theta_MY)
+            "omega_MY", pydrake.systems.framework.BasicVector(1),
+            self.output_omega_MY)
         self.DeclareVectorOutputPort(
-            "d_theta_MZ", pydrake.systems.framework.BasicVector(1),
-            self.output_d_theta_MZ)
+            "omega_MZ", pydrake.systems.framework.BasicVector(1),
+            self.output_omega_MZ)
         self.DeclareVectorOutputPort(
             "F_GT", pydrake.systems.framework.BasicVector(1),
             self.output_F_GT)
@@ -467,26 +467,26 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         self.debug['theta_MZ_t'].append(context.get_time())
         output.SetFromVector([theta_MZ])
 
-    def output_d_theta_MX(self, context, output):
-        d_theta_MX = self.GetInputPort("vel_M_rotational").Eval(context)[0]
+    def output_omega_MX(self, context, output):
+        omega_MX = self.GetInputPort("vel_M_rotational").Eval(context)[0]
 
-        self.debug['d_theta_MX'].append(d_theta_MX)
-        self.debug['d_theta_MX_t'].append(context.get_time())
-        output.SetFromVector([d_theta_MX])
+        self.debug['omega_MX'].append(omega_MX)
+        self.debug['omega_MX_t'].append(context.get_time())
+        output.SetFromVector([omega_MX])
 
-    def output_d_theta_MY(self, context, output):
-        d_theta_MY = self.GetInputPort("vel_M_rotational").Eval(context)[1]
+    def output_omega_MY(self, context, output):
+        omega_MY = self.GetInputPort("vel_M_rotational").Eval(context)[1]
 
-        self.debug['d_theta_MY'].append(d_theta_MY)
-        self.debug['d_theta_MY_t'].append(context.get_time())
-        output.SetFromVector([d_theta_MY])
+        self.debug['omega_MY'].append(omega_MY)
+        self.debug['omega_MY_t'].append(context.get_time())
+        output.SetFromVector([omega_MY])
 
-    def output_d_theta_MZ(self, context, output):
-        d_theta_MZ = self.GetInputPort("vel_M_rotational").Eval(context)[2]
+    def output_omega_MZ(self, context, output):
+        omega_MZ = self.GetInputPort("vel_M_rotational").Eval(context)[2]
 
-        self.debug['d_theta_MZ'].append(d_theta_MZ)
-        self.debug['d_theta_MZ_t'].append(context.get_time())
-        output.SetFromVector([d_theta_MZ])
+        self.debug['omega_MZ'].append(omega_MZ)
+        self.debug['omega_MZ_t'].append(context.get_time())
+        output.SetFromVector([omega_MZ])
 
     def output_F_GT(self, context, output):
         F_G = np.array([[0, 0, -self.sys_consts.m_L*constants.g]]).T

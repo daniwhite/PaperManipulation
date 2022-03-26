@@ -311,7 +311,7 @@ class Simulation:
 
     def _add_inverse_dynamics_ctrl(self):
         options = {
-            'model_friction': True,
+            'model_friction': False,
             'measure_joint_wrench': False,
         }
         self.fold_ctrl = ctrl.inverse_dynamics.InverseDynamicsController(
