@@ -112,7 +112,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         # dd_d_theta_L dynamics
         self.X_LJ_L = X_LJ_L
 
-        self.d_N_thresh = -5e-4
+        self.d_N_thresh = 5e-4
         self.t_contact_start = None
 
         self.DeclareVectorInputPort(
@@ -628,7 +628,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
     def output_in_contact(self, context, output):
         d = self.calc_d(context)
         d_N = self.get_N_proj(context, d)
-        raw_in_contact = d_N > self.d_N_thresh
+        raw_in_contact = np.abs(d_N) < self.d_N_thresh
         if raw_in_contact:
             if self.t_contact_start is None:
                 self.t_contact_start = context.get_time()

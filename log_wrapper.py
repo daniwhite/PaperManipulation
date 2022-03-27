@@ -41,6 +41,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.plant = plant
 
 
+        self.last_contact_time = None
+
         # Numbers of entries
         self.entries_per_body = 3*6
         self.entries_per_contact = 18
@@ -320,6 +322,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         p_FL = poses[self.paper.link_idxs[0]].translation()
         z_thresh = p_FL[-1] + self.z_thresh_offset
 
+        if in_contact:
+            self.last_contact_time = context.get_time()
+
         if self.exit_when_folded:
             if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
                 assert False, "Finish condition reached (success)"
@@ -327,9 +332,12 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 if self.start_t__d_theta_L_below_thresh is None:
                     self.start_t__d_theta_L_below_thresh = context.get_time()
                 if (context.get_time() - self.start_t__d_theta_L_below_thresh > 0.5):
-                    assert False, "Finish condition reached (failure)"
+                    assert False, "Finish condition reached (failure -- stalled)"
             else:
                 self.start_t__d_theta_L_below_thresh = None
+            if self.last_contact_time is not None:
+                if (context.get_time() - self.last_contact_time) > 0.5:
+                    assert False, "Finish condition reached (failure -- break contact)"
 
         output.SetFromVector(out)
 
