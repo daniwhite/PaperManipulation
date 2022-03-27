@@ -4,6 +4,7 @@ import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BasicVector
 import numpy as np
 import plant.manipulator as manipulator
+import time
 
 PRINT_CONTACTS = False
 
@@ -14,7 +15,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     """
 
     def __init__(self, num_bodies, contact_body_idx, paper, plant,
-            z_thresh_offset, exit_when_folded):
+            z_thresh_offset, exit_when_folded, timeout):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Offsets
         self.type_strs_to_offsets = {
@@ -40,6 +41,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.paper = paper
         self.plant = plant
 
+        self.start_time = None
+        self.timeout = timeout
 
         self.last_contact_time = None
 
@@ -338,6 +341,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             if self.last_contact_time is not None:
                 if (context.get_time() - self.last_contact_time) > 0.5:
                     assert False, "Finish condition reached (failure -- break contact)"
+        if self.timeout is not None:
+            if (time.time() - self.start_time) > self.timeout:
+                assert False, "Finish condition reached (timeout)"
 
         output.SetFromVector(out)
 
@@ -354,3 +360,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         else:
             raise ValueError
         return idx
+
+
+    def set_start_time(self):
+        self.start_time = time.time()

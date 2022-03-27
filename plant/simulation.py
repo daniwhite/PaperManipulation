@@ -72,7 +72,7 @@ class Simulation:
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
-            exit_when_folded=False, N_constant_ff_F=5):
+            exit_when_folded=False, N_constant_ff_F=5, timeout=None):
         # Take in inputs
         if params is None:
             self.params = constants.nominal_sys_consts
@@ -85,6 +85,7 @@ class Simulation:
         self.meshcat = meshcat
         self.impedance_stiffness = impedance_stiffness
         self.exit_when_folded = exit_when_folded
+        self.timeout = timeout
 
         # TODO: better name?
         self.N_constant_ff_F = N_constant_ff_F
@@ -205,6 +206,8 @@ class Simulation:
                            ignore) any errors that happen during the sim
         """
         # Finalize simulation and visualization
+        if self.timeout is not None:
+            self.log_wrapper.set_start_time()
         simulator = pydrake.systems.analysis.Simulator(
             self.diagram, self.diagram_context)
         simulator.Initialize()
@@ -295,7 +298,8 @@ class Simulation:
             self.paper,
             self.plant,
             z_thresh_offset=z_thresh_offset,
-            exit_when_folded=self.exit_when_folded
+            exit_when_folded=self.exit_when_folded,
+            timeout=self.timeout,
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
 
