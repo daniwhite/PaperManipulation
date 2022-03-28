@@ -27,6 +27,7 @@ import ctrl.kinematic_ctrlr
 import ctrl.cartesian_impedance
 import ctrl.impedance_generators.setpoint_generators.offline_loader
 import ctrl.impedance_generators.setpoint_generators.link_feedback
+import ctrl.aux
 
 from log_wrapper import LogWrapper
 
