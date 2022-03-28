@@ -1,61 +1,30 @@
-# Standard python libraries
-from multiprocessing import Pool
-from re import S
-import time
-
-# Numpy/scipy/matplotlib/etc.
+import sweep_scripts.sweep_runner
 import numpy as np
-
-# Project files
-import plant.simulation
 from config import hinge_rotation_axis
+import plant.simulation
 
-def sweep_ff_Fn(N_constant_ff_F):
-    # Initialize parameters
-    ctrl_paradigm = plant.simulation.CtrlParadigm.IMPEDANCE
-    impedance_type = plant.simulation.ImpedanceType.LINK_FB
-    n_hat_force_compensation_source = \
-        plant.simulation.NHatForceCompensationSource.CONSTANT
-
-    # Create sim object
-    sim = plant.simulation.Simulation(
-        ctrl_paradigm=ctrl_paradigm,
-        impedance_type=impedance_type,
-        n_hat_force_compensation_source=n_hat_force_compensation_source,
-        exit_when_folded=True,
-        N_constant_ff_F=N_constant_ff_F,
-        timeout=180
-    )
-    print("[ ff_Fn = {:5.2f} ] Starting".format(sim.N_constant_ff_F))
-
-    # Run sim
-    t_start_ = time.time()
-    log = sim.run_sim()
-    print("[ ff_Fn = {:5.2f} ] Total time: {:.2f}".format(
-        sim.N_constant_ff_F, time.time() - t_start_))
-    
-    # Grab output var
+def proc_func(sim, log):
     theta_L = log.data()[sim.log_wrapper.get_idx(
         "pos", "rot", sim.ll_idx) + hinge_rotation_axis].copy()
     theta_LZ = log.data()[sim.log_wrapper.get_idx("pos", "rot", sim.ll_idx)+2]
     # Fix issue in RPY singularity
     theta_L[theta_LZ > np.pi/2] = theta_L[theta_LZ > np.pi/2]*-1 + np.pi
-    
-    return (np.max(theta_L), sim.success, sim.exit_message)
 
-if __name__ == '__main__':
-    t_start__ = time.time()
-    with Pool(8) as p:
-        x_axis = np.linspace(0, 10, 16)
-        sweep_result = p.map(sweep_ff_Fn, x_axis)
-        y_axis = [val[0] for val in sweep_result]
-        successes = [val[1] for val in sweep_result]
-        exit_messages = [val[2] for val in sweep_result]
-        np.savez("sweep_scripts/ff_Fn.npz",
-            x_axis=x_axis,
-            y_axis=y_axis,
-            successes=successes,
-            exit_messages=exit_messages
-        )
-        print("Result:", y_axis)
-    print("OVERALL RUNTIME:", time.time() - t_start__)
+    return np.max(theta_L)
+
+print(__file__.split('/')[-1][:-3])
+
+if __name__ == "__main__":
+    other_sim_args = {
+        "ctrl_paradigm": plant.simulation.CtrlParadigm.IMPEDANCE,
+        "impedance_type": plant.simulation.ImpedanceType.LINK_FB,
+        "n_hat_force_compensation_source": 
+            plant.simulation.NHatForceCompensationSource.CONSTANT
+    }
+    sweep_runner = sweep_scripts.sweep_runner.SweepRunner(
+        proc_func=proc_func,
+        other_sim_args=other_sim_args,
+        sweep_arg="N_constant_ff_F",
+        sweep_vars=np.linspace(0, 10, 16),
+    )
+    sweep_runner.run_sweep()
