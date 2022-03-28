@@ -1,5 +1,6 @@
 # Standard python libraries
 from multiprocessing import Pool
+from re import S
 import time
 
 # Numpy/scipy/matplotlib/etc.
@@ -40,13 +41,21 @@ def sweep_ff_Fn(N_constant_ff_F):
     # Fix issue in RPY singularity
     theta_L[theta_LZ > np.pi/2] = theta_L[theta_LZ > np.pi/2]*-1 + np.pi
     
-    return np.max(theta_L)
+    return (np.max(theta_L), sim.success, sim.exit_message)
 
 if __name__ == '__main__':
     t_start__ = time.time()
     with Pool(8) as p:
-        x_axis = np.linspace(0, 10, 8)
-        y_axis = p.map(sweep_ff_Fn, x_axis)
-        np.savez("sweep_scripts/ff_Fn.npz", x_axis=x_axis, y_axis=y_axis)
+        x_axis = np.linspace(0, 10, 16)
+        sweep_result = p.map(sweep_ff_Fn, x_axis)
+        y_axis = [val[0] for val in sweep_result]
+        successes = [val[1] for val in sweep_result]
+        exit_messages = [val[2] for val in sweep_result]
+        np.savez("sweep_scripts/ff_Fn.npz",
+            x_axis=x_axis,
+            y_axis=y_axis,
+            successes=successes,
+            exit_messages=exit_messages
+        )
         print("Result:", y_axis)
     print("OVERALL RUNTIME:", time.time() - t_start__)

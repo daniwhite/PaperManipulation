@@ -4,6 +4,7 @@ import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BasicVector
 import numpy as np
 import plant.manipulator as manipulator
+import sim_exceptions
 import time
 
 PRINT_CONTACTS = False
@@ -329,21 +330,21 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             self.last_contact_time = context.get_time()
 
         if self.exit_when_folded:
-            if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
-                assert False, "Finish condition reached (success)"
+            if (p_LL[-1] < z_thresh) and (theta_L > np.pi) and in_contact:
+                raise sim_exceptions.SimTaskComplete
             if abs(d_theta_L) < self.d_theta_L_thresh:
                 if self.start_t__d_theta_L_below_thresh is None:
                     self.start_t__d_theta_L_below_thresh = context.get_time()
                 if (context.get_time() - self.start_t__d_theta_L_below_thresh > 0.5):
-                    assert False, "Finish condition reached (failure -- stalled)"
+                    raise sim_exceptions.SimStalled
             else:
                 self.start_t__d_theta_L_below_thresh = None
             if self.last_contact_time is not None:
                 if (context.get_time() - self.last_contact_time) > 0.5:
-                    assert False, "Finish condition reached (failure -- break contact)"
+                    raise sim_exceptions.ContactBroken
         if self.timeout is not None:
             if (time.time() - self.start_time) > self.timeout:
-                assert False, "Finish condition reached (timeout)"
+                raise sim_exceptions.SimStalled
 
         output.SetFromVector(out)
 

@@ -28,6 +28,7 @@ import ctrl.cartesian_impedance
 import ctrl.impedance_generators.setpoint_generators.offline_loader
 import ctrl.impedance_generators.setpoint_generators.link_feedback
 import ctrl.aux
+import sim_exceptions
 
 from log_wrapper import LogWrapper
 
@@ -198,6 +199,13 @@ class Simulation:
 
         return viz_str
 
+    def exit_cleanly(self, simulator):
+        if self.meshcat is not None:
+            self.vis.StopRecording()
+            self.vis.PublishRecording()
+        
+        return self.logger.FindLog(simulator.get_context())
+
 
     def run_sim(self, clean_exit=True):
         """
@@ -218,15 +226,19 @@ class Simulation:
         if clean_exit:
             try:
                 simulator.AdvanceTo(config.TSPAN)
+            except sim_exceptions.SimTaskComplete:
+                print(type(e))
+                print(e)
+                self.success = True
+                self.exit_message = repr(e)
+                return self.exit_cleanly(simulator)
             except BaseException as e:
                 # Has to be BaseException to get KeyboardInterrupt
                 print(type(e))
                 print(e)
-                if self.meshcat is not None:
-                    self.vis.StopRecording()
-                    self.vis.PublishRecording()
-
-                return self.logger.FindLog(simulator.get_context())
+                self.success = False
+                self.exit_message = repr(e)
+                return self.exit_cleanly(simulator)
         else:
             simulator.AdvanceTo(config.TSPAN)
 
