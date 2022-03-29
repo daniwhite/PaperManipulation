@@ -6,7 +6,7 @@ from enum import Enum
 
 # Time constants
 DT = 0.0001
-TSPAN = 5.5
+TSPAN = 10
 
 base_path = "/Users/dani/Documents/lis/code/PaperManipulation/"
 

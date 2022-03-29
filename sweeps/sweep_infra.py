@@ -10,6 +10,7 @@ import numpy as np
 
 # Project files
 import plant.simulation
+import constants
 from config import hinge_rotation_axis
 
 # General helper functions
@@ -26,12 +27,13 @@ def get_max_theta_L(sim, log):
 class SweepRunner:
     default_sim_args = {
         "exit_when_folded": True,
-        "timeout": 180
+        "timeout": 180,
+        "params": copy.deepcopy(constants.nominal_sys_consts)
     }
 
     def __init__(self, proc_func, other_sim_args, sweep_arg, sweep_vars,
-            sweep_var_name=None):
-        
+            sweep_var_name=None, insert_into_params=False):
+
         # Set sweep var name base on invoked file
         if sweep_var_name is None:
             file_name_found = False
@@ -55,10 +57,16 @@ class SweepRunner:
         self.proc_func = proc_func
         self.sweep_arg = sweep_arg
         self.sweep_vars = sweep_vars
+        self.insert_into_params = insert_into_params
+
 
     def sweep_func(self, val):
         sim_args = copy.deepcopy(self.sim_args)
-        sim_args[self.sweep_arg] = val
+        if self.insert_into_params:
+            assert self.sweep_arg in vars(sim_args["params"]).keys()
+            setattr(sim_args["params"], self.sweep_arg, val)
+        else:
+            sim_args[self.sweep_arg] = val
         sim = plant.simulation.Simulation(**sim_args)
 
         print("[ {} = {:5.2f} ] Starting".format(self.sweep_arg, val))
@@ -66,8 +74,8 @@ class SweepRunner:
         # Run sim
         t_start_ = time.time()
         log = sim.run_sim()
-        print("[ ff_Fn = {:5.2f} ] Total time: {:.2f}".format(
-            val, time.time() - t_start_))
+        print("[ {} = {:5.2f} ] Total time: {:.2f}".format(
+            self.sweep_arg, val, time.time() - t_start_))
 
         # Grab output var
         output_var = self.proc_func(sim, log)
