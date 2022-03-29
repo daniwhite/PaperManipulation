@@ -74,7 +74,7 @@ class Simulation:
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
-            exit_when_folded=False, N_constant_ff_F=5, timeout=None):
+            exit_when_folded=False, const_ff_Fn=5, timeout=None):
         # System parameters
         if params is None:
             self.sys_consts = constants.nominal_sys_consts
@@ -88,7 +88,7 @@ class Simulation:
         self.n_hat_force_compensation_source = n_hat_force_compensation_source
         self.impedance_stiffness = impedance_stiffness
         # TODO: better name?
-        self.N_constant_ff_F = N_constant_ff_F
+        self.const_ff_Fn = const_ff_Fn
 
         # Other settings
         self.meshcat = meshcat
@@ -406,17 +406,21 @@ class Simulation:
                 "ff_torque_XYZ", ConstantVectorSource([0, 0, 0]))
             self.builder.AddNamedSystem("ff_wrench_XYZ", Multiplexer([3,3]))
 
+            const_ff_Fn_src = ConstantVectorSource([self.const_ff_Fn])
             if self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.MEASURED:
-                ff_force_N = ctrl.aux.NormalForceSelector(
-                    ll_idx=self.ll_idx,
-                    contact_body_idx=self.contact_body_idx,
-                    ff_constant_force=self.N_constant_ff_F
+                self.builder.AddNamedSystem("const_ff_Fn_src", const_ff_Fn_src)
+                self.builder.AddNamedSystem(
+                    "measured_ff_Fn_src",
+                    ctrl.aux.NormalForceSelector(
+                        ll_idx=self.ll_idx,
+                        contact_body_idx=self.contact_body_idx,
+                    )
                 )
+                ff_force_N = Adder(2, 1)
             elif self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONSTANT:
-                ff_force_N = ConstantVectorSource([self.N_constant_ff_F])
-            
+                ff_force_N = const_ff_Fn_src
             self.builder.AddNamedSystem("ff_force_N", ff_force_N)
             self.builder.AddNamedSystem("ff_force_N_Sat",
                 Saturation(min_value=[0],max_value=[50]))
@@ -622,7 +626,10 @@ class Simulation:
 
                 if self.n_hat_force_compensation_source == \
                         NHatForceCompensationSource.MEASURED:
-                    self._connect(["plant", "contact_results"], "ff_force_N")
+                    self._connect(["plant", "contact_results"],
+                        "measured_ff_Fn_src")
+                    self._connect("measured_ff_Fn_src", ["ff_force_N", 0])
+                    self._connect("const_ff_Fn_src", ["ff_force_N", 1])
             self._connect("ff_wrench_XYZ", ["fold_ctrl", "feedforward_wrench"])
             
             self._connect(["setpoint_gen", "x0"], "demux_setpoint")
