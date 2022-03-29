@@ -15,8 +15,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, contact_body_idx, paper, plant,
-            z_thresh_offset, exit_when_folded, timeout):
+    def __init__(self, num_bodies, contact_body_idx, paper, plant):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # Offsets
         self.type_strs_to_offsets = {
@@ -31,21 +30,11 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.translational_offset = 0
         self.rotational_offset = 3
 
-        self.z_thresh_offset = z_thresh_offset
-        self.exit_when_folded = exit_when_folded
-        self.start_t__d_theta_L_below_thresh = None
-        self.d_theta_L_thresh = 0.005
-
         # General constants/members
         self.max_contacts = 10
         self.nq_manipulator = manipulator.data['nq']
         self.paper = paper
         self.plant = plant
-
-        self.start_time = None
-        self.timeout = timeout
-
-        self.last_contact_time = None
 
         # Numbers of entries
         self.entries_per_body = 3*6
@@ -169,14 +158,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
             pydrake.systems.framework.BasicVector(self.nq_manipulator))
 
         # Other inputs
-        # TODO: move these elsewhere?
         self.DeclareVectorInputPort(
-            "theta_L",
-            pydrake.systems.framework.BasicVector(1))
-        self.DeclareVectorInputPort(
-            "d_theta_L",
-            pydrake.systems.framework.BasicVector(1))
-        
+            "alive_signal", pydrake.systems.framework.BasicVector(1))
 
         self.DeclareVectorOutputPort(
             "out", pydrake.systems.framework.BasicVector(
@@ -206,8 +189,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         tau_ctrl = self.GetInputPort("tau_ctrl").Eval(context)
         tau_out = self.GetInputPort("tau_out").Eval(context)
         tau_contact_ctrl = self.GetInputPort("tau_contact_ctrl").Eval(context)
-        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
-        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
+        self.GetInputPort("alive_signal").Eval(context)[0]
 
         # Add body poses, velocities, accelerations, etc.
         for i, (pose, vel, acc) in enumerate(zip(poses, vels, accs)):
@@ -321,30 +303,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         assert(len(out) == self.tau_contact_ctrl_idx)
         out += list(tau_contact_ctrl)
 
-        # Check for exit criteria
-        p_LL = poses[self.ll_idx].translation()
-        p_FL = poses[self.paper.link_idxs[0]].translation()
-        z_thresh = p_FL[-1] + self.z_thresh_offset
-
-        if in_contact:
-            self.last_contact_time = context.get_time()
-
-        if self.exit_when_folded:
-            if (p_LL[-1] < z_thresh) and (theta_L > np.pi) and in_contact:
-                raise sim_exceptions.SimTaskComplete
-            if abs(d_theta_L) < self.d_theta_L_thresh:
-                if self.start_t__d_theta_L_below_thresh is None:
-                    self.start_t__d_theta_L_below_thresh = context.get_time()
-                if (context.get_time() - self.start_t__d_theta_L_below_thresh > 0.5):
-                    raise sim_exceptions.SimStalled
-            else:
-                self.start_t__d_theta_L_below_thresh = None
-            if self.last_contact_time is not None:
-                if (context.get_time() - self.last_contact_time) > 0.5:
-                    raise sim_exceptions.ContactBroken
-        if self.timeout is not None:
-            if (time.time() - self.start_time) > self.timeout:
-                raise sim_exceptions.SimStalled
 
         output.SetFromVector(out)
 
@@ -361,7 +319,3 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         else:
             raise ValueError
         return idx
-
-
-    def set_start_time(self):
-        self.start_time = time.time()

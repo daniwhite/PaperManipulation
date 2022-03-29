@@ -4,12 +4,15 @@ functions.
 """
 # Drake imports
 import pydrake  # pylint: disable=import-error
-from pydrake.all import ContactResults
+from pydrake.all import ContactResults, RigidTransform
 
 import numpy as np
 import plant.manipulator as manipulator
 from plant.paper import settling_time
 from config import hinge_rotation_axis
+import sim_exceptions
+
+import time
 
 class JointCenteringCtrl(pydrake.systems.framework.LeafSystem):
     """
@@ -218,3 +221,77 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
         F_N = abs(F_N)
         
         output.SetFromVector([F_N])
+
+
+class ExitSystem(pydrake.systems.framework.LeafSystem):
+    def __init__(self, timeout, exit_when_folded, ll_idx, paper,
+            z_thresh_offset):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        
+        # General exit params
+        self.exit_when_folded = exit_when_folded
+        self.timeout = timeout
+        self.start_time = None
+        self.last_contact_time = None
+
+        self.start_t__d_theta_L_below_thresh = None
+        self.d_theta_L_thresh = 0.005
+
+        # System params
+        self.ll_idx = ll_idx
+        self.paper = paper
+        self.z_thresh_offset = z_thresh_offset
+
+        self.DeclareAbstractInputPort(
+            "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
+        self.DeclareVectorInputPort(
+            "theta_L",
+            pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "d_theta_L",
+            pydrake.systems.framework.BasicVector(1))
+        self.DeclareVectorInputPort(
+            "in_contact", pydrake.systems.framework.BasicVector(1))
+        
+        self.DeclareVectorOutputPort(
+            "out", pydrake.systems.framework.BasicVector(1),
+            self.CalcOutput)
+
+    def CalcOutput(self, context, output):
+        # Check for exit criteria
+        poses = self.GetInputPort("poses").Eval(context)
+        theta_L = self.GetInputPort("theta_L").Eval(context)[0]
+        d_theta_L = self.GetInputPort("d_theta_L").Eval(context)[0]
+        in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+
+        p_LL = poses[self.ll_idx].translation()
+        p_FL = poses[self.paper.link_idxs[0]].translation()
+
+        z_thresh = p_FL[-1] + self.z_thresh_offset
+
+        if in_contact:
+            self.last_contact_time = context.get_time()
+
+        if self.exit_when_folded:
+            if (p_LL[-1] < z_thresh) and (theta_L > np.pi) and in_contact:
+                raise sim_exceptions.SimTaskComplete
+            if abs(d_theta_L) < self.d_theta_L_thresh:
+                if self.start_t__d_theta_L_below_thresh is None:
+                    self.start_t__d_theta_L_below_thresh = context.get_time()
+                if (context.get_time() - self.start_t__d_theta_L_below_thresh \
+                        > 0.5):
+                    raise sim_exceptions.SimStalled
+            else:
+                self.start_t__d_theta_L_below_thresh = None
+            if self.last_contact_time is not None:
+                if (context.get_time() - self.last_contact_time) > 0.5:
+                    raise sim_exceptions.ContactBroken
+        if self.timeout is not None:
+            if (time.time() - self.start_time) > self.timeout:
+                raise sim_exceptions.SimStalled
+        
+        output.SetFromVector([1])
+
+
+    def set_start_time(self):
+        self.start_time = time.time()

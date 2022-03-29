@@ -208,7 +208,7 @@ class Simulation:
                            ignore) any errors that happen during the sim
         """
         # Finalize simulation and visualization
-        self.log_wrapper.set_start_time()
+        self.exit_system.set_start_time()
         simulator = pydrake.systems.analysis.Simulator(
             self.diagram, self.diagram_context)
         simulator.Initialize()
@@ -307,12 +307,19 @@ class Simulation:
             self.plant.num_bodies(),
             self.contact_body_idx,
             self.paper,
-            self.plant,
-            z_thresh_offset=z_thresh_offset,
-            exit_when_folded=exit_when_folded,
-            timeout=timeout,
+            self.plant
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
+
+        # Exit system
+        self.exit_system = ctrl.aux.ExitSystem(
+            ll_idx=self.ll_idx,
+            paper=self.paper,
+            exit_when_folded=exit_when_folded,
+            timeout=timeout,
+            z_thresh_offset=z_thresh_offset
+        )
+        self.builder.AddNamedSystem("exit_system", self.exit_system)
 
         if self.meshcat is not None:
             # Create visualization
@@ -547,8 +554,13 @@ class Simulation:
         self._connect(["vis_proc", "in_contact"], ["log", "in_contact"])
         self._connect("joint_centering_ctrl",
             ["log", "joint_centering_torque"])
-        self._connect(["vis_proc", "theta_L"], ["log", "theta_L"])
-        self._connect(["vis_proc", "d_theta_L"], ["log", "d_theta_L"])
+
+        self._connect(["plant", "body_poses"],["exit_system", "poses"])
+        self._connect(["vis_proc", "in_contact"],
+            ["exit_system", "in_contact"])
+        self._connect(["vis_proc", "theta_L"], ["exit_system", "theta_L"])
+        self._connect(["vis_proc", "d_theta_L"], ["exit_system", "d_theta_L"])
+        self._connect("exit_system", ["log", "alive_signal"])
 
         # Set up visualization
         if self.meshcat is not None:
