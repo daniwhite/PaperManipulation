@@ -90,8 +90,7 @@ class Simulation:
         # TODO: better name?
         self.N_constant_ff_F = N_constant_ff_F
 
-        # Settings
-        self.exit_when_folded = exit_when_folded
+        # Other settings
         self.meshcat = meshcat
 
         # Verify controller config is valid
@@ -126,7 +125,8 @@ class Simulation:
         self.ll_idx = self.paper.link_idxs[-1]
         self.contact_body_idx = int(contact_body.index())
 
-        self._add_non_ctrl_systems(timeout=timeout)
+        self._add_non_ctrl_systems(
+            timeout=timeout, exit_when_folded=exit_when_folded)
         self._add_ctrl_systems()
         self._wire()
         self._context_specific_init()
@@ -267,7 +267,7 @@ class Simulation:
         self.plant.Finalize()
 
  
-    def _add_non_ctrl_systems(self, timeout):
+    def _add_non_ctrl_systems(self, timeout, exit_when_folded):
         """
         Initialize and add to builder systems that don't add bodies to the
         plant (so they can be called after `plant.Finalize()`) that are also
@@ -285,7 +285,8 @@ class Simulation:
         )
 
         # Vision
-        X_LJ_L = self.paper.joints[0].frame_on_child().GetFixedPoseInBodyFrame()
+        X_LJ_L = self.paper.joints[0].frame_on_child(
+            ).GetFixedPoseInBodyFrame()
         self.builder.AddNamedSystem(
             "vis_proc", 
             perception.vision.VisionProcessor(self.sys_consts, X_LJ_L=X_LJ_L)
@@ -308,20 +309,29 @@ class Simulation:
             self.paper,
             self.plant,
             z_thresh_offset=z_thresh_offset,
-            exit_when_folded=self.exit_when_folded,
+            exit_when_folded=exit_when_folded,
             timeout=timeout,
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
 
         if self.meshcat is not None:
-            # Visualization
-            self.end_effector_frame_vis = visualization.FrameVisualizer(
+            # Create visualization
+            meshcat_params = MeshcatVisualizerParams()
+            self.vis = MeshcatVisualizerCpp.AddToBuilder(
+                self.builder, self.scene_graph.get_query_output_port(),
+                self.meshcat, meshcat_params)
+
+            # End effector visualization
+            ee_frame_vis = visualization.FrameVisualizer(
                 name="end_effector", meshcat=self.meshcat)
-            self.builder.AddNamedSystem(
-                "end_effector_frame_vis", self.end_effector_frame_vis)
-            self.link_frame_vis = visualization.FrameVisualizer(
+            self.builder.AddNamedSystem("end_effector_frame_vis", ee_frame_vis)
+            ee_frame_vis.set_animation(self.vis.get_mutable_recording())
+
+            # Link visualization
+            link_frame_vis = visualization.FrameVisualizer(
                 name="last_link", meshcat=self.meshcat)
-            self.builder.AddNamedSystem("link_frame_vis", self.link_frame_vis)
+            self.builder.AddNamedSystem("link_frame_vis", link_frame_vis)
+            link_frame_vis.set_animation(self.vis.get_mutable_recording())
 
     def _add_inverse_dynamics_ctrl(self):
         options = {
@@ -332,17 +342,14 @@ class Simulation:
             sys_consts=self.sys_consts, options=options)
 
         if self.meshcat is not None:
-            self.desired_position_XYZ = ctrl.aux.HTNtoXYZ()
-            self.desired_pos_adder = Adder(2, 3)
-
             self.builder.AddNamedSystem(
-                "desired_position_XYZ", self.desired_position_XYZ)
-            self.builder.AddNamedSystem(
-                "desired_pos_adder", self.desired_pos_adder)
+                "desired_position_XYZ", ctrl.aux.HTNtoXYZ())
+            self.builder.AddNamedSystem("desired_pos_adder", Adder(2, 3))
 
-            self.desired_pos_vis = visualization.FrameVisualizer(
+            desired_pos_vis = visualization.FrameVisualizer(
                 name="desired position", meshcat=self.meshcat, opacity=0.3)
-            self.builder.AddNamedSystem("desired_pos_vis", self.desired_pos_vis)
+            self.builder.AddNamedSystem("desired_pos_vis", desired_pos_vis)
+            desired_pos_vis.set_animation(self.vis.get_mutable_recording())
 
 
     def _add_kinematic_ctrl(self):
@@ -354,10 +361,10 @@ class Simulation:
         self._add_impedance_n_hat_force_compensation()
 
         if self.impedance_type == ImpedanceType.OFFLINE_TRAJ:
-            self.setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
+            setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     offline_loader.OfflineTrajLoader()
         elif self.impedance_type == ImpedanceType.LINK_FB:
-            self.setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
+            setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     link_feedback.LinkFeedbackSetpointGenerator(
                         sys_consts=self.sys_consts)
         
@@ -367,17 +374,18 @@ class Simulation:
         # Order is [theta_x, theta_y, theta_z, x, y, z]
         if self.impedance_stiffness is None:
             self.impedance_stiffness = [40, 40, 40, 400, 400, 400]
-        self.K_gen = ConstantVectorSource(self.impedance_stiffness)
-        self.D_gen = ConstantVectorSource(2*np.sqrt(self.impedance_stiffness))
-        self.demux_setpoint = Demultiplexer([3,3])
         
-        self.builder.AddNamedSystem("K_gen", self.K_gen)
-        self.builder.AddNamedSystem("D_gen", self.D_gen)
-        self.builder.AddNamedSystem("setpoint_gen", self.setpoint_gen)
-        self.builder.AddNamedSystem("demux_setpoint", self.demux_setpoint)
+        self.builder.AddNamedSystem("K_gen",
+            ConstantVectorSource(self.impedance_stiffness))
+        self.builder.AddNamedSystem("D_gen",
+            ConstantVectorSource(2*np.sqrt(self.impedance_stiffness)))
+        self.builder.AddNamedSystem("setpoint_gen", setpoint_gen)
+        self.builder.AddNamedSystem("demux_setpoint", Demultiplexer([3,3]))
         if self.meshcat is not None:
-            self.setpoint_vis = visualization.FrameVisualizer(name="impedance_setpoint", meshcat=self.meshcat, opacity=0.3)
+            self.setpoint_vis = visualization.FrameVisualizer(
+                name="impedance_setpoint", meshcat=self.meshcat, opacity=0.3)
             self.builder.AddNamedSystem("setpoint_vis", self.setpoint_vis)
+            self.setpoint_vis.set_animation(self.vis.get_mutable_recording())
 
 
     def _add_impedance_n_hat_force_compensation(self):
@@ -387,36 +395,31 @@ class Simulation:
         """
         if self.n_hat_force_compensation_source == \
                 NHatForceCompensationSource.NONE:
-            self.ff_wrench_XYZ = ConstantVectorSource([0, 0, 0, 0, 0, 0])
-            self.builder.AddNamedSystem("ff_wrench_XYZ", self.ff_wrench_XYZ)
+            self.builder.AddNamedSystem("ff_wrench_XYZ",
+                ConstantVectorSource([0, 0, 0, 0, 0, 0]))
         else:
-            self.ff_force_XYZ = ctrl.aux.HTNtoXYZ()
-            self.ff_torque_XYZ = ConstantVectorSource([0, 0, 0])
-            self.ff_wrench_XYZ = Multiplexer([3,3])
-            
-            self.ff_force_HT = ConstantVectorSource([0, 0])
-            self.ff_force_HTN = Multiplexer([2, 1])
-            
-            self.builder.AddNamedSystem("ff_force_HT", self.ff_force_HT)
-            self.builder.AddNamedSystem("ff_force_HTN", self.ff_force_HTN)
-            self.builder.AddNamedSystem("ff_force_XYZ", self.ff_force_XYZ)
-            self.builder.AddNamedSystem("ff_torque_XYZ", self.ff_torque_XYZ)
-            self.builder.AddNamedSystem("ff_wrench_XYZ", self.ff_wrench_XYZ)
+            self.builder.AddNamedSystem("ff_force_HT",
+                ConstantVectorSource([0, 0]))
+            self.builder.AddNamedSystem("ff_force_HTN", Multiplexer([2, 1]))
+            self.builder.AddNamedSystem("ff_force_XYZ", ctrl.aux.HTNtoXYZ())
+            self.builder.AddNamedSystem(
+                "ff_torque_XYZ", ConstantVectorSource([0, 0, 0]))
+            self.builder.AddNamedSystem("ff_wrench_XYZ", Multiplexer([3,3]))
 
             if self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.MEASURED:
-                self.ff_force_N = ctrl.aux.NormalForceSelector(
+                ff_force_N = ctrl.aux.NormalForceSelector(
                     ll_idx=self.ll_idx,
                     contact_body_idx=self.contact_body_idx,
                     ff_constant_force=self.N_constant_ff_F
                 )
             elif self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONSTANT:
-                self.ff_force_N = ConstantVectorSource([self.N_constant_ff_F])
+                ff_force_N = ConstantVectorSource([self.N_constant_ff_F])
             
-            self.builder.AddNamedSystem("ff_force_N", self.ff_force_N)
-            self.ff_force_N_Sat = Saturation(min_value=[0],max_value=[50])
-            self.builder.AddNamedSystem("ff_force_N_Sat", self.ff_force_N_Sat)
+            self.builder.AddNamedSystem("ff_force_N", ff_force_N)
+            self.builder.AddNamedSystem("ff_force_N_Sat",
+                Saturation(min_value=[0],max_value=[50]))
 
  
     def _add_ctrl_systems(self):
@@ -428,20 +431,19 @@ class Simulation:
             self._add_impedance_ctrl()
         
         self.builder.AddNamedSystem("fold_ctrl", self.fold_ctrl)
-        self.tau_g_adder = Adder(3, manipulator.data['nq'])
-        self.builder.AddNamedSystem("adder", self.tau_g_adder)
-        self.tau_g_gain = Gain(-1, manipulator.data['nq'])
-        self.builder.AddNamedSystem("tau_g_gain", self.tau_g_gain)
-        self.joint_centering_ctrl = ctrl.aux.JointCenteringCtrl()
-        self.builder.AddNamedSystem("joint_centering_ctrl", self.joint_centering_ctrl)
-        self.pre_contact_ctrl = ctrl.aux.PreContactCtrl()
-        self.builder.AddNamedSystem("pre_contact_ctrl", self.pre_contact_ctrl)
-        self.ctrl_selector = ctrl.aux.CtrlSelector()
-        self.builder.AddNamedSystem("ctrl_selector", self.ctrl_selector)
+        self.builder.AddNamedSystem("adder",
+            Adder(3, manipulator.data['nq']))
+        self.builder.AddNamedSystem("tau_g_gain",
+            Gain(-1, manipulator.data['nq']))
+        self.builder.AddNamedSystem("joint_centering_ctrl",
+            ctrl.aux.JointCenteringCtrl())
+        self.builder.AddNamedSystem("pre_contact_ctrl",
+            ctrl.aux.PreContactCtrl())
+        self.builder.AddNamedSystem("ctrl_selector", ctrl.aux.CtrlSelector())
 
         if config.DT > 0:
-            self.delay = DiscreteTimeDelay(config.DT, 1, manipulator.data['nq'])
-            self.builder.AddNamedSystem("delay", self.delay)
+            self.builder.AddNamedSystem("delay",
+                DiscreteTimeDelay(config.DT, 1, manipulator.data['nq']))
 
 
     def _context_specific_init(self):
@@ -630,8 +632,9 @@ class Simulation:
                 self._connect(["fold_ctrl", "adjusted_x0_rot"],
                     ["setpoint_vis", "rot"])
             
-            if type(self.setpoint_gen) is \
-                    ctrl.impedance_generators.setpoint_generators.link_feedback.LinkFeedbackSetpointGenerator:
+            if type(self._get_system("setpoint_gen")) is \
+                    ctrl.impedance_generators.setpoint_generators.\
+                        link_feedback.LinkFeedbackSetpointGenerator:
                 self._connect_all_inputs("vision", "setpoint_gen")
 
         # Controller connections
@@ -673,19 +676,6 @@ class Simulation:
         # Visualization and logging
         self.logger = LogVectorOutput(
             self.log_wrapper.get_output_port(), self.builder)
-
-        if self.meshcat is not None:
-            meshcat_params = MeshcatVisualizerParams()
-            self.vis = MeshcatVisualizerCpp.AddToBuilder(
-                self.builder, self.scene_graph.get_query_output_port(),
-                self.meshcat, meshcat_params)
-
-            self.end_effector_frame_vis.set_animation(self.vis.get_mutable_recording())
-            self.link_frame_vis.set_animation(self.vis.get_mutable_recording())
-            if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
-                self.desired_pos_vis.set_animation(self.vis.get_mutable_recording())
-            elif self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
-                self.setpoint_vis.set_animation(self.vis.get_mutable_recording())
 
         # Build diagram
         self.diagram = self.builder.Build()
