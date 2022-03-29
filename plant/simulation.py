@@ -226,9 +226,8 @@ class Simulation:
         if clean_exit:
             try:
                 simulator.AdvanceTo(config.TSPAN)
-            except sim_exceptions.SimTaskComplete:
-                print(type(e))
-                print(e)
+            except sim_exceptions.SimTaskComplete as e:
+                print("Successful run!")
                 self.success = True
                 self.exit_message = repr(e)
                 return self.exit_cleanly(simulator)

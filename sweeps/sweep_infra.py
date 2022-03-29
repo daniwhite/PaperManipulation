@@ -10,7 +10,19 @@ import numpy as np
 
 # Project files
 import plant.simulation
+from config import hinge_rotation_axis
 
+# General helper functions
+def get_max_theta_L(sim, log):
+    theta_L = log.data()[sim.log_wrapper.get_idx(
+        "pos", "rot", sim.ll_idx) + hinge_rotation_axis].copy()
+    theta_LZ = log.data()[sim.log_wrapper.get_idx("pos", "rot", sim.ll_idx)+2]
+    # Fix issue in RPY singularity
+    theta_L[theta_LZ > np.pi/2] = theta_L[theta_LZ > np.pi/2]*-1 + np.pi
+
+    return np.max(theta_L)
+
+# Sweep runner class
 class SweepRunner:
     default_sim_args = {
         "exit_when_folded": True,
@@ -70,7 +82,7 @@ class SweepRunner:
             y_axis = [val[0] for val in sweep_result]
             successes = [val[1] for val in sweep_result]
             exit_messages = [val[2] for val in sweep_result]
-            np.savez("sweep_scripts/" + self.sweep_var_name + ".npz",
+            np.savez("sweeps/" + self.sweep_var_name + ".npz",
                 x_axis=x_axis,
                 y_axis=y_axis,
                 successes=successes,
