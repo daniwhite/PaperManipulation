@@ -33,7 +33,7 @@ stiffness_Nm_per_Rad = Nm__PER_InLb*stiffness__InLb_per_Rad
 @dataclass
 class SystemConstants:
     """
-    System constants
+    Constants for this particular plant + manipulator
     """
     w_L: float
     h_L: float

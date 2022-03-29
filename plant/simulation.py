@@ -75,23 +75,26 @@ class Simulation:
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
             exit_when_folded=False, N_constant_ff_F=5, timeout=None):
-        # Take in inputs
+        # System parameters
         if params is None:
-            self.params = constants.nominal_sys_consts
+            self.sys_consts = constants.nominal_sys_consts
         else: 
-            self.params = params
+            self.sys_consts = params
+
+        # Controller parameters
         self.ctrl_paradigm = ctrl_paradigm
         self.impedance_type = impedance_type
         # TODO: This needs a better name
         self.n_hat_force_compensation_source = n_hat_force_compensation_source
-        self.meshcat = meshcat
         self.impedance_stiffness = impedance_stiffness
-        self.exit_when_folded = exit_when_folded
-        self.timeout = timeout
-
         # TODO: better name?
         self.N_constant_ff_F = N_constant_ff_F
 
+        # Settings
+        self.exit_when_folded = exit_when_folded
+        self.meshcat = meshcat
+
+        # Verify controller config is valid
         assert (impedance_type == ImpedanceType.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
         assert (n_hat_force_compensation_source == NHatForceCompensationSource.NONE) or \
@@ -112,19 +115,10 @@ class Simulation:
         self._add_mbp_bodies()
 
         # Init sys_consts
-        self.sys_consts = constants.SystemConstants
         self.sys_consts.I_L = self.plant.get_body(
             BodyIndex(self.paper.link_idxs[-1])).default_rotational_inertia(
                 ).CalcPrincipalMomentsOfInertia()[0]
         self.sys_consts.v_stiction = constants.v_stiction
-        self.sys_consts.w_L = self.params.w_L
-        self.sys_consts.h_L = self.params.h_L
-        self.sys_consts.m_L = self.params.m_L
-        self.sys_consts.m_M = self.params.m_M
-        self.sys_consts.b_J = self.params.b_J
-        self.sys_consts.k_J = self.params.k_J
-        self.sys_consts.mu = self.params.mu
-        self.sys_consts.r = self.params.r
         self.sys_consts.g = self.plant.gravity_field().gravity_vector()[-1]*-1
 
         contact_body = self.plant.GetBodyByName(
@@ -132,7 +126,7 @@ class Simulation:
         self.ll_idx = self.paper.link_idxs[-1]
         self.contact_body_idx = int(contact_body.index())
 
-        self._add_non_ctrl_systems()
+        self._add_non_ctrl_systems(timeout=timeout)
         self._add_ctrl_systems()
         self._wire()
         self._context_specific_init()
@@ -195,7 +189,6 @@ class Simulation:
             viz_str_human_readable_new += out_l
             
         viz_str_human_readable = viz_str_human_readable_new
-        # print(viz_str_human_readable)
 
         return viz_str
 
@@ -215,8 +208,7 @@ class Simulation:
                            ignore) any errors that happen during the sim
         """
         # Finalize simulation and visualization
-        if self.timeout is not None:
-            self.log_wrapper.set_start_time()
+        self.log_wrapper.set_start_time()
         simulator = pydrake.systems.analysis.Simulator(
             self.diagram, self.diagram_context)
         simulator.Initialize()
@@ -262,20 +254,20 @@ class Simulation:
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
             default_joint_angle=0,
-            k_J=self.params.k_J, b_J=self.params.b_J,
-            m_L=self.params.m_L, w_L=self.params.w_L, h_L=self.params.h_L,
-            mu=self.params.mu)
+            k_J=self.sys_consts.k_J, b_J=self.sys_consts.b_J,
+            m_L=self.sys_consts.m_L, w_L=self.sys_consts.w_L,
+            h_L=self.sys_consts.h_L, mu=self.sys_consts.mu)
         self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
         self.manipulator_instance = manipulator.data["add_plant_function"](
-            plant=self.plant, m_M=self.params.m_M, r=self.params.r,
-            mu=self.params.mu, scene_graph=self.scene_graph)
+            plant=self.plant, m_M=self.sys_consts.m_M, r=self.sys_consts.r,
+            mu=self.sys_consts.mu, scene_graph=self.scene_graph)
 
         self.plant.Finalize()
 
  
-    def _add_non_ctrl_systems(self):
+    def _add_non_ctrl_systems(self, timeout):
         """
         Initialize and add to builder systems that don't add bodies to the
         plant (so they can be called after `plant.Finalize()`) that are also
@@ -283,25 +275,31 @@ class Simulation:
         """
 
         # Proprioception
-        self.proprioception = perception.proprioception.ProprioceptionSystem(
-            m_M=self.params.m_M,
-            r=self.params.r,
-            mu=self.params.mu
+        self.builder.AddNamedSystem(
+            "prop",
+            perception.proprioception.ProprioceptionSystem(
+                m_M=self.sys_consts.m_M,
+                r=self.sys_consts.r,
+                mu=self.sys_consts.mu
+            )
         )
-        self.builder.AddNamedSystem("prop", self.proprioception)
 
         # Vision
-        self.vision_processor = perception.vision.VisionProcessor(
-            self.sys_consts, X_LJ_L=self.paper.joints[
-                0].frame_on_child().GetFixedPoseInBodyFrame())
+        X_LJ_L = self.paper.joints[0].frame_on_child().GetFixedPoseInBodyFrame()
         self.builder.AddNamedSystem(
-            "vis_proc", self.vision_processor)
-        self.vision = perception.vision.VisionSystem(
-            ll_idx=self.ll_idx, contact_body_idx=self.contact_body_idx)
-        self.builder.AddNamedSystem("vision", self.vision)
+            "vis_proc", 
+            perception.vision.VisionProcessor(self.sys_consts, X_LJ_L=X_LJ_L)
+        )
+        self.builder.AddNamedSystem(
+            "vision",
+            perception.vision.VisionSystem(
+                ll_idx=self.ll_idx,
+                contact_body_idx=self.contact_body_idx
+            )
+        )
 
 
-        link_z = self.vision_processor.X_LJ_L.translation()[-1]
+        link_z = X_LJ_L.translation()[-1]
         z_thresh_offset = 2*link_z + self.sys_consts.h_L
         # Logger
         self.log_wrapper = LogWrapper(
@@ -311,7 +309,7 @@ class Simulation:
             self.plant,
             z_thresh_offset=z_thresh_offset,
             exit_when_folded=self.exit_when_folded,
-            timeout=self.timeout,
+            timeout=timeout,
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
 
@@ -512,14 +510,14 @@ class Simulation:
         raise KeyError(f"No system in builder with name \"{sys_name}\"")
 
     def _wire(self):
-        # Set up self.vision
+        # Set up vision
         self._connect(["plant", "body_poses"], ["vision", "poses"])
         self._connect(["plant", "spatial_velocities"], ["vision", "vels"])
 
-        # Set up self.vision processor
+        # Set up vision processor
         self._connect_all_outputs("vision", "vis_proc")
 
-        # Set up self.proprioception
+        # Set up proprioception
         self._connect(
             self.plant.get_state_output_port(self.manipulator_instance),
             ["prop", "state"]
@@ -673,11 +671,14 @@ class Simulation:
         self._connect("adder", ["log", "tau_out"])
 
         # Visualization and logging
-        self.logger = LogVectorOutput(self.log_wrapper.get_output_port(), self.builder)
+        self.logger = LogVectorOutput(
+            self.log_wrapper.get_output_port(), self.builder)
 
         if self.meshcat is not None:
             meshcat_params = MeshcatVisualizerParams()
-            self.vis = MeshcatVisualizerCpp.AddToBuilder(self.builder, self.scene_graph.get_query_output_port(), self.meshcat, meshcat_params)
+            self.vis = MeshcatVisualizerCpp.AddToBuilder(
+                self.builder, self.scene_graph.get_query_output_port(),
+                self.meshcat, meshcat_params)
 
             self.end_effector_frame_vis.set_animation(self.vis.get_mutable_recording())
             self.link_frame_vis.set_animation(self.vis.get_mutable_recording())
