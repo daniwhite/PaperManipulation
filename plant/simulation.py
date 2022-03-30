@@ -74,7 +74,8 @@ class Simulation:
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
-            exit_when_folded=False, const_ff_Fn=5, timeout=None):
+            exit_when_folded=False, const_ff_Fn=5, timeout=None,
+            propioception_noise=0, vision_noise=0, force_noise=0):
         # System parameters
         if params is None:
             self.sys_consts = constants.nominal_sys_consts
@@ -89,6 +90,11 @@ class Simulation:
         self.impedance_stiffness = impedance_stiffness
         # TODO: better name?
         self.const_ff_Fn = const_ff_Fn
+
+        # Noise parameters
+        self.propioception_noise = propioception_noise
+        self.vision_noise = vision_noise
+        self.force_noise = force_noise
 
         # Other settings
         self.meshcat = meshcat
@@ -136,7 +142,7 @@ class Simulation:
         # Regex processing
         ## Remove objects we don't want to visualize
         objects_to_remove = [
-            # "VectorLogSink",
+            "VectorLogSink",
             # "log",
             "scene_graph",
         ]
@@ -158,7 +164,6 @@ class Simulation:
         
         ## Grab some handy variables
         plant_id = re.search(r'(\d+) .*plant', viz_str).group(1)
-        vision_id = re.search(r'(\d+) .*\bvision\b', viz_str).group(1)
 
         # Loop processing
         colored_edges = [
@@ -291,14 +296,26 @@ class Simulation:
             "vis_proc", 
             perception.vision.VisionProcessor(self.sys_consts, X_LJ_L=X_LJ_L)
         )
-        self.builder.AddNamedSystem(
-            "vision",
-            perception.vision.VisionSystem(
-                ll_idx=self.ll_idx,
-                contact_body_idx=self.contact_body_idx
-            )
+        vision_sys = perception.vision.VisionSystem(
+            ll_idx=self.ll_idx,
+            contact_body_idx=self.contact_body_idx
         )
-
+        self.builder.AddNamedSystem("vision_no_noise", vision_sys)
+        for i in range(vision_sys.num_output_ports()):
+            name = vision_sys.get_output_port(i).get_name()
+            # TODO: possibly break out more
+            if "L" in name:
+                noise = self.vision_noise
+            else:
+                noise = self.propioception_noise
+            self.builder.AddNamedSystem(
+                name + "_noise",
+                ctrl.aux.NoiseGenerator(3,noise)
+            )
+            self.builder.AddNamedSystem(
+                name + "_w_noise",
+                Adder(2,3)
+            )
 
         link_z = X_LJ_L.translation()[-1]
         z_thresh_offset = 2*link_z + self.sys_consts.h_L
@@ -330,7 +347,7 @@ class Simulation:
 
             # End effector visualization
             ee_frame_vis = visualization.FrameVisualizer(
-                name="end_effector", meshcat=self.meshcat)
+                name="end_effector__no_noise", meshcat=self.meshcat)
             self.builder.AddNamedSystem("end_effector_frame_vis", ee_frame_vis)
             ee_frame_vis.set_animation(self.vis.get_mutable_recording())
 
@@ -524,11 +541,17 @@ class Simulation:
 
     def _wire(self):
         # Set up vision
-        self._connect(["plant", "body_poses"], ["vision", "poses"])
-        self._connect(["plant", "spatial_velocities"], ["vision", "vels"])
+        self._connect(["plant", "body_poses"], ["vision_no_noise", "poses"])
+        self._connect(["plant", "spatial_velocities"],
+            ["vision_no_noise", "vels"])
 
         # Set up vision processor
-        self._connect_all_outputs("vision", "vis_proc")
+        vision_sys = self._get_system("vision_no_noise")
+        for i in range(vision_sys.num_output_ports()):
+            name = vision_sys.get_output_port(i).get_name()
+            self._connect(["vision_no_noise", name], [name + "_w_noise", 0])
+            self._connect(name + "_noise", [name + "_w_noise", 1])
+            self._connect(name + "_w_noise", ["vis_proc", name])
 
         # Set up proprioception
         self._connect(
@@ -564,13 +587,13 @@ class Simulation:
 
         # Set up visualization
         if self.meshcat is not None:
-            self._connect(["vision", "pose_M_translational"],
+            self._connect(["vision_no_noise", "pose_M_translational"],
                 ["end_effector_frame_vis", "pos"])
-            self._connect(["vision", "pose_M_rotational"],
+            self._connect(["vision_no_noise", "pose_M_rotational"],
                 ["end_effector_frame_vis", "rot"])
-            self._connect(["vision", "pose_L_translational"],
+            self._connect(["vision_no_noise", "pose_L_translational"],
                 ["link_frame_vis", "pos"])
-            self._connect(["vision", "pose_L_rotational"],
+            self._connect(["vision_no_noise", "pose_L_rotational"],
                 ["link_frame_vis", "rot"])
 
         if (self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS):
@@ -579,11 +602,11 @@ class Simulation:
                 "vis_proc", "fold_ctrl", skipped_ports=skipped_ports)
 
             self._connect(
-                ["vision", "pose_L_rotational"],
+                ["pose_L_rotational_w_noise", "pose_L_rotational"],
                 ["fold_ctrl", "pose_L_rotational"]
             )
             self._connect(
-                ["vision", "pose_L_translational"],
+                ["pose_L_translational_w_noise", "pose_L_translational"],
                 ["fold_ctrl", "pose_L_translational"]
             )
 
@@ -600,8 +623,10 @@ class Simulation:
                     ["vis_proc", "T_hat"], ["desired_position_XYZ", "T_hat"])
                 self._connect(
                     ["vis_proc", "N_hat"], ["desired_position_XYZ", "N_hat"])
+                # This should be w/o noise, because we're just converting frames
+                # TODO: double check
                 self._connect(
-                    ["vision", "pose_L_translational"],
+                    ["pose_L_translational_no_noise", "pose_L_translational"],
                     ["desired_pos_adder", 0])
                 self._connect(
                     ["desired_position_XYZ", "XYZ"],
@@ -619,7 +644,7 @@ class Simulation:
         elif (self.ctrl_paradigm == CtrlParadigm.IMPEDANCE):
             for k in ["pose_M_translational", "pose_M_rotational",
                     "vel_M_translational", "vel_M_rotational"]:
-                self._connect(["vision", k], ["fold_ctrl", k])
+                self._connect(k + "_w_noise", ["fold_ctrl", k])
             for k in ["M", "J", "Jdot_qdot", "Cv"]:
                 self._connect(["prop", k], ["fold_ctrl", k])
             self._connect("K_gen", ["fold_ctrl", "K"])
@@ -654,7 +679,10 @@ class Simulation:
             if type(self._get_system("setpoint_gen")) is \
                     ctrl.impedance_generators.setpoint_generators.\
                         link_feedback.LinkFeedbackSetpointGenerator:
-                self._connect_all_inputs("vision", "setpoint_gen")
+                self._connect("pose_L_translational_w_noise",
+                    ["setpoint_gen", "pose_L_translational"])
+                self._connect("pose_L_rotational_w_noise",
+                    ["setpoint_gen", "pose_L_rotational"])
 
         # Controller connections
         ## Controller mux
@@ -673,7 +701,8 @@ class Simulation:
 
         ## Wire pre contact control
         self._connect(["prop", "J"], ["pre_contact_ctrl", "J"])
-        self._connect(["vision", "vel_M_translational"], ["pre_contact_ctrl", "v_M"])
+        self._connect("vel_M_translational_w_noise",
+            ["pre_contact_ctrl", "v_M"])
 
         ## Set up joint centering control
         self._connect_all_inputs("prop", "joint_centering_ctrl")

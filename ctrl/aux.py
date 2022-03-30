@@ -7,6 +7,8 @@ import pydrake  # pylint: disable=import-error
 from pydrake.all import ContactResults, RigidTransform
 
 import numpy as np
+from numpy.random import default_rng
+
 import plant.manipulator as manipulator
 from plant.paper import settling_time
 from config import hinge_rotation_axis
@@ -295,3 +297,19 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
 
     def set_start_time(self):
         self.start_time = time.time()
+
+
+class NoiseGenerator(pydrake.systems.framework.LeafSystem):
+    def __init__(self, size, scale):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        self.size = size
+        self.scale = scale
+        self.rng = default_rng()
+
+        self.DeclareVectorOutputPort(
+            "out",
+            pydrake.systems.framework.BasicVector(size),
+            self.CalcOutput)
+
+    def CalcOutput(self, context, output):
+        output.SetFromVector(self.rng.standard_normal(self.size)*self.scale)
