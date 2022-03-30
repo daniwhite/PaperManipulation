@@ -69,13 +69,17 @@ class SweepRunner:
             sim_args[self.sweep_arg] = val
         sim = plant.simulation.Simulation(**sim_args)
 
-        print("[ {} = {:5.2f} ] Starting".format(self.sweep_arg, val))
+        try:
+            sweep_label = "{:5.2f}".format(val)
+        except TypeError:
+            sweep_label = str(val)
+        print("[ {} = {} ] Starting".format(self.sweep_arg, sweep_label))
 
         # Run sim
         t_start_ = time.time()
         log = sim.run_sim()
-        print("[ {} = {:5.2f} ] Total time: {:.2f}".format(
-            self.sweep_arg, val, time.time() - t_start_))
+        print("[ {} = {} ] Total time: {:.2f}".format(
+            self.sweep_arg, sweep_label, time.time() - t_start_))
 
         # Grab output var
         output_var = self.proc_func(sim, log)

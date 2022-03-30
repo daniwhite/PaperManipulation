@@ -7,6 +7,7 @@ from collections import defaultdict
 
 # Drake imports
 import pydrake
+from pydrake.all import RollPitchYaw, Quaternion, AngleAxis
 
 class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
     def __init__(self, sys_consts: SystemConstants):
@@ -114,6 +115,25 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
         d_x = np.expand_dims(np.array(list(omega_M) + list(v_M)), 1)
         x = np.expand_dims(np.array(list(rot_vec_M) + list(p_M)), 1)
 
+        # K_flat is N/m, since F = kx and F is N and x is m
+        # ff_wrench is N
+        # so ff_wrench / K_flat is (N) / (N/m) = N * m/N = ,
+        ff_diff = ff_wrench / K_flat
+        x0 += np.expand_dims(ff_diff, 1)
+
+        pos_error = np.zeros((6, 1))
+        pos_error[3:] = x0[3:] - x[3:]
+        # Quaternion math
+        # Copied from this file in franka_ros_interface:
+        # franka_ros_controllers/src/cartesian_impedance_controller.cpp
+        quat0 = RollPitchYaw(x0[:3]).ToQuaternion()
+        quat = RollPitchYaw(x[:3]).ToQuaternion()
+        if quat0.wxyz().dot(quat.wxyz()) < 0.0:
+            quat = Quaternion(quat.wxyz()*-1)
+        error_quat = quat.multiply(quat0.inverse())
+        error_aa = AngleAxis(error_quat)
+        pos_error[:3] = -np.expand_dims(error_aa.axis()*error_aa.angle(), 1)
+
         Mq = M
         # TODO: Should this be pinv? (Copying from Sangbae's notes)
         Mx = np.linalg.pinv(
@@ -126,17 +146,11 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
                 )
             )
 
-        # K_flat is N/m, since F = kx and F is N and x is m
-        # ff_wrench is N
-        # so ff_wrench / K_flat is (N) / (N/m) = N * m/N = ,
-        ff_diff = ff_wrench / K_flat
-        x0 += np.expand_dims(ff_diff, 1)
-    
         # ===================== CALCULATE CONTROL OUTPUTS =====================
         Vq = Cv
         compliance_terms = np.matmul(D, dx0 - d_x) \
             + \
-            np.matmul(K, x0 - x)
+            np.matmul(K, pos_error)
         cancelation_terms = np.matmul(
             Mx,
             np.matmul(

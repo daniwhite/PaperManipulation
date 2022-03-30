@@ -218,9 +218,11 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
                     (body_B_is_contact_body and body_A_is_last_link):
                 contact_force = point_pair_contact_info.contact_force()
                 nhat = point_pair_contact_info.point_pair().nhat_BA_W
-                
-                F_N += np.dot(contact_force, nhat)
-        F_N = abs(F_N)
+                F_N_ = np.dot(contact_force, nhat)
+                if body_B_is_contact_body:
+                    F_N_ *= -1
+                F_N += F_N_
+        F_N = max(0,F_N)
         
         output.SetFromVector([F_N])
 
