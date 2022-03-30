@@ -61,6 +61,7 @@ default_port_noise_map = {
     "vel_M_translational": 0,
     "q": 0,
     "v": 0,
+    "Fn": 0
 }
 
 # Enums
@@ -463,11 +464,19 @@ class Simulation:
                     NHatForceCompensationSource.MEASURED:
                 self.builder.AddNamedSystem("const_ff_Fn_src", const_ff_Fn_src)
                 self.builder.AddNamedSystem(
-                    "measured_ff_Fn_src",
+                    "measured_ff_Fn_no_noise",
                     ctrl.aux.NormalForceSelector(
                         ll_idx=self.ll_idx,
                         contact_body_idx=self.contact_body_idx,
                     )
+                )
+                self.builder.AddNamedSystem(
+                    "measured_ff_Fn_noise",
+                    ctrl.aux.NoiseGenerator(1, self.noise["Fn"])
+                )
+                self.builder.AddNamedSystem(
+                    "measured_ff_Fn_w_noise",
+                    Adder(2, 1)
                 )
                 ff_force_N = Adder(2, 1)
             elif self.n_hat_force_compensation_source == \
@@ -694,8 +703,12 @@ class Simulation:
                 if self.n_hat_force_compensation_source == \
                         NHatForceCompensationSource.MEASURED:
                     self._connect(["plant", "contact_results"],
-                        "measured_ff_Fn_src")
-                    self._connect("measured_ff_Fn_src", ["ff_force_N", 0])
+                        "measured_ff_Fn_no_noise")
+                    self._connect("measured_ff_Fn_no_noise",
+                        ["measured_ff_Fn_w_noise", 0])
+                    self._connect("measured_ff_Fn_noise",
+                        ["measured_ff_Fn_w_noise", 1])
+                    self._connect("measured_ff_Fn_w_noise", ["ff_force_N", 0])
                     self._connect("const_ff_Fn_src", ["ff_force_N", 1])
             self._connect("ff_wrench_XYZ", ["fold_ctrl", "feedforward_wrench"])
             

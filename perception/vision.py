@@ -112,7 +112,7 @@ class VisionProcessor(pydrake.systems.framework.LeafSystem):
         # dd_d_theta_L dynamics
         self.X_LJ_L = X_LJ_L
 
-        self.d_N_thresh = 5e-4
+        self.d_N_thresh = 5e-3
         self.t_contact_start = None
 
         self.DeclareVectorInputPort(
