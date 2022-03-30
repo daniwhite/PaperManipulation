@@ -11,6 +11,7 @@ import numpy as np
 from dataclasses import dataclass
 import enum
 import re
+import copy
 
 import config
 
@@ -49,6 +50,18 @@ class IndependentParams:
     mu: float
     r: float
 
+default_port_noise_map = {
+    "pose_L_rotational": 0,
+    "pose_L_translational": 0,
+    "vel_L_rotational": 0,
+    "vel_L_translational": 0,
+    "pose_M_rotational": 0,
+    "pose_M_translational": 0,
+    "vel_M_rotational": 0,
+    "vel_M_translational": 0,
+    "q": 0,
+    "v": 0,
+}
 
 # Enums
 class CtrlParadigm(enum.Enum):
@@ -75,7 +88,7 @@ class Simulation:
             n_hat_force_compensation_source: NHatForceCompensationSource,
             params=None, meshcat=None, impedance_stiffness=None,
             exit_when_folded=False, const_ff_Fn=5, timeout=None,
-            propioception_noise=0, vision_noise=0, force_noise=0):
+            noise=default_port_noise_map):
         # System parameters
         if params is None:
             self.sys_consts = constants.nominal_sys_consts
@@ -92,9 +105,11 @@ class Simulation:
         self.const_ff_Fn = const_ff_Fn
 
         # Noise parameters
-        self.propioception_noise = propioception_noise
-        self.vision_noise = vision_noise
-        self.force_noise = force_noise
+        self.noise = copy.deepcopy(noise)
+        for k, v in default_port_noise_map.items():
+            if not (k in self.noise.keys()):
+                self.noise[k] = v
+        assert len(self.noise.keys() - default_port_noise_map.keys()) == 0
 
         # Other settings
         self.meshcat = meshcat
@@ -278,7 +293,24 @@ class Simulation:
         plant (so they can be called after `plant.Finalize()`) that are also
         not controllers.
         """
-
+        self.builder.AddNamedSystem(
+            "q_noise",
+            ctrl.aux.NoiseGenerator(
+            manipulator.data['nq'], self.noise['q'])
+        )
+        self.builder.AddNamedSystem(
+            "v_noise",
+            ctrl.aux.NoiseGenerator(
+            manipulator.data['nq'], self.noise['v'])
+        )
+        self.builder.AddNamedSystem(
+            "qv_noise",
+            Multiplexer([manipulator.data['nq'], manipulator.data['nq']])
+        )
+        self.builder.AddNamedSystem(
+            "qv_noise_adder",
+            Adder(2, 2*manipulator.data['nq'])
+        )
         # Proprioception
         self.builder.AddNamedSystem(
             "prop",
@@ -303,11 +335,7 @@ class Simulation:
         self.builder.AddNamedSystem("vision_no_noise", vision_sys)
         for i in range(vision_sys.num_output_ports()):
             name = vision_sys.get_output_port(i).get_name()
-            # TODO: possibly break out more
-            if "L" in name:
-                noise = self.vision_noise
-            else:
-                noise = self.propioception_noise
+            noise = self.noise[name]
             self.builder.AddNamedSystem(
                 name + "_noise",
                 ctrl.aux.NoiseGenerator(3,noise)
@@ -554,10 +582,12 @@ class Simulation:
             self._connect(name + "_w_noise", ["vis_proc", name])
 
         # Set up proprioception
-        self._connect(
-            self.plant.get_state_output_port(self.manipulator_instance),
-            ["prop", "state"]
-        )
+        self._connect("q_noise", ["qv_noise", 0])
+        self._connect("v_noise", ["qv_noise", 1])
+        self._connect("qv_noise", ["qv_noise_adder", 0])
+        self._connect(self.plant.get_state_output_port(
+            self.manipulator_instance), ["qv_noise_adder", 1])
+        self._connect("qv_noise_adder", ["prop", "state"])
 
         # Set up logger
         self._connect(["plant", "body_poses"], ["log", "poses"])
