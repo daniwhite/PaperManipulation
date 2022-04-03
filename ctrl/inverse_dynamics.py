@@ -15,6 +15,7 @@ from pydrake.all import MathematicalProgram, eq, Solve,RigidTransform, RotationM
 # Other libraries
 from collections import defaultdict
 
+PRINT_CONSTRAINTS = False
 
 class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
     def __init__(self, options, sys_consts: SystemConstants):
@@ -497,7 +498,8 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             self.constraint_data['t'] = []
             for c in prog.GetAllConstraints():
                 c_name = c.evaluator().get_description()
-                print(c_name)
+                if PRINT_CONSTRAINTS:
+                    print(c_name)
                 # Watch out for accidental duplicated names
                 assert c_name not in self.constraint_data.keys()
 
@@ -524,38 +526,38 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         result = Solve(prog)
         if result.is_success():
             if not self.printed_yet:
-
-                print("==============================")
-                print("ALL CONSTRAINTS")
-                print("------------------------------")
-                for c in prog.GetAllConstraints():
-                    print(c.evaluator().get_description())
-                    print(c)
-                    print(c.evaluator().upper_bound())
-                    print(c.evaluator().lower_bound())
-                    print(c.evaluator().A())
-                    print("evaluator:", c.evaluator())
-                    print("variables:", c.variables())
-                    print()
-                print("==============================")
-                print("CONSTRAINTS BY VARIABLE")
-                for var in prog.decision_variables():
+                if PRINT_CONSTRAINTS:
+                    print("==============================")
+                    print("ALL CONSTRAINTS")
                     print("------------------------------")
-                    print(var.get_name())
-                    v_num_c = 0
-                    print(" ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")
                     for c in prog.GetAllConstraints():
-                        for v_ in c.variables():
-                            if var.get_name() == v_.get_name():
-                                print(c.evaluator().get_description())
-                                v_num_c += 1
-                    print(" ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")
-                    print("Total constraints for {}: {}".format(
-                        var.get_name(), v_num_c
-                    ))
-            
-                print("Num constraints:", len(prog.GetAllConstraints()))
-                print("Total unknowns:", len(prog.decision_variables()))
+                        print(c.evaluator().get_description())
+                        print(c)
+                        print(c.evaluator().upper_bound())
+                        print(c.evaluator().lower_bound())
+                        print(c.evaluator().A())
+                        print("evaluator:", c.evaluator())
+                        print("variables:", c.variables())
+                        print()
+                    print("==============================")
+                    print("CONSTRAINTS BY VARIABLE")
+                    for var in prog.decision_variables():
+                        print("------------------------------")
+                        print(var.get_name())
+                        v_num_c = 0
+                        print(" ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")
+                        for c in prog.GetAllConstraints():
+                            for v_ in c.variables():
+                                if var.get_name() == v_.get_name():
+                                    print(c.evaluator().get_description())
+                                    v_num_c += 1
+                        print(" ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")
+                        print("Total constraints for {}: {}".format(
+                            var.get_name(), v_num_c
+                        ))
+                
+                    print("Num constraints:", len(prog.GetAllConstraints()))
+                    print("Total unknowns:", len(prog.decision_variables()))
             tau_ctrl_result = []
             for i in range(self.nq):
                 tau_ctrl_result.append(result.GetSolution()[

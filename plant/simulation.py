@@ -87,14 +87,19 @@ class Simulation:
     def __init__(self,
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
-            params=None, meshcat=None, impedance_stiffness=None,
-            exit_when_folded=False, const_ff_Fn=5, timeout=None,
-            noise=default_port_noise_map):
+            sim_params=None, ctrl_params=None, meshcat=None,
+            impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
+            timeout=None, noise=default_port_noise_map):
         # System parameters
-        if params is None:
-            self.sys_consts = constants.nominal_sys_consts
+        # Sim is used for simulation. Ctrl is used for everything else
+        if sim_params is None:
+            self.sim_sys_consts = constants.nominal_sys_consts
         else: 
-            self.sys_consts = params
+            self.sim_sys_consts = sim_params
+        if ctrl_params is None:
+            self.ctrl_sys_consts = copy.deepcopy(self.sim_sys_consts)
+        else: 
+            self.ctrl_sys_consts = ctrl_params
 
         # Controller parameters
         self.ctrl_paradigm = ctrl_paradigm
@@ -135,12 +140,18 @@ class Simulation:
 
         self._add_mbp_bodies()
 
-        # Init sys_consts
-        self.sys_consts.I_L = self.plant.get_body(
+        # Init sim_sys_consts
+        self.sim_sys_consts.I_L = self.plant.get_body(
             BodyIndex(self.paper.link_idxs[-1])).default_rotational_inertia(
                 ).CalcPrincipalMomentsOfInertia()[0]
-        self.sys_consts.v_stiction = constants.v_stiction
-        self.sys_consts.g = self.plant.gravity_field().gravity_vector()[-1]*-1
+        self.sim_sys_consts.v_stiction = constants.v_stiction
+        self.sim_sys_consts.g = self.plant.gravity_field().gravity_vector()[-1]*-1
+        # Init ctrl_sys_consts
+        self.ctrl_sys_consts.I_L = self.plant.get_body(
+            BodyIndex(self.paper.link_idxs[-1])).default_rotational_inertia(
+                ).CalcPrincipalMomentsOfInertia()[0]
+        self.ctrl_sys_consts.v_stiction = constants.v_stiction
+        self.ctrl_sys_consts.g = self.plant.gravity_field().gravity_vector()[-1]*-1
 
         contact_body = self.plant.GetBodyByName(
             manipulator.data["contact_body_name"])
@@ -275,15 +286,16 @@ class Simulation:
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
             default_joint_angle=0,
-            k_J=self.sys_consts.k_J, b_J=self.sys_consts.b_J,
-            m_L=self.sys_consts.m_L, w_L=self.sys_consts.w_L,
-            h_L=self.sys_consts.h_L, mu=self.sys_consts.mu)
+            k_J=self.sim_sys_consts.k_J, b_J=self.sim_sys_consts.b_J,
+            m_L=self.sim_sys_consts.m_L, w_L=self.sim_sys_consts.w_L,
+            h_L=self.sim_sys_consts.h_L, mu=self.sim_sys_consts.mu)
         self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
         self.manipulator_instance = manipulator.data["add_plant_function"](
-            plant=self.plant, m_M=self.sys_consts.m_M, r=self.sys_consts.r,
-            mu=self.sys_consts.mu, scene_graph=self.scene_graph)
+            plant=self.plant, m_M=self.sim_sys_consts.m_M,
+            r=self.sim_sys_consts.r, mu=self.sim_sys_consts.mu,
+            scene_graph=self.scene_graph)
 
         self.plant.Finalize()
 
@@ -316,19 +328,18 @@ class Simulation:
         self.builder.AddNamedSystem(
             "prop",
             perception.proprioception.ProprioceptionSystem(
-                m_M=self.sys_consts.m_M,
-                r=self.sys_consts.r,
-                mu=self.sys_consts.mu
+                m_M=self.ctrl_sys_consts.m_M,
+                r=self.ctrl_sys_consts.r,
+                mu=self.ctrl_sys_consts.mu
             )
         )
 
         # Vision
         X_LJ_L = self.paper.joints[0].frame_on_child(
             ).GetFixedPoseInBodyFrame()
-        self.builder.AddNamedSystem(
-            "vis_proc", 
-            perception.vision.VisionProcessor(self.sys_consts, X_LJ_L=X_LJ_L)
-        )
+        self.vision_processor = perception.vision.VisionProcessor(
+            self.ctrl_sys_consts, X_LJ_L=X_LJ_L)
+        self.builder.AddNamedSystem("vis_proc", self.vision_processor)
         vision_sys = perception.vision.VisionSystem(
             ll_idx=self.ll_idx,
             contact_body_idx=self.contact_body_idx
@@ -347,7 +358,7 @@ class Simulation:
             )
 
         link_z = X_LJ_L.translation()[-1]
-        z_thresh_offset = 2*link_z + self.sys_consts.h_L
+        z_thresh_offset = 2*link_z + self.sim_sys_consts.h_L
         # Logger
         self.log_wrapper = LogWrapper(
             self.plant.num_bodies(),
@@ -392,7 +403,7 @@ class Simulation:
             'measure_joint_wrench': False,
         }
         self.fold_ctrl = ctrl.inverse_dynamics.InverseDynamicsController(
-            sys_consts=self.sys_consts, options=options)
+            sys_consts=self.ctrl_sys_consts, options=options)
 
         if self.meshcat is not None:
             self.builder.AddNamedSystem(
@@ -407,7 +418,7 @@ class Simulation:
 
     def _add_kinematic_ctrl(self):
         self.fold_ctrl = ctrl.kinematic_ctrlr.KinematicController(
-            sys_consts=self.sys_consts)
+            sys_consts=self.ctrl_sys_consts)
 
 
     def _add_impedance_ctrl(self):
@@ -419,10 +430,10 @@ class Simulation:
         elif self.impedance_type == ImpedanceType.LINK_FB:
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     link_feedback.LinkFeedbackSetpointGenerator(
-                        sys_consts=self.sys_consts)
+                        sys_consts=self.ctrl_sys_consts)
         
         self.fold_ctrl = ctrl.cartesian_impedance.CartesianImpedanceController(
-            sys_consts=self.sys_consts)
+            sys_consts=self.ctrl_sys_consts)
 
         # Order is [theta_x, theta_y, theta_z, x, y, z]
         if self.impedance_stiffness is None:
@@ -641,11 +652,11 @@ class Simulation:
                 "vis_proc", "fold_ctrl", skipped_ports=skipped_ports)
 
             self._connect(
-                ["pose_L_rotational_w_noise", "pose_L_rotational"],
+                "pose_L_rotational_w_noise",
                 ["fold_ctrl", "pose_L_rotational"]
             )
             self._connect(
-                ["pose_L_translational_w_noise", "pose_L_translational"],
+                "pose_L_translational_w_noise",
                 ["fold_ctrl", "pose_L_translational"]
             )
 
@@ -665,7 +676,7 @@ class Simulation:
                 # This should be w/o noise, because we're just converting frames
                 # TODO: double check
                 self._connect(
-                    ["pose_L_translational_no_noise", "pose_L_translational"],
+                    ["vision_no_noise", "pose_L_translational"],
                     ["desired_pos_adder", 0])
                 self._connect(
                     ["desired_position_XYZ", "XYZ"],
