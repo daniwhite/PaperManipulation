@@ -4,8 +4,6 @@ import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BasicVector
 import numpy as np
 import plant.manipulator as manipulator
-import sim_exceptions
-import time
 
 PRINT_CONTACTS = False
 

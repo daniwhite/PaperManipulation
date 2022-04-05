@@ -23,9 +23,8 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
 
         self.sys_consts = sys_consts
         self.debug = defaultdict(list)
-        # orientation_map = np.load(config.base_path +
-        #     "orientation_map_{}_links.npz".format(num_links.value))
-        orientation_map = np.load(config.base_path + "orientation_map.npz")
+        orientation_map = np.load(config.base_path +
+            "orientation_map_{}_links.npz".format(num_links.value))
         self.get_theta_Z_func = scipy.interpolate.interp1d(
             orientation_map['theta_Ls'],
             orientation_map['theta_L_EE'],

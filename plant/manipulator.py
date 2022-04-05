@@ -42,9 +42,8 @@ X_body7_sphere = X_body7_flange.multiply(X_flange_sphere)
 
 def setArmPositions(diagram, diagram_context, plant, manipulator_instance,
         num_links):
-    # q0 = np.load(config.base_path + "starting_q_{}_links.npz".format(
-    #     num_links.value))['starting_q']
-    q0 = np.load(config.base_path + "starting_q.npz")['starting_q']
+    q0 = np.load(config.base_path + "starting_q_{}_links.npz".format(
+        num_links.value))['starting_q']
 
     plant_context = diagram.GetMutableSubsystemContext(plant, diagram_context)
     plant.SetPositions(plant_context, manipulator_instance, q0)

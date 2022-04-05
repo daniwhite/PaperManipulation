@@ -18,9 +18,8 @@ class OfflineTrajLoader(pydrake.systems.framework.LeafSystem):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # System constants/parameters
 
-        # traj_npz = np.load(config.base_path + \
-        #     "x0s_sim_{}_links.npz".format(num_links.value))
-        traj_npz = np.load(config.base_path + "x0s_sim.npz")
+        traj_npz = np.load(config.base_path + \
+            "x0s_sim_{}_links.npz".format(num_links.value))
         self.t = traj_npz['ts']
         self.x0s = traj_npz['poses']
         self._calc_x0 = scipy.interpolate.interp1d(self.t, self.x0s)
