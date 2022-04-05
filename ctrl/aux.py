@@ -277,14 +277,16 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
             self.last_contact_time = context.get_time()
 
         if self.exit_when_folded:
-            if (p_LL[-1] < z_thresh) and (theta_L > np.pi) and in_contact:
-                raise sim_exceptions.SimTaskComplete
-            if abs(d_theta_L) < self.d_theta_L_thresh:
-                if self.start_t__d_theta_L_below_thresh is None:
-                    self.start_t__d_theta_L_below_thresh = context.get_time()
-                if (context.get_time() - self.start_t__d_theta_L_below_thresh \
-                        > 0.5):
-                    raise sim_exceptions.SimStalled
+            if in_contact:
+                if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
+                    raise sim_exceptions.SimTaskComplete
+                if abs(d_theta_L) < self.d_theta_L_thresh:
+                    if self.start_t__d_theta_L_below_thresh is None:
+                        self.start_t__d_theta_L_below_thresh = \
+                            context.get_time()
+                    if (context.get_time() - \
+                            self.start_t__d_theta_L_below_thresh > 0.5):
+                        raise sim_exceptions.SimStalled
             else:
                 self.start_t__d_theta_L_below_thresh = None
             if self.last_contact_time is not None:
