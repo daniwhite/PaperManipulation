@@ -14,7 +14,7 @@ class OfflineTrajLoader(pydrake.systems.framework.LeafSystem):
     """
     Load a Cartesian endpoint trajectory and interpolate it through time.
     """
-    def __init__(self):
+    def __init__(self, speed_factor=1):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # System constants/parameters
 
@@ -22,6 +22,10 @@ class OfflineTrajLoader(pydrake.systems.framework.LeafSystem):
         self.t = traj_npz['ts']
         self.x0s = traj_npz['poses']
         self._calc_x0 = scipy.interpolate.interp1d(self.t, self.x0s)
+
+        # We want to generate the trajectory for the Panda in the real world,
+        # but we want to run it much more quickly often in sim.
+        self.speed_factor = speed_factor
 
         # =========================== DECLARE INPUTS ==========================
         # No inputs
@@ -41,7 +45,7 @@ class OfflineTrajLoader(pydrake.systems.framework.LeafSystem):
 
 
     def calc_x0(self, context, output):
-        x0 = self._calc_x0(context.get_time())
+        x0 = self._calc_x0(context.get_time()*self.speed_factor)
         output.SetFromVector(x0)
 
 
