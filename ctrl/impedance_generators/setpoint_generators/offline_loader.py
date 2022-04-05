@@ -14,10 +14,12 @@ class OfflineTrajLoader(pydrake.systems.framework.LeafSystem):
     """
     Load a Cartesian endpoint trajectory and interpolate it through time.
     """
-    def __init__(self, speed_factor=1):
+    def __init__(self,  num_links: config.NumLinks, speed_factor=1):
         pydrake.systems.framework.LeafSystem.__init__(self)
         # System constants/parameters
 
+        # traj_npz = np.load(config.base_path + \
+        #     "x0s_sim_{}_links.npz".format(num_links.value))
         traj_npz = np.load(config.base_path + "x0s_sim.npz")
         self.t = traj_npz['ts']
         self.x0s = traj_npz['poses']

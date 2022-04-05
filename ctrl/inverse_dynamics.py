@@ -18,7 +18,8 @@ from collections import defaultdict
 PRINT_CONSTRAINTS = False
 
 class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
-    def __init__(self, options, sys_consts: SystemConstants):
+    def __init__(self, options, sys_consts: SystemConstants,
+            num_links: config.NumLinks):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.last_theta_MX = None
@@ -35,6 +36,8 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         self.printed_yet = False
 
         # Copied over stuff from impedance control
+        # orientation_map = np.load(config.base_path +
+        #     "orientation_map_{}_links.npz".format(num_links.value))
         orientation_map = np.load(config.base_path + "orientation_map.npz")
         self.get_theta_Z_func = scipy.interpolate.interp1d(
             orientation_map['theta_Ls'],

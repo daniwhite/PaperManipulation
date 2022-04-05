@@ -17,11 +17,14 @@ class LinkFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
     Generates an impedance trajectory relative to the edge of the link.
     joint.
     """
-    def __init__(self, sys_consts: SystemConstants):
+    def __init__(self, sys_consts: SystemConstants,
+            num_links: config.NumLinks):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.sys_consts = sys_consts
         self.debug = defaultdict(list)
+        # orientation_map = np.load(config.base_path +
+        #     "orientation_map_{}_links.npz".format(num_links.value))
         orientation_map = np.load(config.base_path + "orientation_map.npz")
         self.get_theta_Z_func = scipy.interpolate.interp1d(
             orientation_map['theta_Ls'],

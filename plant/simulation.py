@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import enum
 import re
 import copy
-from enum import Enum
 
 import plant.pedestal as pedestal
 import plant.manipulator as manipulator
@@ -36,6 +35,7 @@ import constants
 
 import visualization
 
+import config
 
 # "Dataclasses" (= structs)
 @dataclass
@@ -82,23 +82,19 @@ class NHatForceCompensationSource(enum.Enum):
     NONE = enum.auto()
 
 
-class NumLinks(Enum):
-    TWO = 2
-    FOUR = 4
-
 class Simulation:
     # ============================ PUBLIC FUNCTIONS ===========================
     def __init__(self,
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
-            num_links: NumLinks, DT, TSPAN,
+            num_links: config.NumLinks, DT, TSPAN,
             sim_params=None, ctrl_params=None, meshcat=None,
             impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
             timeout=None, noise=default_port_noise_map):
         # System parameters
         # Sim is used for simulation. Ctrl is used for everything else
         if sim_params is None:
-            self.sim_sys_consts = constants.nominal_sys_consts
+            self.sim_sys_consts = constants.nominal_sys_consts(num_links)
         else: 
             self.sim_sys_consts = sim_params
         if ctrl_params is None:
@@ -125,6 +121,7 @@ class Simulation:
         # Other settings
         self.meshcat = meshcat
         self.TSPAN = TSPAN
+        self.num_links = num_links
 
         # Verify controller config is valid
         assert (impedance_type == ImpedanceType.NONE) or \
@@ -144,7 +141,7 @@ class Simulation:
         self.plant.set_stiction_tolerance(constants.v_stiction)
         self.plant.set_penetration_allowance(0.001)
 
-        self._add_mbp_bodies(num_links)
+        self._add_mbp_bodies()
 
         # Init sim_sys_consts
         self.sim_sys_consts.I_L = self.plant.get_body(
@@ -280,18 +277,14 @@ class Simulation:
 
     # =========================== PRIVATE FUNCTIONS ===========================
 
-    def _add_mbp_bodies(self, num_links):
+    def _add_mbp_bodies(self):
         """
         Initialize and add to builder systems any systems that introduce new
         bodies to the multibody plant, so this needs to be called before
         `plant.Finalize()`, which is called at the end of the function.
         """
         # Pedestal
-        if num_links == NumLinks.TWO:
-            pedestal_x_dim = constants.PEDESTAL_X_DIM__2_LINKS
-        elif num_links == NumLinks.FOUR:
-            pedestal_x_dim = constants.PEDESTAL_X_DIM__4_LINKS
-        pedestal_instance = pedestal.AddPedestal(self.plant, pedestal_x_dim)
+        pedestal_instance = pedestal.AddPedestal(self.plant, self.num_links)
 
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
@@ -299,7 +292,7 @@ class Simulation:
             k_J=self.sim_sys_consts.k_J, b_J=self.sim_sys_consts.b_J,
             m_L=self.sim_sys_consts.m_L, w_L=self.sim_sys_consts.w_L,
             h_L=self.sim_sys_consts.h_L, mu=self.sim_sys_consts.mu,
-            num_links=num_links)
+            num_links=self.num_links)
         self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
@@ -414,7 +407,8 @@ class Simulation:
             'measure_joint_wrench': False,
         }
         self.fold_ctrl = ctrl.inverse_dynamics.InverseDynamicsController(
-            sys_consts=self.ctrl_sys_consts, options=options)
+            sys_consts=self.ctrl_sys_consts, options=options,
+            num_links=self.num_links)
 
         if self.meshcat is not None:
             self.builder.AddNamedSystem(
@@ -437,11 +431,13 @@ class Simulation:
 
         if self.impedance_type == ImpedanceType.OFFLINE_TRAJ:
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
-                    offline_loader.OfflineTrajLoader(10)
+                    offline_loader.OfflineTrajLoader(num_links=self.num_links,
+                        speed_factor=10)
         elif self.impedance_type == ImpedanceType.LINK_FB:
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     link_feedback.LinkFeedbackSetpointGenerator(
-                        sys_consts=self.ctrl_sys_consts)
+                        sys_consts=self.ctrl_sys_consts,
+                        num_links=self.num_links)
         
         self.fold_ctrl = ctrl.cartesian_impedance.CartesianImpedanceController(
             sys_consts=self.ctrl_sys_consts)
@@ -524,8 +520,9 @@ class Simulation:
             Gain(-1, manipulator.data['nq']))
         self.builder.AddNamedSystem("joint_centering_ctrl",
             ctrl.aux.JointCenteringCtrl())
+        self.pre_contact_ctrl = ctrl.aux.PreContactCtrl()
         self.builder.AddNamedSystem("pre_contact_ctrl",
-            ctrl.aux.PreContactCtrl())
+            self.pre_contact_ctrl)
         self.builder.AddNamedSystem("ctrl_selector", ctrl.aux.CtrlSelector())
 
         if DT > 0:
@@ -537,7 +534,7 @@ class Simulation:
         self.diagram_context = self.diagram.CreateDefaultContext()
         manipulator.data['set_positions'](
             self.diagram, self.diagram_context, self.plant,
-            self.manipulator_instance)
+            self.manipulator_instance, self.num_links)
         self.paper.set_positions(self.diagram, self.diagram_context)
 
 

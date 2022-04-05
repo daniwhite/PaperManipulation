@@ -5,7 +5,9 @@ import numpy as np
 import pydrake
 from pydrake.all import RigidTransform, RotationMatrix
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
+import config
 
+import constants
 from constants import \
     THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M
 
@@ -13,14 +15,17 @@ PEDESTAL_BASE_Z_DIM = 5*IN_TO_M
 PEDESTAL_Y_DIM = PLYWOOD_LENGTH
 PEDESTAL_Z_DIM = PLYWOOD_LENGTH + PEDESTAL_BASE_Z_DIM
 
-PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load("pedestal_xyz.npz")['pedestal_xyz']
-
 pedestal_base_name = "pedestal_bottom_body"
 
-def AddPedestal(plant, pedestal_x_dim, weld_base=True):
+def AddPedestal(plant, num_links:config.NumLinks, weld_base=True):
     """
     Creates the pedestal.
     """
+    # PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load(
+    #     "pedestal_xyz_{}_links.npz".format(num_links.value))['pedestal_xyz']
+    PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load(
+        "pedestal_xyz.npz")['pedestal_xyz']
+    pedestal_x_dim = constants.PEDESTAL_X_DIM(num_links)
 
     pedestal_instance = plant.AddModelInstance("pedestal_base")
 
