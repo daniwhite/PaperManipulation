@@ -12,8 +12,7 @@ from dataclasses import dataclass
 import enum
 import re
 import copy
-
-import config
+from enum import Enum
 
 import plant.pedestal as pedestal
 import plant.manipulator as manipulator
@@ -82,11 +81,17 @@ class NHatForceCompensationSource(enum.Enum):
     CONSTANT = enum.auto()
     NONE = enum.auto()
 
+
+class NumLinks(Enum):
+    TWO = 2
+    FOUR = 4
+
 class Simulation:
     # ============================ PUBLIC FUNCTIONS ===========================
     def __init__(self,
             ctrl_paradigm: CtrlParadigm, impedance_type: ImpedanceType,
             n_hat_force_compensation_source: NHatForceCompensationSource,
+            num_links: NumLinks, DT, TSPAN,
             sim_params=None, ctrl_params=None, meshcat=None,
             impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
             timeout=None, noise=default_port_noise_map):
@@ -119,6 +124,7 @@ class Simulation:
 
         # Other settings
         self.meshcat = meshcat
+        self.TSPAN = TSPAN
 
         # Verify controller config is valid
         assert (impedance_type == ImpedanceType.NONE) or \
@@ -134,11 +140,11 @@ class Simulation:
         # Create plant
         self.plant, self.scene_graph = \
             pydrake.multibody.plant.AddMultibodyPlantSceneGraph(
-                self.builder, time_step=config.DT)
+                self.builder, time_step=DT)
         self.plant.set_stiction_tolerance(constants.v_stiction)
         self.plant.set_penetration_allowance(0.001)
 
-        self._add_mbp_bodies()
+        self._add_mbp_bodies(num_links)
 
         # Init sim_sys_consts
         self.sim_sys_consts.I_L = self.plant.get_body(
@@ -160,8 +166,8 @@ class Simulation:
 
         self._add_non_ctrl_systems(
             timeout=timeout, exit_when_folded=exit_when_folded)
-        self._add_ctrl_systems()
-        self._wire()
+        self._add_ctrl_systems(DT)
+        self._wire(DT)
         self._context_specific_init()
 
 
@@ -249,7 +255,7 @@ class Simulation:
 
         if clean_exit:
             try:
-                simulator.AdvanceTo(config.TSPAN)
+                simulator.AdvanceTo(self.TSPAN)
             except sim_exceptions.SimTaskComplete as e:
                 print("Successful run!")
                 self.success = True
@@ -263,7 +269,7 @@ class Simulation:
                 self.exit_message = repr(e)
                 return self.exit_cleanly(simulator)
         else:
-            simulator.AdvanceTo(config.TSPAN)
+            simulator.AdvanceTo(self.TSPAN)
 
         if self.meshcat is not None:
             self.vis.StopRecording()
@@ -274,21 +280,26 @@ class Simulation:
 
     # =========================== PRIVATE FUNCTIONS ===========================
 
-    def _add_mbp_bodies(self):
+    def _add_mbp_bodies(self, num_links):
         """
         Initialize and add to builder systems any systems that introduce new
         bodies to the multibody plant, so this needs to be called before
         `plant.Finalize()`, which is called at the end of the function.
         """
         # Pedestal
-        pedestal_instance = pedestal.AddPedestal(self.plant)
+        if num_links == NumLinks.TWO:
+            pedestal_x_dim = constants.PEDESTAL_X_DIM__2_LINKS
+        elif num_links == NumLinks.FOUR:
+            pedestal_x_dim = constants.PEDESTAL_X_DIM__4_LINKS
+        pedestal_instance = pedestal.AddPedestal(self.plant, pedestal_x_dim)
 
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
             default_joint_angle=0,
             k_J=self.sim_sys_consts.k_J, b_J=self.sim_sys_consts.b_J,
             m_L=self.sim_sys_consts.m_L, w_L=self.sim_sys_consts.w_L,
-            h_L=self.sim_sys_consts.h_L, mu=self.sim_sys_consts.mu)
+            h_L=self.sim_sys_consts.h_L, mu=self.sim_sys_consts.mu,
+            num_links=num_links)
         self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
@@ -498,7 +509,7 @@ class Simulation:
                 Saturation(min_value=[0],max_value=[50]))
 
  
-    def _add_ctrl_systems(self):
+    def _add_ctrl_systems(self, DT):
         if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
             self._add_inverse_dynamics_ctrl()
         elif self.ctrl_paradigm == CtrlParadigm.KINEMATIC:
@@ -517,9 +528,9 @@ class Simulation:
             ctrl.aux.PreContactCtrl())
         self.builder.AddNamedSystem("ctrl_selector", ctrl.aux.CtrlSelector())
 
-        if config.DT > 0:
+        if DT > 0:
             self.builder.AddNamedSystem("delay",
-                DiscreteTimeDelay(config.DT, 1, manipulator.data['nq']))
+                DiscreteTimeDelay(DT, 1, manipulator.data['nq']))
 
 
     def _context_specific_init(self):
@@ -587,7 +598,7 @@ class Simulation:
                 return sys
         raise KeyError(f"No system in builder with name \"{sys_name}\"")
 
-    def _wire(self):
+    def _wire(self, DT):
         # Set up vision
         self._connect(["plant", "body_poses"], ["vision_no_noise", "poses"])
         self._connect(["plant", "spatial_velocities"],
@@ -767,7 +778,7 @@ class Simulation:
         self._connect("ctrl_selector", ["adder", 1])
         self._connect("tau_g_gain", ["adder", 2])
 
-        if config.DT > 0:
+        if DT > 0:
             self._connect("adder", "delay")
             self._connect("delay", ["plant", "panda_actuation"])
         else:

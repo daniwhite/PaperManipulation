@@ -13,8 +13,10 @@ class ProprioceptionSystem(pydrake.systems.framework.LeafSystem):
 
     def __init__(self, m_M, r, mu):
         pydrake.systems.framework.LeafSystem.__init__(self)
-        # Physical parameters
-        self.manipulator_plant = MultibodyPlant(config.DT)
+
+        # 0 is timestep, which doesn't matter
+        self.manipulator_plant = MultibodyPlant(0)
+
         manipulator.data["add_plant_function"](self.manipulator_plant, m_M, r, mu)
         self.manipulator_plant.Finalize()
         self.manipulator_plant_context = \

@@ -27,16 +27,17 @@ class Paper:
     hinge_diameter = (3/32)*constants.IN_TO_M
 
     def __init__(self, plant, scene_graph, \
-            default_joint_angle, k_J, b_J, m_L, w_L, h_L, mu):
+            default_joint_angle, k_J, b_J, m_L, w_L, h_L, mu, num_links):
         # Drake objects
         self.plant = plant
         self.scene_graph = scene_graph
 
         # Geometric and physical quantities
+        self.num_links = num_links
         self.mu = mu
         self.default_joint_angle = default_joint_angle
         self.w_L = w_L
-        self.y_dim = self.w_L * config.num_links.value
+        self.y_dim = self.w_L * self.num_links.value
         self.m_L = m_L
         self.h_L = h_L
 
@@ -55,7 +56,7 @@ class Paper:
             p_PScm_E=np.array([0., 0., 0.]),
             # Default moment of inertia for a solid box
             G_SP_E=UnitInertia.SolidBox(*box_dims))
-        for link_num in range(config.num_links.value):
+        for link_num in range(self.num_links.value):
             # Initialize bodies and instances
             paper_body = self.plant.AddRigidBody(
                 self.name + "_body" + str(link_num),
@@ -149,5 +150,5 @@ class Paper:
     # TODO: rename these functions?
     def set_positions(self, diagram, diagram_context):
         plant_context = diagram.GetMutableSubsystemContext(self.plant, diagram_context)
-        position = [np.pi/12]*(config.num_links.value-1)
+        position = [np.pi/12]*(self.num_links.value-1)
         self.plant.SetPositions(plant_context, self.instance, position)

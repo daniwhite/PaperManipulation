@@ -7,7 +7,7 @@ from pydrake.all import RigidTransform, RotationMatrix
 from pydrake.multibody.tree import SpatialInertia, UnitInertia
 
 from constants import \
-    THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M, PEDESTAL_X_DIM
+    THICK_PLYWOOD_THICKNESS, PLYWOOD_LENGTH, IN_TO_M
 
 PEDESTAL_BASE_Z_DIM = 5*IN_TO_M
 PEDESTAL_Y_DIM = PLYWOOD_LENGTH
@@ -17,7 +17,7 @@ PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load("pedestal_xyz.
 
 pedestal_base_name = "pedestal_bottom_body"
 
-def AddPedestal(plant, weld_base=True):
+def AddPedestal(plant, pedestal_x_dim, weld_base=True):
     """
     Creates the pedestal.
     """
@@ -33,7 +33,7 @@ def AddPedestal(plant, weld_base=True):
         SpatialInertia(mass=bottom_body_mass,
                         p_PScm_E=np.array([0., 0., 0.]),
                         G_SP_E=UnitInertia.SolidBox(
-                            PEDESTAL_X_DIM,
+                            pedestal_x_dim,
                             PEDESTAL_Y_DIM,
                             PEDESTAL_BASE_Z_DIM)
     ))
@@ -43,7 +43,7 @@ def AddPedestal(plant, weld_base=True):
             body,
             RigidTransform(),
             pydrake.geometry.Box(
-                PEDESTAL_X_DIM,
+                pedestal_x_dim,
                 PEDESTAL_Y_DIM,
                 PEDESTAL_BASE_Z_DIM
             ),
@@ -55,7 +55,7 @@ def AddPedestal(plant, weld_base=True):
             body,
             RigidTransform(),
             pydrake.geometry.Box(
-                PEDESTAL_X_DIM,
+                pedestal_x_dim,
                 PEDESTAL_Y_DIM,
                 PEDESTAL_BASE_Z_DIM
             ),
@@ -87,7 +87,7 @@ def AddPedestal(plant, weld_base=True):
             SpatialInertia(mass=1, # Doesn't matter because it's welded
                             p_PScm_E=np.array([0., 0., 0.]),
                             G_SP_E=UnitInertia.SolidBox(
-                                PEDESTAL_X_DIM,
+                                pedestal_x_dim,
                                 THICK_PLYWOOD_THICKNESS,
                                 PEDESTAL_Z_DIM)
         ))
@@ -97,7 +97,7 @@ def AddPedestal(plant, weld_base=True):
                 body,
                 RigidTransform(),
                 pydrake.geometry.Box(
-                    PEDESTAL_X_DIM,
+                    pedestal_x_dim,
                     THICK_PLYWOOD_THICKNESS,
                     PLYWOOD_LENGTH
                 ),
@@ -109,7 +109,7 @@ def AddPedestal(plant, weld_base=True):
                 body,
                 RigidTransform(),
                 pydrake.geometry.Box(
-                    PEDESTAL_X_DIM,
+                    pedestal_x_dim,
                     THICK_PLYWOOD_THICKNESS,
                     PLYWOOD_LENGTH
                 ),
