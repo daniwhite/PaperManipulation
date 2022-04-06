@@ -531,9 +531,28 @@ class Simulation:
             Gain(-1, manipulator.data['nq']))
         self.builder.AddNamedSystem("joint_centering_ctrl",
             ctrl.aux.JointCenteringCtrl())
-        self.pre_contact_ctrl = ctrl.aux.PreContactCtrl()
-        self.builder.AddNamedSystem("pre_contact_ctrl",
-            self.pre_contact_ctrl)
+
+        # TODO: clean this up
+        if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
+            self.builder.AddNamedSystem(
+                "pre_contact_ctrl__setpoint_gen",
+                ctrl.impedance_generators.setpoint_generators.\
+                        offline_loader.OfflineTrajLoader(
+                            num_links=self.num_links, speed_factor=10)
+            )
+            self.builder.AddNamedSystem(
+                "pre_contact_ctrl",
+                ctrl.cartesian_impedance.CartesianImpedanceController(
+                sys_consts=self.ctrl_sys_consts)
+            )
+            _impedance_stiffness = [40, 40, 40, 400, 400, 400]
+            self.builder.AddNamedSystem("pre_contact_ctrl__K_gen",
+                ConstantVectorSource(_impedance_stiffness))
+            self.builder.AddNamedSystem("pre_contact_ctrl__D_gen",
+                ConstantVectorSource(2*np.sqrt(_impedance_stiffness)))
+            self.builder.AddNamedSystem("pre_contact_ctrl__ff_Fn",
+                ConstantVectorSource([0, 0, 0, 0, 0, 0]))
+
         self.builder.AddNamedSystem("ctrl_selector", ctrl.aux.CtrlSelector())
 
         if DT > 0:
@@ -764,18 +783,29 @@ class Simulation:
         self._connect(["fold_ctrl", "tau_out"],
             ["ctrl_selector", "contact_ctrl"])
         if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
-            self._connect("pre_contact_ctrl",
+            self._connect("pre_contact_ctrl__ff_Fn", ["pre_contact_ctrl", "feedforward_wrench"])
+            for k in ["pose_M_translational", "pose_M_rotational",
+                    "vel_M_translational", "vel_M_rotational"]:
+                self._connect(k + "_w_noise", ["pre_contact_ctrl", k])
+            for k in ["M", "J", "Jdot_qdot", "Cv"]:
+                self._connect(["prop", k], ["pre_contact_ctrl", k])
+            self._connect("pre_contact_ctrl__K_gen", ["pre_contact_ctrl", "K"])
+            self._connect("pre_contact_ctrl__D_gen", ["pre_contact_ctrl", "D"])
+            self._connect(
+                ["pre_contact_ctrl__setpoint_gen", "x0"],
+                ["pre_contact_ctrl", "x0"]
+            )
+            self._connect(
+                ["pre_contact_ctrl__setpoint_gen", "dx0"],
+                ["pre_contact_ctrl", "dx0"]
+            )
+            self._connect(["pre_contact_ctrl", "tau_out"],
                 ["ctrl_selector", "pre_contact_ctrl"])
         else:
             self._connect(["fold_ctrl", "tau_out"],
                 ["ctrl_selector", "pre_contact_ctrl"])
         self._connect("ctrl_selector", ["log", "tau_ctrl"])
         self._connect(["fold_ctrl", "tau_out"], ["log", "tau_contact_ctrl"])
-
-        ## Wire pre contact control
-        self._connect(["prop", "J"], ["pre_contact_ctrl", "J"])
-        self._connect("vel_M_translational_w_noise",
-            ["pre_contact_ctrl", "v_M"])
 
         ## Set up joint centering control
         self._connect_all_inputs("prop", "joint_centering_ctrl")
