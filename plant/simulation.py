@@ -123,6 +123,11 @@ class Simulation:
         self.TSPAN = TSPAN
         self.num_links = num_links
 
+        # Set up logs
+        self.tau_O_log = [0]
+        self.F_OT_log = [0]
+        self.F_ON_log = [0]
+
         # Verify controller config is valid
         assert (impedance_type == ImpedanceType.NONE) or \
             (ctrl_paradigm == CtrlParadigm.IMPEDANCE)
@@ -368,7 +373,10 @@ class Simulation:
             self.plant.num_bodies(),
             self.contact_body_idx,
             self.paper,
-            self.plant
+            self.plant,
+            tau_O_log=self.tau_O_log,
+            F_OT_log=self.F_OT_log,
+            F_ON_log=self.F_ON_log
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
 
@@ -404,11 +412,14 @@ class Simulation:
     def _add_inverse_dynamics_ctrl(self):
         options = {
             'model_friction': False,
-            'measure_joint_wrench': False,
+            'measure_joint_wrench': True,
         }
         self.fold_ctrl = ctrl.inverse_dynamics.InverseDynamicsController(
             sys_consts=self.ctrl_sys_consts, options=options,
-            num_links=self.num_links)
+            num_links=self.num_links,
+            tau_O_log=self.tau_O_log,
+            F_OT_log=self.F_OT_log,
+            F_ON_log=self.F_ON_log)
 
         if self.meshcat is not None:
             self.builder.AddNamedSystem(

@@ -4,6 +4,7 @@ import pydrake
 from pydrake.all import RigidTransform, RollPitchYaw, SpatialVelocity, SpatialAcceleration, ContactResults, SpatialForce, BasicVector
 import numpy as np
 import plant.manipulator as manipulator
+import config
 
 PRINT_CONTACTS = False
 
@@ -13,8 +14,14 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
     can be used easily with a logger.
     """
 
-    def __init__(self, num_bodies, contact_body_idx, paper, plant):
+    def __init__(self, num_bodies, contact_body_idx, paper, plant,
+            tau_O_log, F_OT_log, F_ON_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
+        # Logs
+        self.tau_O_log = tau_O_log
+        self.F_OT_log = F_OT_log
+        self.F_ON_log = F_ON_log
+
         # Offsets
         self.type_strs_to_offsets = {
             "pos": 0,
@@ -270,9 +277,15 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         for i, j in enumerate(self.paper.joints):
             if i == len(self.paper.joints) - 1:
                 assert self.get_last_jnt_idx("trn") == len(out) 
+                F_OT = -joint_forces[int(j.index())].translational()[0]
+                self.F_OT_log.append(F_OT)
+                F_ON = joint_forces[int(j.index())].translational()[2]
+                self.F_ON_log.append(F_ON)
             out += list(joint_forces[int(j.index())].translational())
             if i == len(self.paper.joints) - 1:
                 assert self.get_last_jnt_idx("rot") == len(out) 
+                tau_O = joint_forces[int(j.index())].rotational()[config.hinge_rotation_axis]
+                self.tau_O_log.append(tau_O)
             out += list(joint_forces[int(j.index())].rotational())
         # Other generic terms
         assert len(out) == self.gen_accs_start_idx

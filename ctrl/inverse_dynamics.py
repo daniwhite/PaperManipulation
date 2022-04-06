@@ -19,7 +19,7 @@ PRINT_CONSTRAINTS = False
 
 class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
     def __init__(self, options, sys_consts: SystemConstants,
-            num_links: config.NumLinks):
+            num_links: config.NumLinks, tau_O_log, F_OT_log, F_ON_log):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.last_theta_MX = None
@@ -51,6 +51,11 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         # Options
         self.model_friction = options['model_friction']
         self.measure_joint_wrench = options['measure_joint_wrench']
+
+        # Logs
+        self.tau_O_log = tau_O_log
+        self.F_OT_log = F_OT_log
+        self.F_ON_log = F_ON_log
 
         # Target values
         self.d_Td = -self.sys_consts.w_L/2
@@ -341,7 +346,11 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
         F_ContactL_XYZ = -F_ContactM_XYZ
 
         # Object forces and torques
-        if not self.measure_joint_wrench:
+        if self.measure_joint_wrench:
+            F_OT = self.F_OT_log[-1]
+            F_ON = self.F_ON_log[-1]
+            tau_O = self.tau_O_log[-1]
+        else:
             F_OT = prog.NewContinuousVariables(1, 1, name="F_OT")
             F_ON = prog.NewContinuousVariables(1, 1, name="F_ON")
             tau_O = -self.sys_consts.k_J*theta_L \
@@ -623,10 +632,14 @@ class InverseDynamicsController(pydrake.systems.framework.LeafSystem):
             axis=0).flatten()[hinge_rotation_axis]
         self.debug["gravity_torque_about_joint"].append(gravity_torque_about_joint)
         self.debug["contact_torque_about_joint_out"].append(contact_torque_about_joint_out)
-        self.debug["F_OT"].append(result.GetSolution()[
-            prog.FindDecisionVariableIndex(F_OT[0,0])])
-        self.debug["F_ON"].append(result.GetSolution()[
-            prog.FindDecisionVariableIndex(F_ON[0,0])])
+        if self.measure_joint_wrench:
+            self.debug["F_OT"].append(F_OT)
+            self.debug["F_ON"].append(F_ON)
+        else:
+            self.debug["F_OT"].append(result.GetSolution()[
+                prog.FindDecisionVariableIndex(F_OT[0,0])])
+            self.debug["F_ON"].append(result.GetSolution()[
+                prog.FindDecisionVariableIndex(F_ON[0,0])])
         self.debug["mu_S"].append(mu_S)
         self.debug["mu"].append(self.sys_consts.mu)
         self.debug["M"].append(M)
