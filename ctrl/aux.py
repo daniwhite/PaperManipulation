@@ -120,7 +120,7 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
     def __init__(self):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.nq = manipulator.data["nq"]
-        self.use_contact_ctrl = False
+        self.printed_yet = False
 
         self.DeclareVectorInputPort(
             "in_contact",
@@ -139,12 +139,15 @@ class CtrlSelector(pydrake.systems.framework.LeafSystem):
             "pre_contact_ctrl").Eval(context)
         contact_tau_ctrl = self.GetInputPort("contact_ctrl").Eval(context)
         in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+        use_contact_ctrl = False
         if in_contact:
-            if not self.use_contact_ctrl:
-                print("[CtrlSelector] Switching to contact ctrl")
-            self.use_contact_ctrl = in_contact
+            if context.get_time() > 1:
+                if not self.printed_yet:
+                    print("[CtrlSelector] Switching to contact ctrl at {:.2f}".format(context.get_time()))
+                self.printed_yet = True
+                use_contact_ctrl = True
 
-        tau_ctrl = contact_tau_ctrl if in_contact else pre_contact_tau_ctrl
+        tau_ctrl = contact_tau_ctrl if use_contact_ctrl else pre_contact_tau_ctrl
         output.SetFromVector(tau_ctrl)
 
 
@@ -156,7 +159,6 @@ class HTNtoXYZ(pydrake.systems.framework.LeafSystem):
     def __init__(self):
         pydrake.systems.framework.LeafSystem.__init__(self)
         self.nq = manipulator.data["nq"]
-        self.use_contact_ctrl = False
 
         self.DeclareVectorInputPort(
             "HTN",
