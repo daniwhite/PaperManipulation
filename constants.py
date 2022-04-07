@@ -32,7 +32,7 @@ def PEDESTAL_X_DIM(num_links: config.NumLinks):
     if num_links == config.NumLinks.TWO:
         return PLYWOOD_LENGTH/2
     if num_links == config.NumLinks.FOUR:
-        return PLYWOOD_LENGTH/4
+        return PLYWOOD_LENGTH/6
 
 @dataclass
 class SystemConstants:
