@@ -27,7 +27,7 @@ def get_max_theta_L(sim, log):
 class SweepRunner:
     default_sim_args = {
         "exit_when_folded": True,
-        "timeout": 180,
+        "timeout": 600,
         "DT": 0,
         "TSPAN": 35
     }
@@ -55,7 +55,7 @@ class SweepRunner:
         self.sweep_args = np.array(sweep_args).flatten()
         self.sweep_vars = np.array(sweep_vars)
         if len(self.sweep_vars.shape) < 2:
-            self.sweep_vars = np.expand_dims(self.sweep_vars, 0)
+            self.sweep_vars = np.expand_dims(self.sweep_vars, 1)
         assert self.sweep_vars.shape[1] == self.sweep_args.shape[0]
 
         self.sim_args = copy.deepcopy(other_sim_args)
@@ -95,7 +95,7 @@ class SweepRunner:
         # Grab output var
         output_var = self.proc_func(sim, log)
 
-        return (output_var, sim.success, sim.exit_message)
+        return (output_var, sim.success, sim.exit_message, sim_args)
 
     def run_sweep(self):
         t_start__ = time.time()
@@ -105,12 +105,14 @@ class SweepRunner:
             y_axis = [val[0] for val in sweep_result]
             successes = [val[1] for val in sweep_result]
             exit_messages = [val[2] for val in sweep_result]
+            sim_args = [val[3] for val in sweep_result]
             base_name = "__".join(self.sweep_var_names)
             np.savez("sweeps/" + base_name + ".npz",
                 x_axis=x_axis,
                 y_axis=y_axis,
                 successes=successes,
-                exit_messages=exit_messages
+                exit_messages=exit_messages,
+                sim_args=sim_args
             )
             print("Result:", y_axis)
         print("OVERALL RUNTIME:", time.time() - t_start__)

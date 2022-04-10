@@ -289,6 +289,8 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
                     if (context.get_time() - \
                             self.start_t__d_theta_L_below_thresh > 0.5):
                         raise sim_exceptions.SimStalled
+                else:
+                    self.start_t__d_theta_L_below_thresh = None
             else:
                 self.start_t__d_theta_L_below_thresh = None
             if self.last_contact_time is not None:
@@ -296,7 +298,7 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
                     raise sim_exceptions.ContactBroken
         if self.timeout is not None:
             if (time.time() - self.start_time) > self.timeout:
-                raise sim_exceptions.SimStalled
+                raise sim_exceptions.SimTimedOut
         
         output.SetFromVector([1])
 
