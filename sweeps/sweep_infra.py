@@ -28,14 +28,15 @@ class SweepRunner:
     default_sim_args = {
         "exit_when_folded": True,
         "timeout": 180,
-        "params": copy.deepcopy(constants.nominal_sys_consts)
+        "DT": 0,
+        "TSPAN": 35
     }
 
-    def __init__(self, proc_func, other_sim_args, sweep_arg, sweep_vars,
-            sweep_var_name=None, insert_into_params=False):
+    def __init__(self, proc_func, other_sim_args, sweep_args, sweep_vars,
+            sweep_var_names=None):
 
         # Set sweep var name base on invoked file
-        if sweep_var_name is None:
+        if sweep_var_names is None:
             file_name_found = False
             for arg in sys.argv:
                 if arg.endswith('.py'):
@@ -44,42 +45,52 @@ class SweepRunner:
                             "Multiple python files in args, so can't " + \
                                 "automatically detect sweep_var_name!")
                     else:
-                        self.sweep_var_name = arg.split('/')[-1][:-3]
+                        base_name = arg.split('/')[-1][:-3]
+                        self.sweep_var_names = base_name.split("__")
                         file_name_found = True
         else:
-            self.sweep_var_name = sweep_var_name
+            self.sweep_var_names = sweep_var_names
+
+        self.proc_func = proc_func
+        self.sweep_args = np.array(sweep_args).flatten()
+        self.sweep_vars = np.array(sweep_vars)
+        if len(self.sweep_vars.shape) < 2:
+            self.sweep_vars = np.expand_dims(self.sweep_vars, 0)
+        assert self.sweep_vars.shape[1] == self.sweep_args.shape[0]
 
         self.sim_args = copy.deepcopy(other_sim_args)
         for k, v in self.default_sim_args.items():
-            if k not in self.sim_args.keys() and k != sweep_arg:
+            if k not in self.sim_args.keys() and not (k in self.sweep_args):
                 self.sim_args[k] = v
+        # Default depend son num_links
+        if "sim_params" not in self.sweep_args:
+            self.sim_args["sim_params"] = copy.deepcopy(
+                constants.nominal_sys_consts(self.sim_args["num_links"]))
 
-        self.proc_func = proc_func
-        self.sweep_arg = sweep_arg
-        self.sweep_vars = sweep_vars
-        self.insert_into_params = insert_into_params
-
-
-    def sweep_func(self, val):
+    def sweep_func(self, vals):
+        vals = vals.flatten()
         sim_args = copy.deepcopy(self.sim_args)
-        if self.insert_into_params:
-            assert self.sweep_arg in vars(sim_args["params"]).keys()
-            setattr(sim_args["params"], self.sweep_arg, val)
-        else:
-            sim_args[self.sweep_arg] = val
+        printing_label = "[ "
+        for val, arg in zip(vals, self.sweep_args):
+            if arg in vars(sim_args["sim_params"]).keys(): # TODO: fix mismatch?
+                setattr(sim_args["sim_params"], arg, val)
+            else:
+                sim_args[arg] = val
+            try:
+                sweep_label = "{:5.2f}".format(val)
+            except (TypeError, ValueError):
+                sweep_label = str(val)
+            printing_label += "{} = {} ".format(arg, sweep_label)
+        printing_label += " ]"
         sim = plant.simulation.Simulation(**sim_args)
 
-        try:
-            sweep_label = "{:5.2f}".format(val)
-        except TypeError:
-            sweep_label = str(val)
-        print("[ {} = {} ] Starting".format(self.sweep_arg, sweep_label))
+        print(printing_label + " Starting")
 
         # Run sim
         t_start_ = time.time()
         log = sim.run_sim()
-        print("[ {} = {} ] Total time: {:.2f}".format(
-            self.sweep_arg, sweep_label, time.time() - t_start_))
+        print(printing_label + " Total time: {:.2f}".format(
+            time.time() - t_start_))
 
         # Grab output var
         output_var = self.proc_func(sim, log)
@@ -94,7 +105,8 @@ class SweepRunner:
             y_axis = [val[0] for val in sweep_result]
             successes = [val[1] for val in sweep_result]
             exit_messages = [val[2] for val in sweep_result]
-            np.savez("sweeps/" + self.sweep_var_name + ".npz",
+            base_name = "__".join(self.sweep_var_names)
+            np.savez("sweeps/" + base_name + ".npz",
                 x_axis=x_axis,
                 y_axis=y_axis,
                 successes=successes,
