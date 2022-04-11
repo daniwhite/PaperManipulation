@@ -34,8 +34,10 @@ def proc_func(sim, log):
     out["angle_paper_traces"] = np.array(angle_paper_traces)
 
     # Get times
-    out["first_contact_idx"] = np.argmax(
+    out["ctrl_first_contact_idx"] = np.argmax(
         log.data()[sim.log_wrapper.calc_in_contact_start_idx])
+    out["any_links_in_contact_idx"] = np.argmax(
+        log.data()[sim.log_wrapper.any_links_in_contact_idx])
     out["times"] = log.sample_times()[:-1]
 
     # Get manipulator traces
@@ -81,7 +83,7 @@ if __name__ == "__main__":
                 [4,4,4,40,40,40],
                 [4,4,4,40,40,40]
             ],
-            [0, 100, 1],
+            [0, 40, 1],
         ]).T
     )
     sweep_runner.run_sweep()
