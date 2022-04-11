@@ -52,14 +52,19 @@ if __name__ == "__main__":
         "impedance_type": plant.simulation.ImpedanceType.LINK_FB,
         "n_hat_force_compensation_source": 
             plant.simulation.NHatForceCompensationSource.CONSTANT,
-        "impedance_stiffness": [4,4,4,40,40,40],
-        "num_links": config.NumLinks.FOUR
+        "num_links": config.NumLinks.FOUR,
+        "timeout": 1200
     }
 
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         proc_func=proc_func,
         other_sim_args=other_sim_args,
-        sweep_args=["impedance_type", "n_hat_force_compensation_source"],
+        sweep_args=[
+            "impedance_type",
+            "n_hat_force_compensation_source",
+            "impedance_stiffness",
+            "const_ff_Fn"
+        ],
         sweep_vars=np.array([
             [
                 plant.simulation.ImpedanceType.OFFLINE_TRAJ,
@@ -71,6 +76,12 @@ if __name__ == "__main__":
                 plant.simulation.NHatForceCompensationSource.CONSTANT,
                 plant.simulation.NHatForceCompensationSource.MEASURED,
             ],
+            [
+                [40,40,40,400,400,400],
+                [4,4,4,40,40,40],
+                [4,4,4,40,40,40]
+            ],
+            [0, 100, 1],
         ]).T
     )
     sweep_runner.run_sweep()

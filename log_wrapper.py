@@ -105,6 +105,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         self.tau_contact_ctrl_idx = self._size
         self._size += self.tau_contact_ctrl_entries
 
+        self.true_in_contact_idx = self._size
+        self._size += 1
+
 
         # Poses, velocities, accelerations, etc
         self.DeclareAbstractInputPort(
@@ -221,6 +224,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
         # Add contact results
         forces_found = 0
+        true_in_contact = False
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -264,6 +268,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 use_this_contact = True
             if use_this_contact:
                 forces_found += 1
+                true_in_contact = True
                 assert  self.max_contacts >= forces_found
                 out += [pen_point_pair.depth]
         forces_found_idx = forces_found
@@ -313,6 +318,8 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         out += list(tau_out)
         assert(len(out) == self.tau_contact_ctrl_idx)
         out += list(tau_contact_ctrl)
+        assert(len(out) == self.true_in_contact_idx)
+        out += [true_in_contact]
 
 
         output.SetFromVector(out)
