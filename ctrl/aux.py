@@ -229,9 +229,38 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
         output.SetFromVector([F_N])
 
 
+class AnyContactsCalculator(pydrake.systems.framework.LeafSystem):
+    def __init__(self, paper_idxs, contact_body_idx):
+        pydrake.systems.framework.LeafSystem.__init__(self)
+        self.paper_idxs = set(paper_idxs)
+        self.contact_body_idx = contact_body_idx
+
+        self.DeclareAbstractInputPort(
+            "contact_results",
+            pydrake.common.value.AbstractValue.Make(ContactResults()))
+        self.DeclareVectorOutputPort(
+            "out", pydrake.systems.framework.BasicVector(1),
+            self.CalcOutput)
+
+    def CalcOutput(self, context, output):
+        contact_results = self.GetInputPort("contact_results").Eval(context)
+
+        any_links_in_contact = False
+        for i in range(contact_results.num_point_pair_contacts()):
+            point_pair_contact_info = \
+                contact_results.point_pair_contact_info(i)
+            # See if we're in contact with any link
+            if int(point_pair_contact_info.bodyA_index()) == self.contact_body_idx:
+                if int(point_pair_contact_info.bodyB_index()) in self.paper_idxs:
+                    any_links_in_contact = True
+            if int(point_pair_contact_info.bodyB_index()) == self.contact_body_idx:
+                if int(point_pair_contact_info.bodyA_index()) in self.paper_idxs:
+                    any_links_in_contact = True
+        output.SetFromVector([any_links_in_contact])
+
 class ExitSystem(pydrake.systems.framework.LeafSystem):
     def __init__(self, timeout, exit_when_folded, ll_idx, paper,
-            z_thresh_offset):
+            z_thresh_offset, z_lockdown_thresh_offset):
         pydrake.systems.framework.LeafSystem.__init__(self)
         
         # General exit params
@@ -247,6 +276,7 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         self.ll_idx = ll_idx
         self.paper = paper
         self.z_thresh_offset = z_thresh_offset
+        self.z_lockdown_thresh_offset = z_lockdown_thresh_offset
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -258,12 +288,12 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
             pydrake.systems.framework.BasicVector(1))
         self.DeclareVectorInputPort(
             "in_contact", pydrake.systems.framework.BasicVector(1))
-        
-        self.DeclareVectorOutputPort(
-            "out", pydrake.systems.framework.BasicVector(1),
-            self.CalcOutput)
 
-    def CalcOutput(self, context, output):
+        self.DeclareVectorOutputPort(
+            "alive_signal", pydrake.systems.framework.BasicVector(1),
+            self.calc_lockdown_signal)
+
+    def calc_lockdown_signal(self, context, output):
         # Check for exit criteria
         poses = self.GetInputPort("poses").Eval(context)
         theta_L = self.GetInputPort("theta_L").Eval(context)[0]
@@ -273,15 +303,22 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         p_LL = poses[self.ll_idx].translation()
         p_FL = poses[self.paper.link_idxs[0]].translation()
 
+        # TODO: is sign modular?
+        horizontal_thresh = p_FL[1-hinge_rotation_axis]
         z_thresh = p_FL[-1] + self.z_thresh_offset
+        z_lockdown_thresh = z_thresh + self.z_lockdown_thresh_offset
 
         if in_contact:
             self.last_contact_time = context.get_time()
 
+        outval = 0
         if self.exit_when_folded:
             if in_contact:
-                if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
-                    raise sim_exceptions.SimTaskComplete
+                if (p_LL[1-hinge_rotation_axis] > horizontal_thresh):
+                    if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
+                        raise sim_exceptions.SimTaskComplete
+                    elif (p_LL[-1] < z_lockdown_thresh) and (theta_L > np.pi*0.9):
+                        outval = 1
                 if abs(d_theta_L) < self.d_theta_L_thresh:
                     if self.start_t__d_theta_L_below_thresh is None:
                         self.start_t__d_theta_L_below_thresh = \
@@ -299,8 +336,8 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         if self.timeout is not None:
             if (time.time() - self.start_time) > self.timeout:
                 raise sim_exceptions.SimTimedOut
-        
-        output.SetFromVector([1])
+
+        output.SetFromVector([outval])
 
 
     def set_start_time(self):

@@ -150,6 +150,9 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         # in_contact used by controller
         self.DeclareVectorInputPort(
             "in_contact", pydrake.systems.framework.BasicVector(1))
+    
+        self.DeclareVectorInputPort(
+            "any_links_in_contact", pydrake.systems.framework.BasicVector(1))
 
         # Other torque inputs
         self.DeclareVectorInputPort(
@@ -192,6 +195,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         J = self.GetInputPort("J").Eval(context)
         Jdot_qdot = self.GetInputPort("Jdot_qdot").Eval(context)
         in_contact = self.GetInputPort("in_contact").Eval(context)[0]
+        any_links_in_contact = self.GetInputPort("any_links_in_contact").Eval(context)[0]
         joint_centering_torque = self.GetInputPort(
             "joint_centering_torque").Eval(context)
         tau_ctrl = self.GetInputPort("tau_ctrl").Eval(context)
@@ -224,7 +228,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
         # Add contact results
         forces_found = 0
-        any_links_in_contact = False
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -235,14 +238,6 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                     ,
                     self.plant.get_body(point_pair_contact_info.bodyB_index()).name()
                 )
-
-            # See if we're in contact with any link
-            if int(point_pair_contact_info.bodyA_index()) == self.contact_body_idx:
-                if int(point_pair_contact_info.bodyB_index()) in self.paper.link_idxs:
-                    any_links_in_contact = True
-            if int(point_pair_contact_info.bodyB_index()) == self.contact_body_idx:
-                if int(point_pair_contact_info.bodyA_index()) in self.paper.link_idxs:
-                    any_links_in_contact = True
 
             use_this_contact = False
             # Always take contact forces on manipulator

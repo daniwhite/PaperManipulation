@@ -70,6 +70,12 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
             pydrake.systems.framework.BasicVector(6)
         )
 
+        # Other inputs
+        self.DeclareVectorInputPort(
+            "lockdown_signal",
+            pydrake.systems.framework.BasicVector(1)
+        )
+
         # ========================== DECLARE OUTPUTS ==========================
         self.DeclareVectorOutputPort(
             "tau_out", pydrake.systems.framework.BasicVector(self.nq),
@@ -109,6 +115,9 @@ class CartesianImpedanceController(pydrake.systems.framework.LeafSystem):
 
         # Feedforward forces
         ff_wrench = self.GetInputPort("feedforward_wrench").Eval(context)
+        lockdown_signal = self.GetInputPort("lockdown_signal").Eval(context)
+        if lockdown_signal:
+            ff_wrench += [0,0,0,0,0,-200]
 
         # ==================== CALCULATE INTERMEDIATE TERMS ===================
         # Actual values

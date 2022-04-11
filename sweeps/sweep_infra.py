@@ -23,6 +23,22 @@ def get_max_theta_L(sim, log):
 
     return np.max(theta_L)
 
+def get_max_overall_theta(sim, log):
+    idx = sim.log_wrapper.get_idx("pos", "trn", sim.ll_idx)
+    length = 3
+    p_L = np.expand_dims(log.data()[idx:idx+length].T, 2)
+
+    idx = sim.log_wrapper.get_idx("pos", "trn", sim.paper.link_idxs[0])
+    length = 3
+    p_FL = np.expand_dims(log.data()[idx:idx+length].T, 2)
+
+    X_FL_FJ_L = sim.paper.joints[0].frame_on_parent().GetFixedPoseInBodyFrame()
+    p_W_FJ = p_FL[0] + np.expand_dims(X_FL_FJ_L.translation(), 1)
+
+    overall_thetas = np.arctan2((p_L - p_W_FJ)[:,2], -(p_L - p_W_FJ)[:,1-hinge_rotation_axis])
+    return np.max(overall_thetas)
+
+
 # Sweep runner class
 class SweepRunner:
     default_sim_args = {

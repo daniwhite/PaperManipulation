@@ -366,8 +366,6 @@ class Simulation:
                 Adder(2,3)
             )
 
-        link_z = X_LJ_L.translation()[-1]
-        z_thresh_offset = 2*link_z + self.sim_sys_consts.h_L
         # Logger
         self.log_wrapper = LogWrapper(
             self.plant.num_bodies(),
@@ -380,13 +378,22 @@ class Simulation:
         )
         self.builder.AddNamedSystem("log", self.log_wrapper)
 
+        self.builder.AddNamedSystem(
+            "any_contact_calc", 
+            ctrl.aux.AnyContactsCalculator(
+                self.paper.link_idxs, self.contact_body_idx))
         # Exit system
+        link_z = X_LJ_L.translation()[-1]
+        z_thresh_tol = self.sim_sys_consts.h_L/10
+        z_thresh_offset = 2*link_z + z_thresh_tol
+        z_lockdown_thresh_offset = z_thresh_offset + self.sim_sys_consts.h_L
         self.exit_system = ctrl.aux.ExitSystem(
             ll_idx=self.ll_idx,
             paper=self.paper,
             exit_when_folded=exit_when_folded,
             timeout=timeout,
-            z_thresh_offset=z_thresh_offset
+            z_thresh_offset=z_thresh_offset,
+            z_lockdown_thresh_offset=z_lockdown_thresh_offset
         )
         self.builder.AddNamedSystem("exit_system", self.exit_system)
 
@@ -666,11 +673,14 @@ class Simulation:
         self._connect("joint_centering_ctrl",
             ["log", "joint_centering_torque"])
 
+        self._connect(["plant", "contact_results"], "any_contact_calc")
         self._connect(["plant", "body_poses"],["exit_system", "poses"])
-        self._connect(["vis_proc", "in_contact"],
-            ["exit_system", "in_contact"])
+        self._connect("any_contact_calc", ["exit_system", "in_contact"])
+        self._connect("any_contact_calc", ["log", "any_links_in_contact"])
         self._connect(["vis_proc", "theta_L"], ["exit_system", "theta_L"])
         self._connect(["vis_proc", "d_theta_L"], ["exit_system", "d_theta_L"])
+        if self.impedance_type != ImpedanceType.NONE:
+            self._connect("exit_system", ["fold_ctrl", "lockdown_signal"])
         self._connect("exit_system", ["log", "alive_signal"])
 
         # Set up visualization
