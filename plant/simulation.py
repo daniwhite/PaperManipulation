@@ -520,7 +520,7 @@ class Simulation:
                 ff_force_N = const_ff_Fn_src
             self.builder.AddNamedSystem("ff_force_N", ff_force_N)
             self.builder.AddNamedSystem("ff_force_N_Sat",
-                Saturation(min_value=[0],max_value=[50]))
+                Saturation(min_value=[0],max_value=[500]))
 
  
     def _add_ctrl_systems(self, DT):

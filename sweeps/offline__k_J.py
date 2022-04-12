@@ -1,0 +1,29 @@
+import sweeps.sweep_infra
+import numpy as np
+import plant.simulation
+from config import NumLinks
+
+if __name__ == "__main__":
+    other_sim_args = {
+        "ctrl_paradigm": plant.simulation.CtrlParadigm.IMPEDANCE,
+        "impedance_type": plant.simulation.ImpedanceType.OFFLINE_TRAJ,
+        "n_hat_force_compensation_source": 
+            plant.simulation.NHatForceCompensationSource.NONE,
+        "impedance_stiffness": [40,40,40,400,400,400],
+        "num_links": NumLinks.FOUR,
+        "timeout": 600,
+        "DT": 0.0001,
+        "const_ff_Fn": 0,
+    }
+
+    k_Js = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4, 1.6, 2, 3])
+    sweep_runner = sweeps.sweep_infra.SweepRunner(
+        proc_func=sweeps.sweep_infra.get_max_overall_theta,
+        other_sim_args=other_sim_args,
+        sweep_args=["k_J", "b_J"],
+        sweep_vars=np.array([
+            k_Js,
+            k_Js/10
+        ]).T,
+    )
+    sweep_runner.run_sweep()
