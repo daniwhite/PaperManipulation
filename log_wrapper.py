@@ -330,6 +330,16 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
         return body_idx*self.entries_per_body + self.type_strs_to_offsets[type_str] + \
             self.direction_to_offset[direction]
     
+    def get_jnt_idx(self, direction, jnt_num):
+        idx = jnt_num*6 + self.joint_entry_start_idx
+        if direction == "trn":
+            idx += 0
+        elif direction == "rot":
+            idx += 3
+        else:
+            raise ValueError
+        return idx
+
     def get_last_jnt_idx(self, direction):
         idx = (len(self.paper.joints)-1)*6 + self.joint_entry_start_idx
         if direction == "trn":

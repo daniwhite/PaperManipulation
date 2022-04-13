@@ -116,6 +116,7 @@ class Simulation:
         for k, v in default_port_noise_map.items():
             if not (k in self.noise.keys()):
                 self.noise[k] = v
+        print(self.noise)
         assert len(self.noise.keys() - default_port_noise_map.keys()) == 0
 
         # Other settings
