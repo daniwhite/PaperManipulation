@@ -15,9 +15,20 @@ if __name__ == "__main__":
         "DT": 0.0001,
         "const_ff_Fn": 2
     }
+    pose_L_translational_noise = np.array([0] + list(10**np.linspace(-3, np.log10(3), 15)))
+    pose_L_rotational_noise    = pose_L_translational_noise/(1e-2)
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
-        sweep_args="mu",
-        sweep_vars=np.linspace(0.05, 1, 16),
+        sweep_args=[
+            "noise__pose_L_rotational",
+            "noise__pose_L_translational",
+            "noise__vel_L_rotational",
+            "noise__vel_L_translational"],
+        sweep_vars=np.array([
+            pose_L_translational_noise,
+            pose_L_rotational_noise,
+            pose_L_translational_noise,
+            pose_L_rotational_noise,
+        ]).T,
     )
     sweep_runner.run_sweep()

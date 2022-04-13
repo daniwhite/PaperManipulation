@@ -13,10 +13,9 @@ if __name__ == "__main__":
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,
-        "const_ff_Fn": 20
+        "const_ff_Fn": 50
     }
     sweep_runner = sweeps.sweep_infra.SweepRunner(
-        proc_func=sweeps.sweep_infra.get_max_overall_theta,
         other_sim_args=other_sim_args,
         sweep_args="mu",
         sweep_vars=np.linspace(0.05, 1, 16),

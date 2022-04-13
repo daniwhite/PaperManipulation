@@ -13,7 +13,7 @@ if __name__ == "__main__":
         "num_links": NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,
-        "const_ff_Fn": 20,
+        "const_ff_Fn": 50,
     }
 
     k_Js = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4, 1.6, 2, 3])
