@@ -15,7 +15,6 @@ if __name__ == "__main__":
         "DT": 0.0001
     }
     sweep_runner = sweeps.sweep_infra.SweepRunner(
-        proc_func=sweeps.sweep_infra.get_max_overall_theta,
         other_sim_args=other_sim_args,
         sweep_args="const_ff_Fn",
         sweep_vars=[0, 1, 2, 3, 4, 5, 6, 8, 10, 20, 30, 40, 50, 60, 70, 80],

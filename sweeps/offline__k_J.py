@@ -18,7 +18,6 @@ if __name__ == "__main__":
 
     k_Js = np.array([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4, 1.6, 2, 3])
     sweep_runner = sweeps.sweep_infra.SweepRunner(
-        proc_func=sweeps.sweep_infra.get_max_overall_theta,
         other_sim_args=other_sim_args,
         sweep_args=["k_J", "b_J"],
         sweep_vars=np.array([
