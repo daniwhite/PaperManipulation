@@ -72,7 +72,10 @@ class SweepRunner:
         self.sweep_vars = np.array(sweep_vars)
         if len(self.sweep_vars.shape) < 2:
             self.sweep_vars = np.expand_dims(self.sweep_vars, 1)
-        assert self.sweep_vars.shape[1] == self.sweep_args.shape[0]
+        print(sweep_vars)
+        print(sweep_args)
+        if self.sweep_args != "impedance_stiffness":
+            assert self.sweep_vars.shape[1] == self.sweep_args.shape[0]
 
         self.sim_args = copy.deepcopy(other_sim_args)
         # Fill in default values if they're note specified

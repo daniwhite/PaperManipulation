@@ -90,7 +90,7 @@ class Simulation:
             num_links: config.NumLinks, DT, TSPAN,
             sim_params=None, ctrl_params=None, meshcat=None,
             impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
-            timeout=None, noise=default_port_noise_map):
+            timeout=None, noise=default_port_noise_map, impedance_scale=1):
         # System parameters
         # Sim is used for simulation. Ctrl is used for everything else
         if sim_params is None:
@@ -107,7 +107,18 @@ class Simulation:
         self.impedance_type = impedance_type
         # TODO: This needs a better name
         self.n_hat_force_compensation_source = n_hat_force_compensation_source
-        self.impedance_stiffness = impedance_stiffness
+        
+        # Order is [theta_x, theta_y, theta_z, x, y, z]
+        print(impedance_stiffness)
+        print(impedance_scale)
+        if impedance_stiffness is None:
+            self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
+        else:
+            print("sjafkljdsf")
+            self.impedance_stiffness = impedance_stiffness
+        print(self.impedance_stiffness)
+        self.impedance_stiffness = np.array(self.impedance_stiffness)*impedance_scale
+        print(self.impedance_stiffness)
         # TODO: better name?
         self.const_ff_Fn = const_ff_Fn
 
@@ -459,10 +470,6 @@ class Simulation:
         
         self.fold_ctrl = ctrl.cartesian_impedance.CartesianImpedanceController(
             sys_consts=self.ctrl_sys_consts)
-
-        # Order is [theta_x, theta_y, theta_z, x, y, z]
-        if self.impedance_stiffness is None:
-            self.impedance_stiffness = [40, 40, 40, 400, 400, 400]
         
         self.builder.AddNamedSystem("K_gen",
             ConstantVectorSource(self.impedance_stiffness))
