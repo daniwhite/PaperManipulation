@@ -13,7 +13,7 @@ if __name__ == "__main__":
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,
-        "const_ff_Fn": 2
+        "const_ff_Fn": 5
     }
     pose_L_translational_noise = np.array([0] + list(10**np.linspace(-3, np.log10(3), 15)))
     pose_L_rotational_noise    = pose_L_translational_noise/(1e-2)

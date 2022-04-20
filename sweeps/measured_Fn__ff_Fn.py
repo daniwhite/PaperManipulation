@@ -17,6 +17,6 @@ if __name__ == "__main__":
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
         sweep_args="const_ff_Fn",
-        sweep_vars=[0, 1, 2, 3, 4, 5, 6, 8, 10, 20, 30, 40, 50, 60, 70, 80],
+        sweep_vars=[0.5, 1, 2, 3, 4, 5, 6, 8, 10, 20, 30, 40, 50, 60, 70, 80],
     )
     sweep_runner.run_sweep()
