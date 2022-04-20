@@ -109,16 +109,11 @@ class Simulation:
         self.n_hat_force_compensation_source = n_hat_force_compensation_source
         
         # Order is [theta_x, theta_y, theta_z, x, y, z]
-        print(impedance_stiffness)
-        print(impedance_scale)
         if impedance_stiffness is None:
             self.impedance_stiffness = [4, 4, 4, 40, 40, 40]
         else:
-            print("sjafkljdsf")
             self.impedance_stiffness = impedance_stiffness
-        print(self.impedance_stiffness)
         self.impedance_stiffness = np.array(self.impedance_stiffness)*impedance_scale
-        print(self.impedance_stiffness)
         # TODO: better name?
         self.const_ff_Fn = const_ff_Fn
 
@@ -300,7 +295,7 @@ class Simulation:
         `plant.Finalize()`, which is called at the end of the function.
         """
         # Pedestal
-        pedestal_instance = pedestal.AddPedestal(self.plant, self.num_links)
+        pedestal_instance = pedestal.AddPedestal(self.plant, self.num_links, h_L=self.sim_sys_consts.h_L)
 
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,

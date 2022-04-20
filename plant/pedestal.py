@@ -14,10 +14,11 @@ from constants import \
 PEDESTAL_BASE_Z_DIM = 5*IN_TO_M
 PEDESTAL_Y_DIM = PLYWOOD_LENGTH
 PEDESTAL_Z_DIM = PLYWOOD_LENGTH + PEDESTAL_BASE_Z_DIM
+PEDESTAL_BACK_PIECE_LEN = 12*IN_TO_M
 
 pedestal_base_name = "pedestal_bottom_body"
 
-def AddPedestal(plant, num_links:config.NumLinks, weld_base=True):
+def AddPedestal(plant, num_links:config.NumLinks, weld_base=True, h_L=0):
     """
     Creates the pedestal.
     """
@@ -73,6 +74,52 @@ def AddPedestal(plant, num_links:config.NumLinks, weld_base=True):
                     PEDESTAL_X_OFFSET,
                     PEDESTAL_Y_OFFSET,
                     PEDESTAL_Z_OFFSET
+                ]
+            ))
+    
+    # Add back piece
+    backpiece_name = "pedestal_back"
+    body =  plant.AddRigidBody(
+        backpiece_name,
+        pedestal_instance,
+        SpatialInertia(mass=1,
+                        p_PScm_E=np.array([0., 0., 0.]),
+                        G_SP_E=UnitInertia.SolidBox(
+                            PEDESTAL_BACK_PIECE_LEN,
+                            PEDESTAL_Y_DIM,
+                            PEDESTAL_Z_DIM+h_L)
+    ))
+
+    if plant.geometry_source_is_registered():
+        plant.RegisterCollisionGeometry(
+            body,
+            RigidTransform(),
+            pydrake.geometry.Box(
+                PEDESTAL_BACK_PIECE_LEN,
+                PEDESTAL_Y_DIM,
+                PEDESTAL_Z_DIM+h_L
+            ),
+            backpiece_name,
+            pydrake.multibody.plant.CoulombFriction(1, 1)
+        )
+
+        plant.RegisterVisualGeometry(
+            body,
+            RigidTransform(),
+            pydrake.geometry.Box(
+                PEDESTAL_BACK_PIECE_LEN,
+                PEDESTAL_Y_DIM,
+                PEDESTAL_Z_DIM+h_L
+            ),
+            backpiece_name,
+            [0.4, 0.4, 0.4, 1])  # RGBA color
+        plant.WeldFrames(
+                plant.GetFrameByName(bottom_name, pedestal_instance),
+                plant.GetFrameByName(backpiece_name, pedestal_instance),
+                RigidTransform(RotationMatrix(), [
+                    -(PEDESTAL_BACK_PIECE_LEN+pedestal_x_dim)/2,
+                    0,
+                    (PEDESTAL_Z_DIM+h_L-PEDESTAL_BASE_Z_DIM)/2
                 ]
             ))
 

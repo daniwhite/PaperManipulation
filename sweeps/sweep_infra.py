@@ -26,8 +26,17 @@ def get_max_overall_theta(sim, log):
     X_FL_FJ_L = sim.paper.joints[0].frame_on_parent().GetFixedPoseInBodyFrame()
     p_W_FJ = p_FL[0] + np.expand_dims(X_FL_FJ_L.translation(), 1)
 
-    overall_thetas = np.arctan2((p_L - p_W_FJ)[:,2], -(p_L - p_W_FJ)[:,1-hinge_rotation_axis])
-    return np.max(overall_thetas)
+    overall_thetas = np.arctan2((p_L - p_W_FJ)[:,2], -(p_L - p_W_FJ)[:,1-hinge_rotation_axis]).flatten()
+
+    # Deal with rollover
+    overall_thetas_ = np.zeros_like(overall_thetas)
+    overall_thetas_[0] = overall_thetas[0]
+    for i in range(len(overall_thetas[1:])):
+        overall_thetas_[i+1] = overall_thetas[i+1]
+        if np.abs(overall_thetas_[i+1] - overall_thetas_[i]) > 2*np.pi*0.99:
+            overall_thetas_[i+1] += 2*np.pi
+
+    return np.max(overall_thetas_)
 
 
 def get_max_F_ON_trace(sim, log):
@@ -74,7 +83,7 @@ class SweepRunner:
             self.sweep_vars = np.expand_dims(self.sweep_vars, 1)
         print(sweep_vars)
         print(sweep_args)
-        if self.sweep_args != "impedance_stiffness":
+        if np.all(self.sweep_args != "impedance_stiffness"):
             assert self.sweep_vars.shape[1] == self.sweep_args.shape[0]
 
         self.sim_args = copy.deepcopy(other_sim_args)

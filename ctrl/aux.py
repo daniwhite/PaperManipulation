@@ -270,6 +270,8 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         self.last_contact_time = None
 
         self.start_t__d_theta_L_below_thresh = None
+        self.prev_overall_theta = None
+        self.start_t_success = None
         self.d_theta_L_thresh = 0.005
 
         # System params
@@ -277,6 +279,10 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         self.paper = paper
         self.z_thresh_offset = z_thresh_offset
         self.z_lockdown_thresh_offset = z_lockdown_thresh_offset
+        self.overall_thetas = []
+        self.overall_theta_times = []
+        self.overall_thetas_xs = []
+        self.overall_thetas_ys = []
 
         self.DeclareAbstractInputPort(
             "poses", pydrake.common.value.AbstractValue.Make([RigidTransform(), RigidTransform()]))
@@ -302,6 +308,22 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
 
         p_LL = poses[self.ll_idx].translation()
         p_FL = poses[self.paper.link_idxs[0]].translation()
+        # print(p_FL.shape)
+
+        X_FL_FJ_L = \
+            self.paper.joints[0].frame_on_parent().GetFixedPoseInBodyFrame()
+        p_W_FJ = p_FL + X_FL_FJ_L.translation()
+
+        p_FJ_LL = p_LL.flatten() - p_W_FJ.flatten()
+        atan_x = -p_FJ_LL[1-hinge_rotation_axis]
+        atan_y = p_FJ_LL[2]
+        self.overall_thetas_xs.append(atan_x)
+        self.overall_thetas_ys.append(atan_y)
+        overall_theta = np.arctan2(atan_y,atan_x)
+        if not(self.prev_overall_theta is None):
+            if np.abs(self.prev_overall_theta - overall_theta) > 0.99*2*np.pi:
+                overall_theta -= 2*np.pi*np.sign(overall_theta)
+        self.prev_overall_theta = overall_theta
 
         # TODO: is sign modular?
         horizontal_thresh = p_FL[1-hinge_rotation_axis]
@@ -312,27 +334,36 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
             self.last_contact_time = context.get_time()
 
         outval = 0
+        hor_thresh_reached = p_LL[1-hinge_rotation_axis] > horizontal_thresh
+        # Calculate lock down
+        if in_contact and hor_thresh_reached and \
+                (p_LL[-1] < z_lockdown_thresh) and \
+                (theta_L > np.pi*0.9):
+            out_val = 0
+
+        # Calculate exit terms
         if self.exit_when_folded:
-            if in_contact:
-                if (p_LL[1-hinge_rotation_axis] > horizontal_thresh):
-                    if (p_LL[-1] < z_thresh) and (theta_L > np.pi):
-                        raise sim_exceptions.SimTaskComplete
-                    elif (p_LL[-1] < z_lockdown_thresh) and (theta_L > np.pi*0.9):
-                        outval = 1
-                if abs(d_theta_L) < self.d_theta_L_thresh:
-                    if self.start_t__d_theta_L_below_thresh is None:
-                        self.start_t__d_theta_L_below_thresh = \
-                            context.get_time()
-                    if (context.get_time() - \
-                            self.start_t__d_theta_L_below_thresh > 0.5):
-                        raise sim_exceptions.SimStalled
-                else:
-                    self.start_t__d_theta_L_below_thresh = None
+            self.overall_thetas.append(overall_theta)
+            self.overall_theta_times.append(context.get_time())
+            if overall_theta > np.pi*0.99:
+                if self.start_t_success is None:
+                    self.start_t_success = context.get_time()
+                if (context.get_time() - self.start_t_success > 0.5):
+                    raise sim_exceptions.SimTaskComplete
+            else:
+                self.start_t_success = None
+
+            # Stalling criteria
+            if abs(d_theta_L) < self.d_theta_L_thresh:
+                if self.start_t__d_theta_L_below_thresh is None:
+                    self.start_t__d_theta_L_below_thresh = context.get_time()
+                if (context.get_time() - \
+                        self.start_t__d_theta_L_below_thresh > 1):
+                    raise sim_exceptions.SimStalled
             else:
                 self.start_t__d_theta_L_below_thresh = None
-            if self.last_contact_time is not None:
-                if (context.get_time() - self.last_contact_time) > 0.5:
-                    raise sim_exceptions.ContactBroken
+
+        # Timeout criteria
         if self.timeout is not None:
             if (time.time() - self.start_time) > self.timeout:
                 raise sim_exceptions.SimTimedOut
