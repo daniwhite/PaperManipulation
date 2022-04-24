@@ -506,6 +506,7 @@ class Simulation:
                     ctrl.aux.NormalForceSelector(
                         ll_idx=self.ll_idx,
                         contact_body_idx=self.contact_body_idx,
+                        paper=self.paper
                     )
                 )
                 self.builder.AddNamedSystem(

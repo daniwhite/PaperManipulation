@@ -11,9 +11,10 @@ if __name__ == "__main__":
             plant.simulation.NHatForceCompensationSource.NONE,
         "impedance_stiffness": [40,40,40,400,400,400],
         "num_links": config.NumLinks.FOUR,
-        "timeout": 600,
+        "timeout": None,
         "DT": 0.0001,
-        "const_ff_Fn": 0
+        "const_ff_Fn": 0,
+        "TSPAN": 50
     }
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,

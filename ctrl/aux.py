@@ -184,11 +184,12 @@ class HTNtoXYZ(pydrake.systems.framework.LeafSystem):
         output.SetFromVector(xyz.flatten())
 
 class NormalForceSelector(pydrake.systems.framework.LeafSystem):
-    def __init__(self, ll_idx, contact_body_idx):
+    def __init__(self, ll_idx, contact_body_idx, paper):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.ll_idx = ll_idx
         self.contact_body_idx = contact_body_idx
+        self.paper_idxs = set(paper.link_idxs)
 
         self.DeclareAbstractInputPort(
             "contact_results",
@@ -211,11 +212,9 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
                 point_pair_contact_info.bodyB_index()) == \
                 self.contact_body_idx
             body_A_is_last_link = int(
-                point_pair_contact_info.bodyA_index()) == \
-                self.ll_idx
+                point_pair_contact_info.bodyA_index()) in self.paper_idxs
             body_B_is_last_link = int(
-                point_pair_contact_info.bodyB_index()) == \
-                self.ll_idx
+                point_pair_contact_info.bodyB_index()) in self.paper_idxs
             if (body_A_is_contact_body and body_B_is_last_link) or \
                     (body_B_is_contact_body and body_A_is_last_link):
                 contact_force = point_pair_contact_info.contact_force()
@@ -225,6 +224,7 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
                     F_N_ *= -1
                 F_N += F_N_
         F_N = max(0,F_N)
+        # print(F_N)
         
         output.SetFromVector([F_N])
 
@@ -312,7 +312,14 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
 
         X_FL_FJ_L = \
             self.paper.joints[0].frame_on_parent().GetFixedPoseInBodyFrame()
-        p_W_FJ = p_FL + X_FL_FJ_L.translation()
+        # print(X_FL_FJ_L)
+        offset = np.array([0.0,0.0,0.0])
+        # print(self.paper.w_L)
+        offset[1-hinge_rotation_axis] = -self.paper.w_L/2
+        offset[2] = self.paper.h_L*1.5
+        # print(offset)
+        # print()
+        p_W_FJ = p_FL.flatten() + offset
 
         p_FJ_LL = p_LL.flatten() - p_W_FJ.flatten()
         atan_x = -p_FJ_LL[1-hinge_rotation_axis]
@@ -320,6 +327,7 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         self.overall_thetas_xs.append(atan_x)
         self.overall_thetas_ys.append(atan_y)
         overall_theta = np.arctan2(atan_y,atan_x)
+        # print(overall_theta)
         if not(self.prev_overall_theta is None):
             if np.abs(self.prev_overall_theta - overall_theta) > 0.99*2*np.pi:
                 overall_theta -= 2*np.pi*np.sign(overall_theta)

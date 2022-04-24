@@ -15,9 +15,11 @@ if __name__ == "__main__":
         "DT": 0.0001,
         "const_ff_Fn": 5
     }
+
+    mus = np.concatenate((np.linspace(0,0.4,12),np.linspace(0.5,1,4)))
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
         sweep_args="mu",
-        sweep_vars=np.linspace(0.05, 1, 16),
+        sweep_vars=mus,
     )
     sweep_runner.run_sweep()
