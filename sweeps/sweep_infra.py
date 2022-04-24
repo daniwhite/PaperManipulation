@@ -60,8 +60,8 @@ class SweepRunner:
     }
 
     def __init__(self, other_sim_args, sweep_args, sweep_vars,
-            sweep_var_names=None):
-
+            sweep_var_names=None, other_data_attrs={}):
+        self.other_data_attrs = other_data_attrs
         # Set sweep var name base on invoked file
         if sweep_var_names is None:
             file_name_found = False
@@ -189,6 +189,7 @@ class SweepRunner:
                 out_data=out_data,
                 successes=successes,
                 exit_messages=exit_messages,
-                sim_args=sim_args
+                sim_args=sim_args,
+                **self.other_data_attrs
             )
         print("OVERALL RUNTIME:", time.time() - t_start__)

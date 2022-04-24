@@ -15,7 +15,8 @@ if __name__ == "__main__":
         "DT": 0.0001,
         "const_ff_Fn": 5
     }
-    pose_L_translational_noise = np.array([0] + list(10**np.linspace(-3, np.log10(3), 15)))
+    num_samples = 2
+    pose_L_translational_noise = np.repeat(list(10**np.linspace(-3, np.log10(3), 4)), num_samples)
     pose_L_rotational_noise    = pose_L_translational_noise/(1e-2)
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
@@ -30,5 +31,6 @@ if __name__ == "__main__":
             pose_L_translational_noise,
             pose_L_rotational_noise,
         ]).T,
+        other_data_attrs={"num_samples": num_samples}
     )
     sweep_runner.run_sweep()
