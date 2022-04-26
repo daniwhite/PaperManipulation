@@ -312,13 +312,9 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
 
         X_FL_FJ_L = \
             self.paper.joints[0].frame_on_parent().GetFixedPoseInBodyFrame()
-        # print(X_FL_FJ_L)
         offset = np.array([0.0,0.0,0.0])
-        # print(self.paper.w_L)
         offset[1-hinge_rotation_axis] = -self.paper.w_L/2
         offset[2] = self.paper.h_L*1.5
-        # print(offset)
-        # print()
         p_W_FJ = p_FL.flatten() + offset
 
         p_FJ_LL = p_LL.flatten() - p_W_FJ.flatten()

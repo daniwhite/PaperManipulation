@@ -11,7 +11,7 @@ if __name__ == "__main__":
             plant.simulation.NHatForceCompensationSource.MEASURED,
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
-        "DT": 0,
+        "DT": 0.0001,
         "const_ff_Fn": 5,
         "impedance_stiffness": [4,4,4,40,40,40],
     }
