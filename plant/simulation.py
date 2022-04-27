@@ -26,6 +26,7 @@ import ctrl.kinematic_ctrlr
 import ctrl.cartesian_impedance
 import ctrl.impedance_generators.setpoint_generators.offline_loader
 import ctrl.impedance_generators.setpoint_generators.link_feedback
+import ctrl.impedance_generators.setpoint_generators.force_feedback
 import ctrl.aux
 import sim_exceptions
 
@@ -73,11 +74,13 @@ class CtrlParadigm(enum.Enum):
 class ImpedanceType(enum.Enum):
     OFFLINE_TRAJ = enum.auto()
     LINK_FB = enum.auto()
+    FORCE_FB = enum.auto()
     NONE = enum.auto
 
 
 class NHatForceCompensationSource(enum.Enum):
-    MEASURED = enum.auto()
+    PURE_FN = enum.auto()
+    CONTACT_FORCE = enum.auto()
     CONSTANT = enum.auto()
     NONE = enum.auto()
 
@@ -339,6 +342,8 @@ class Simulation:
             "qv_noise_adder",
             Adder(2, 2*manipulator.data['nq'])
         )
+        self.builder.AddNamedSystem("qv_noise_demux", Demultiplexer(
+            [manipulator.data['nq'], manipulator.data['nq']]))
         # Proprioception
         self.builder.AddNamedSystem(
             "prop",
@@ -371,6 +376,17 @@ class Simulation:
                 name + "_w_noise",
                 Adder(2,3)
             )
+
+        # TODO: reorganize noise
+        # Force
+        self.builder.AddNamedSystem(
+            "measured_contact_force",
+            ctrl.aux.NormalForceSelector(
+                ll_idx=self.ll_idx,
+                contact_body_idx=self.contact_body_idx,
+                paper=self.paper
+            )
+        )
 
         # Logger
         self.log_wrapper = LogWrapper(
@@ -462,6 +478,13 @@ class Simulation:
                     link_feedback.LinkFeedbackSetpointGenerator(
                         sys_consts=self.ctrl_sys_consts,
                         num_links=self.num_links)
+        elif self.impedance_type == ImpedanceType.FORCE_FB:
+            setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
+                    force_feedback.ForceFeedbackSetpointGenerator(
+                        sys_consts=self.ctrl_sys_consts,
+                        contact_body_idx=self.contact_body_idx,
+                        num_links=self.num_links)
+            self.setpoint_gen = setpoint_gen
         
         self.fold_ctrl = ctrl.cartesian_impedance.CartesianImpedanceController(
             sys_consts=self.ctrl_sys_consts)
@@ -488,6 +511,11 @@ class Simulation:
                 NHatForceCompensationSource.NONE:
             self.builder.AddNamedSystem("ff_wrench_XYZ",
                 ConstantVectorSource([0, 0, 0, 0, 0, 0]))
+        elif self.n_hat_force_compensation_source == \
+                NHatForceCompensationSource.CONTACT_FORCE:
+            self.builder.AddNamedSystem(
+                "ff_torque_XYZ", ConstantVectorSource([0, 0, 0]))
+            self.builder.AddNamedSystem("ff_wrench_XYZ", Multiplexer([3,3]))
         else:
             self.builder.AddNamedSystem("ff_force_HT",
                 ConstantVectorSource([0, 0]))
@@ -498,17 +526,9 @@ class Simulation:
             self.builder.AddNamedSystem("ff_wrench_XYZ", Multiplexer([3,3]))
 
             const_ff_Fn_src = ConstantVectorSource([self.const_ff_Fn])
-            if self.n_hat_force_compensation_source == \
-                    NHatForceCompensationSource.MEASURED:
+            if (self.n_hat_force_compensation_source == \
+                    NHatForceCompensationSource.PURE_FN):
                 self.builder.AddNamedSystem("const_ff_Fn_src", const_ff_Fn_src)
-                self.builder.AddNamedSystem(
-                    "measured_ff_Fn_no_noise",
-                    ctrl.aux.NormalForceSelector(
-                        ll_idx=self.ll_idx,
-                        contact_body_idx=self.contact_body_idx,
-                        paper=self.paper
-                    )
-                )
                 self.builder.AddNamedSystem(
                     "measured_ff_Fn_noise",
                     ctrl.aux.NoiseGenerator(1, self.noise["Fn"])
@@ -543,7 +563,7 @@ class Simulation:
             ctrl.aux.JointCenteringCtrl())
 
         # TODO: clean this up
-        if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
+        if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS or self.impedance_type == ImpedanceType.FORCE_FB:
             self.builder.AddNamedSystem(
                 "pre_contact_ctrl__setpoint_gen",
                 ctrl.impedance_generators.setpoint_generators.\
@@ -562,6 +582,7 @@ class Simulation:
                 ConstantVectorSource(2*np.sqrt(_impedance_stiffness)))
             self.builder.AddNamedSystem("pre_contact_ctrl__ff_Fn",
                 ConstantVectorSource([0, 0, 0, 0, 0, 0]))
+            self.builder.AddNamedSystem("fake_lockdown_signal", ConstantVectorSource([0]))
 
         self.builder.AddNamedSystem("ctrl_selector", ctrl.aux.CtrlSelector())
 
@@ -697,6 +718,10 @@ class Simulation:
             self._connect(["vision_no_noise", "pose_L_rotational"],
                 ["link_frame_vis", "rot"])
 
+        # Force feedback
+        self._connect(["plant", "contact_results"],
+            "measured_contact_force")
+
         if (self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS):
             skipped_ports = {"in_contact", "v_LN", "v_MN"}
             self._connect_all_outputs(
@@ -752,7 +777,16 @@ class Simulation:
             self._connect("D_gen", ["fold_ctrl", "D"])
             self._connect(["setpoint_gen", "x0"], ["fold_ctrl", "x0"])
             self._connect(["setpoint_gen", "dx0"], ["fold_ctrl", "dx0"])
-            if self.n_hat_force_compensation_source != NHatForceCompensationSource.NONE:
+            if self.n_hat_force_compensation_source == \
+                    NHatForceCompensationSource.CONTACT_FORCE:
+                self._connect("ff_torque_XYZ", ["ff_wrench_XYZ", 0])
+                self._connect(
+                    ["measured_contact_force", "contact_force"],
+                    ["ff_wrench_XYZ", 1])
+            elif (self.n_hat_force_compensation_source == \
+                    NHatForceCompensationSource.PURE_FN) or \
+                    (self.n_hat_force_compensation_source == \
+                    NHatForceCompensationSource.CONSTANT):
                 self._connect("ff_force_HTN", ["ff_force_XYZ", "HTN"])
                 self._connect(["vis_proc", "T_hat"], ["ff_force_XYZ", "T_hat"])
                 self._connect(["vis_proc", "N_hat"], ["ff_force_XYZ", "N_hat"])
@@ -763,10 +797,8 @@ class Simulation:
                 self._connect("ff_force_N_Sat", ["ff_force_HTN", 1])
 
                 if self.n_hat_force_compensation_source == \
-                        NHatForceCompensationSource.MEASURED:
-                    self._connect(["plant", "contact_results"],
-                        "measured_ff_Fn_no_noise")
-                    self._connect("measured_ff_Fn_no_noise",
+                        NHatForceCompensationSource.PURE_FN:
+                    self._connect(["measured_contact_force", "F_N"],
                         ["measured_ff_Fn_w_noise", 0])
                     self._connect("measured_ff_Fn_noise",
                         ["measured_ff_Fn_w_noise", 1])
@@ -780,14 +812,18 @@ class Simulation:
                     ["setpoint_vis", "pos"])
                 self._connect(["fold_ctrl", "adjusted_x0_rot"],
                     ["setpoint_vis", "rot"])
-            
-            if type(self._get_system("setpoint_gen")) is \
-                    ctrl.impedance_generators.setpoint_generators.\
-                        link_feedback.LinkFeedbackSetpointGenerator:
+
+            if self.impedance_type == ImpedanceType.LINK_FB:
                 self._connect("pose_L_translational_w_noise",
                     ["setpoint_gen", "pose_L_translational"])
                 self._connect("pose_L_rotational_w_noise",
                     ["setpoint_gen", "pose_L_rotational"])
+            elif self.impedance_type == ImpedanceType.FORCE_FB:
+                self._connect("qv_noise_adder", "qv_noise_demux")
+                self._connect(["qv_noise_demux", 0], ["setpoint_gen", "q"])
+                self._connect(
+                    ["measured_contact_force", "contact_force"],
+                    ["setpoint_gen", "F"])
 
         # Controller connections
         ## Controller mux
@@ -795,7 +831,7 @@ class Simulation:
             ["ctrl_selector", "in_contact"])
         self._connect(["fold_ctrl", "tau_out"],
             ["ctrl_selector", "contact_ctrl"])
-        if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS:
+        if self.ctrl_paradigm == CtrlParadigm.INVERSE_DYNAMICS or self.impedance_type == ImpedanceType.FORCE_FB:
             self._connect("pre_contact_ctrl__ff_Fn", ["pre_contact_ctrl", "feedforward_wrench"])
             for k in ["pose_M_translational", "pose_M_rotational",
                     "vel_M_translational", "vel_M_rotational"]:
@@ -814,6 +850,7 @@ class Simulation:
             )
             self._connect(["pre_contact_ctrl", "tau_out"],
                 ["ctrl_selector", "pre_contact_ctrl"])
+            self._connect("fake_lockdown_signal", ["pre_contact_ctrl", "lockdown_signal"])
         else:
             self._connect(["fold_ctrl", "tau_out"],
                 ["ctrl_selector", "pre_contact_ctrl"])

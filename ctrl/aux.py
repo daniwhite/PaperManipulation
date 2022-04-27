@@ -191,17 +191,25 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
         self.contact_body_idx = contact_body_idx
         self.paper_idxs = set(paper.link_idxs)
 
+        self.F_N = 0
+        self.contact_force = np.array([0.0,0.0,0.0])
+
         self.DeclareAbstractInputPort(
             "contact_results",
             pydrake.common.value.AbstractValue.Make(ContactResults()))
         
         self.DeclareVectorOutputPort(
-            "out", pydrake.systems.framework.BasicVector(1), self.CalcOutput)
+            "F_N", pydrake.systems.framework.BasicVector(1), self.get_F_N)
+
+        self.DeclareVectorOutputPort(
+            "contact_force",
+            pydrake.systems.framework.BasicVector(3), self.get_contact_force)
     
-    def CalcOutput(self, context, output):
+    def update(self, context):
         contact_results = self.GetInputPort("contact_results").Eval(context)
 
         F_N = 0
+        contact_force = np.array([0.0,0.0,0.0])
         for i in range(contact_results.num_point_pair_contacts()):
             point_pair_contact_info = \
                 contact_results.point_pair_contact_info(i)
@@ -217,16 +225,26 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
                 point_pair_contact_info.bodyB_index()) in self.paper_idxs
             if (body_A_is_contact_body and body_B_is_last_link) or \
                     (body_B_is_contact_body and body_A_is_last_link):
-                contact_force = point_pair_contact_info.contact_force()
+                contact_force_ = point_pair_contact_info.contact_force()
                 nhat = point_pair_contact_info.point_pair().nhat_BA_W
-                F_N_ = np.dot(contact_force, nhat)
+                F_N_ = np.dot(contact_force_, nhat)
                 if body_B_is_contact_body:
                     F_N_ *= -1
+                    contact_force_ *= -1
                 F_N += F_N_
+                contact_force += contact_force_
         F_N = max(0,F_N)
-        # print(F_N)
         
-        output.SetFromVector([F_N])
+        self.F_N = F_N
+        self.contact_force = contact_force
+    
+    def get_contact_force(self, context, output):
+        self.update(context)
+        output.SetFromVector(self.contact_force)
+
+    def get_F_N(self, context, output):
+        self.update(context)
+        output.SetFromVector(self.F_N)
 
 
 class AnyContactsCalculator(pydrake.systems.framework.LeafSystem):
