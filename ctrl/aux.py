@@ -244,7 +244,7 @@ class NormalForceSelector(pydrake.systems.framework.LeafSystem):
 
     def get_F_N(self, context, output):
         self.update(context)
-        output.SetFromVector(self.F_N)
+        output.SetFromVector([self.F_N])
 
 
 class AnyContactsCalculator(pydrake.systems.framework.LeafSystem):
@@ -361,7 +361,7 @@ class ExitSystem(pydrake.systems.framework.LeafSystem):
         if in_contact and hor_thresh_reached and \
                 (p_LL[-1] < z_lockdown_thresh) and \
                 (theta_L > np.pi*0.9):
-            out_val = 0
+            outval = 0
 
         # Calculate exit terms
         if self.exit_when_folded:

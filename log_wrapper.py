@@ -241,8 +241,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
 
             use_this_contact = False
             # Always take contact forces on manipulator
-            if int(point_pair_contact_info.bodyA_index()) == self.contact_body_idx \
-                    and int(point_pair_contact_info.bodyB_index()) == self.ll_idx:
+            if int(point_pair_contact_info.bodyA_index()) == self.contact_body_idx:
                 # PROGRAMMING: Move sparation speed back into this section with correct signs
                 out += list(-point_pair_contact_info.contact_force())
                 out += list(point_pair_contact_info.point_pair().p_WCa)
@@ -255,8 +254,7 @@ class LogWrapper(pydrake.systems.framework.LeafSystem):
                 pen_point_pair = point_pair_contact_info.point_pair()
                 out += list(-pen_point_pair.nhat_BA_W)
                 use_this_contact = True
-            elif int(point_pair_contact_info.bodyA_index()) == self.ll_idx \
-                    and int(point_pair_contact_info.bodyB_index()) == self.contact_body_idx:
+            elif int(point_pair_contact_info.bodyB_index()) == self.contact_body_idx:
                 out += list(point_pair_contact_info.contact_force())
                 out += list(point_pair_contact_info.point_pair().p_WCb)
                 out += list(point_pair_contact_info.point_pair().p_WCa)

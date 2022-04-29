@@ -18,7 +18,7 @@ class ForceFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
     joint.
     """
     def __init__(self, sys_consts: SystemConstants, contact_body_idx: int,
-            num_links):
+            num_links, dist_offset: float):
         pydrake.systems.framework.LeafSystem.__init__(self)
 
         self.sys_consts = sys_consts
@@ -30,6 +30,9 @@ class ForceFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
             orientation_map['theta_L_EE'],
             fill_value='extrapolate'
         )
+        self.N_hat = np.array([0,0,1])
+        self.H_init = None
+        self.dist_offset = dist_offset
 
         # If I want the contact point to moving in an arc of
         # `desired_contact_distance`, then I need the end effector to be
@@ -87,20 +90,19 @@ class ForceFeedbackSetpointGenerator(pydrake.systems.framework.LeafSystem):
             self.manipulator_plant_context, contact_body).translation()
 
         self.F = F
-        #print(F)
         if np.linalg.norm(F) > 0:
-            N_hat = F/np.linalg.norm(F)
+            self.N_hat = F/np.linalg.norm(F)
             # TODO: double check hinge_rotation_axis dependency throughout this file
-        else:
-            N_hat = np.array([0,0,1])
-        theta_L = np.arctan2(N_hat[2], -N_hat[0]) - np.pi/2
-        #print(theta_L)
+        theta_L = np.arctan2(self.N_hat[2], -self.N_hat[0]) - np.pi/2
 
+        if self.H_init is None:
+            self.H_init = p_M[config.hinge_rotation_axis]
+        p = p_M + (self.dist_offset + self.sys_consts.r + self.sys_consts.h_L/2)*self.N_hat.flatten()
+        p[config.hinge_rotation_axis] = self.H_init
         X_W_L = RigidTransform(
             R = RotationMatrix.MakeYRotation(theta_L),
-            p = p_M + (0.5 + self.sys_consts.r + self.sys_consts.h_L/2)*N_hat.flatten()
+            p = p
         )
-        #print("X_W_L: ", X_W_L)
 
         # Calc X_L_SP, the transform from the link to the setpoint
         offset_Z_rot = self.get_theta_Z_func(theta_L)

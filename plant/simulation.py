@@ -479,11 +479,14 @@ class Simulation:
                         sys_consts=self.ctrl_sys_consts,
                         num_links=self.num_links)
         elif self.impedance_type == ImpedanceType.FORCE_FB:
+            k_ = self.impedance_stiffness[-1]
+            dist_offset = self.const_ff_Fn/k_
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     force_feedback.ForceFeedbackSetpointGenerator(
                         sys_consts=self.ctrl_sys_consts,
                         contact_body_idx=self.contact_body_idx,
-                        num_links=self.num_links)
+                        num_links=self.num_links,
+                        dist_offset=dist_offset)
             self.setpoint_gen = setpoint_gen
         
         self.fold_ctrl = ctrl.cartesian_impedance.CartesianImpedanceController(
