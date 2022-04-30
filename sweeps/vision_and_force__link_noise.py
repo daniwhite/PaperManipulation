@@ -8,7 +8,7 @@ if __name__ == "__main__":
         "ctrl_paradigm": plant.simulation.CtrlParadigm.IMPEDANCE,
         "impedance_type": plant.simulation.ImpedanceType.LINK_FB,
         "n_hat_force_compensation_source": 
-            plant.simulation.NHatForceCompensationSource.MEASURED,
+            plant.simulation.NHatForceCompensationSource.PURE_FN,
         "impedance_stiffness": [4,4,4,40,40,40],
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,

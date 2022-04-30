@@ -1124,7 +1124,7 @@
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=2.238276in,y=1.006175in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Offline setpoint trajectory}%
+\pgftext[x=2.238276in,y=1.006175in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont open loop setpoint trajectory}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetrectcap%

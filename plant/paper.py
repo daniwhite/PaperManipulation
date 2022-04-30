@@ -78,7 +78,7 @@ class Paper:
                     RigidTransform(),
                     pydrake.geometry.Box(*box_dims),
                     self.name + "_body" + str(link_num),
-                    [0, 1, 0, 1])  # RGBA color
+                    [0.8, 0.8, 0.8, 1])  # RGBA color
 
             # Operations between adjacent links
             if link_num > 0:

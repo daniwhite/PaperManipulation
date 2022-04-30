@@ -32,7 +32,7 @@ if __name__ == "__main__":
             [
                 plant.simulation.NHatForceCompensationSource.NONE,
                 plant.simulation.NHatForceCompensationSource.CONSTANT,
-                plant.simulation.NHatForceCompensationSource.MEASURED,
+                plant.simulation.NHatForceCompensationSource.PURE_FN,
             ],
             [
                 [40,40,40,400,400,400],

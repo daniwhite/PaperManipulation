@@ -55,8 +55,8 @@ def nominal_sys_consts(num_links):
         m_L = PLYWOOD_LENGTH*PEDESTAL_X_DIM(num_links)*\
             THIN_PLYWOOD_THICKNESS*PLYWOOD_DENSITY,
         m_M = 1e-3,
-        b_J = 1e-1,
-        k_J = stiffness_Nm_per_Rad(num_links),
+        b_J = 0.035,
+        k_J = 0.35,
         mu = 0.4,
         r = 0.05,
     )
