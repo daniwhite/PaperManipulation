@@ -18,6 +18,6 @@ if __name__ == "__main__":
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
         sweep_args="m_L",
-        sweep_vars=np.linspace(0.05, 6, 16),
+        sweep_vars=np.linspace(0.05, 1, 16),
     )
     sweep_runner.run_sweep()

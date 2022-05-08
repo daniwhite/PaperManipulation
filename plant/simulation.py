@@ -472,7 +472,7 @@ class Simulation:
         if self.impedance_type == ImpedanceType.OFFLINE_TRAJ:
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     offline_loader.OfflineTrajLoader(num_links=self.num_links,
-                        speed_factor=10)
+                        speed_factor=1)
         elif self.impedance_type == ImpedanceType.LINK_FB:
             setpoint_gen = ctrl.impedance_generators.setpoint_generators.\
                     link_feedback.LinkFeedbackSetpointGenerator(

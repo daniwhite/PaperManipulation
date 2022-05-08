@@ -9,7 +9,7 @@ if __name__ == "__main__":
         "impedance_type": plant.simulation.ImpedanceType.OFFLINE_TRAJ,
         "n_hat_force_compensation_source": 
             plant.simulation.NHatForceCompensationSource.NONE,
-        "impedance_stiffness": [40,40,40,400,400,400],
+        "impedance_stiffness": [4,4,4,40,40,40],
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,

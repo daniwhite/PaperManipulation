@@ -138,7 +138,9 @@ class SweepRunner:
                 "pos", "trn", sim.contact_body_idx) + 2,:]
 
         # Get figures of merit/other useful traces
-        out["max_overall_theta"] = get_max_overall_theta(sim, log)
+        out["overall_theta_times"] = sim.exit_system.overall_thetas
+        out["overall_thetas"] = sim.exit_system.overall_thetas
+        out["max_overall_theta"] = np.max(sim.exit_system.overall_thetas)
         out["max_F_ONs"] = get_max_F_ON_trace(sim, log)
         return out
 

@@ -13,12 +13,12 @@ if __name__ == "__main__":
         "num_links": config.NumLinks.FOUR,
         "timeout": None,
         "DT": 0.0001,
-        "const_ff_Fn": 50,
+        "const_ff_Fn": 15,
         "TSPAN": 50
     }
     sweep_runner = sweeps.sweep_infra.SweepRunner(
         other_sim_args=other_sim_args,
         sweep_args="m_L",
-        sweep_vars=np.linspace(0.05, 6, 16),
+        sweep_vars=np.linspace(0.05, 1, 16),
     )
     sweep_runner.run_sweep()

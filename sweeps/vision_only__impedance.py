@@ -12,7 +12,7 @@ if __name__ == "__main__":
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,
-        "const_ff_Fn": 50,
+        "const_ff_Fn": 10,
         "impedance_stiffness": [4,4,4,40,40,40],
     }
     sweep_runner = sweeps.sweep_infra.SweepRunner(

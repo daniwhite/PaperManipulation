@@ -13,7 +13,7 @@ if __name__ == "__main__":
         "num_links": config.NumLinks.FOUR,
         "timeout": 600,
         "DT": 0.0001,
-        "const_ff_Fn": 50
+        "const_ff_Fn": 15
     }
     mus = np.concatenate((np.linspace(0,0.4,12),np.linspace(0.5,1,4)))
     sweep_runner = sweeps.sweep_infra.SweepRunner(
