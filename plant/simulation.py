@@ -61,7 +61,8 @@ default_port_noise_map = {
     "vel_M_translational": 0,
     "q": 0,
     "v": 0,
-    "Fn": 0
+    "Fn": 0,
+    "F": 0
 }
 
 # Enums
@@ -93,7 +94,8 @@ class Simulation:
             num_links: config.NumLinks, DT, TSPAN,
             sim_params=None, ctrl_params=None, meshcat=None,
             impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
-            timeout=None, noise=default_port_noise_map, impedance_scale=1):
+            timeout=None, noise=default_port_noise_map, impedance_scale=1,
+            model_impedance_delay=False):
         # System parameters
         # Sim is used for simulation. Ctrl is used for everything else
         if sim_params is None:
@@ -131,6 +133,7 @@ class Simulation:
         self.meshcat = meshcat
         self.TSPAN = TSPAN
         self.num_links = num_links
+        self.model_impedance_delay = model_impedance_delay
 
         # Set up logs
         self.tau_O_log = [0]
@@ -592,6 +595,12 @@ class Simulation:
         if DT > 0:
             self.builder.AddNamedSystem("delay",
                 DiscreteTimeDelay(DT, 1, manipulator.data['nq']))
+            if self.model_impedance_delay:
+                if self.ctrl_paradigm == CtrlParadigm.IMPEDANCE:
+                    self.builder.AddNamedSystem("x0_delay",
+                        DiscreteTimeDelay(0.01, 1, 6))
+                    self.builder.AddNamedSystem("F_delay",
+                        DiscreteTimeDelay(0.01, 1, 6))
 
 
     def _context_specific_init(self):
@@ -778,7 +787,11 @@ class Simulation:
                 self._connect(["prop", k], ["fold_ctrl", k])
             self._connect("K_gen", ["fold_ctrl", "K"])
             self._connect("D_gen", ["fold_ctrl", "D"])
-            self._connect(["setpoint_gen", "x0"], ["fold_ctrl", "x0"])
+            if self.model_impedance_delay:
+                self._connect(["setpoint_gen", "x0"], "x0_delay")
+                self._connect("x0_delay", ["fold_ctrl", "x0"])
+            else:
+                self._connect(["setpoint_gen", "x0"], ["fold_ctrl", "x0"])
             self._connect(["setpoint_gen", "dx0"], ["fold_ctrl", "dx0"])
             if self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.CONTACT_FORCE:
@@ -807,7 +820,11 @@ class Simulation:
                         ["measured_ff_Fn_w_noise", 1])
                     self._connect("measured_ff_Fn_w_noise", ["ff_force_N", 0])
                     self._connect("const_ff_Fn_src", ["ff_force_N", 1])
-            self._connect("ff_wrench_XYZ", ["fold_ctrl", "feedforward_wrench"])
+            if self.model_impedance_delay:
+                self._connect("ff_wrench_XYZ", "F_delay")
+                self._connect("F_delay", ["fold_ctrl", "feedforward_wrench"])
+            else:
+                self._connect("ff_wrench_XYZ", ["fold_ctrl", "feedforward_wrench"])
             
             self._connect(["setpoint_gen", "x0"], "demux_setpoint")
             if self.meshcat is not None:

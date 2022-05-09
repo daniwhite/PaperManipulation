@@ -24,7 +24,7 @@ class Paper:
     name = "paper"
     x_dim = PAPER_X_DIM
 
-    hinge_diameter = (3/32)*constants.IN_TO_M
+    hinge_diameter = (0.172)*constants.IN_TO_M*2
 
     def __init__(self, plant, scene_graph, \
             default_joint_angle, k_J, b_J, m_L, w_L, h_L, mu, num_links):
@@ -151,4 +151,5 @@ class Paper:
     def set_positions(self, diagram, diagram_context):
         plant_context = diagram.GetMutableSubsystemContext(self.plant, diagram_context)
         position = [np.pi/(self.num_links.value*12)]*(self.num_links.value-1)
+        position = [np.pi/3]
         self.plant.SetPositions(plant_context, self.instance, position)

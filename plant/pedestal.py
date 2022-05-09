@@ -25,6 +25,7 @@ def AddPedestal(plant, num_links:config.NumLinks, weld_base=True, h_L=0):
     PEDESTAL_X_OFFSET, PEDESTAL_Y_OFFSET, PEDESTAL_Z_OFFSET = np.load(
         "pedestal_xyz_{}_links.npz".format(num_links.value))['pedestal_xyz']
     pedestal_x_dim = constants.PEDESTAL_X_DIM(num_links)
+    # PEDESTAL_Z_OFFSET += 0.1
 
     pedestal_instance = plant.AddModelInstance("pedestal_base")
 
