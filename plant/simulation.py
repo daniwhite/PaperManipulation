@@ -95,7 +95,7 @@ class Simulation:
             sim_params=None, ctrl_params=None, meshcat=None,
             impedance_stiffness=None, exit_when_folded=False, const_ff_Fn=5,
             timeout=None, noise=default_port_noise_map, impedance_scale=1,
-            model_impedance_delay=False):
+            model_impedance_delay=False, use_true_hinge_diameter=False):
         # System parameters
         # Sim is used for simulation. Ctrl is used for everything else
         if sim_params is None:
@@ -158,7 +158,7 @@ class Simulation:
         self.plant.set_stiction_tolerance(constants.v_stiction)
         self.plant.set_penetration_allowance(0.001)
 
-        self._add_mbp_bodies()
+        self._add_mbp_bodies(use_true_hinge_diameter)
 
         # Init sim_sys_consts
         self.sim_sys_consts.I_L = self.plant.get_body(
@@ -294,7 +294,7 @@ class Simulation:
 
     # =========================== PRIVATE FUNCTIONS ===========================
 
-    def _add_mbp_bodies(self):
+    def _add_mbp_bodies(self, use_true_hinge_diameter):
         """
         Initialize and add to builder systems any systems that introduce new
         bodies to the multibody plant, so this needs to be called before
@@ -309,7 +309,8 @@ class Simulation:
             k_J=self.sim_sys_consts.k_J, b_J=self.sim_sys_consts.b_J,
             m_L=self.sim_sys_consts.m_L, w_L=self.sim_sys_consts.w_L,
             h_L=self.sim_sys_consts.h_L, mu=self.sim_sys_consts.mu,
-            num_links=self.num_links)
+            num_links=self.num_links,
+            use_true_hinge_diameter=use_true_hinge_diameter)
         self.paper.weld_paper_edge(pedestal_instance)
 
         # Manipulator
@@ -522,6 +523,14 @@ class Simulation:
             self.builder.AddNamedSystem(
                 "ff_torque_XYZ", ConstantVectorSource([0, 0, 0]))
             self.builder.AddNamedSystem("ff_wrench_XYZ", Multiplexer([3,3]))
+            self.builder.AddNamedSystem(
+                "F_noise",
+                ctrl.aux.NoiseGenerator(3, self.noise["F"])
+            )
+            self.builder.AddNamedSystem(
+                "F_with_noise",
+                Adder(2, 3)
+            )
         else:
             self.builder.AddNamedSystem("ff_force_HT",
                 ConstantVectorSource([0, 0]))
@@ -798,6 +807,12 @@ class Simulation:
                 self._connect("ff_torque_XYZ", ["ff_wrench_XYZ", 0])
                 self._connect(
                     ["measured_contact_force", "contact_force"],
+                    ["F_with_noise", 0])
+                self._connect(
+                    "F_noise",
+                    ["F_with_noise", 1])
+                self._connect(
+                    "F_with_noise",
                     ["ff_wrench_XYZ", 1])
             elif (self.n_hat_force_compensation_source == \
                     NHatForceCompensationSource.PURE_FN) or \

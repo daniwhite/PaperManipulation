@@ -4,7 +4,6 @@ import plant.simulation
 import config
 
 if __name__ == "__main__":
-    base_stiffness = np.array([[4, 4, 4, 40, 40, 40]])
     other_sim_args = {
         "ctrl_paradigm": plant.simulation.CtrlParadigm.IMPEDANCE,
         "impedance_type": plant.simulation.ImpedanceType.OFFLINE_TRAJ,

@@ -7,11 +7,9 @@ import config
 if __name__ == "__main__":
     other_sim_args = {
         "ctrl_paradigm": plant.simulation.CtrlParadigm.IMPEDANCE,
-        "impedance_type": plant.simulation.ImpedanceType.LINK_FB,
-        "n_hat_force_compensation_source": 
-            plant.simulation.NHatForceCompensationSource.CONSTANT,
+        "impedance_stiffness": [4,4,4,40,40,40],
         "num_links": config.NumLinks.FOUR,
-        "timeout": 1200,
+        "timeout": 600,
         "DT": 0.0001
     }
 
@@ -20,26 +18,22 @@ if __name__ == "__main__":
         sweep_args=[
             "impedance_type",
             "n_hat_force_compensation_source",
-            "impedance_stiffness",
             "const_ff_Fn"
         ],
         sweep_vars=np.array([
             [
                 plant.simulation.ImpedanceType.OFFLINE_TRAJ,
                 plant.simulation.ImpedanceType.LINK_FB,
+                plant.simulation.ImpedanceType.FORCE_FB,
                 plant.simulation.ImpedanceType.LINK_FB,
             ],
             [
                 plant.simulation.NHatForceCompensationSource.NONE,
                 plant.simulation.NHatForceCompensationSource.CONSTANT,
+                plant.simulation.NHatForceCompensationSource.CONTACT_FORCE,
                 plant.simulation.NHatForceCompensationSource.PURE_FN,
             ],
-            [
-                [40,40,40,400,400,400],
-                [4,4,4,40,40,40],
-                [4,4,4,40,40,40]
-            ],
-            [0, 50, 5],
+            [0, 15, 5, 5],
         ]).T
     )
     sweep_runner.run_sweep()
