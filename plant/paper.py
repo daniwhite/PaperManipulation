@@ -84,6 +84,14 @@ class Paper:
                     self.name + "_body" + str(link_num),
                     [0.8, 0.8, 0.8, 1])  # RGBA color
 
+            # for i in range(9):
+            #     panda_body = self.plant.GetBodyByName("panda_link" + str(i))
+            #     geometries = self.plant.CollectRegisteredGeometries(
+            #         [paper_body, panda_body])
+            #     self.scene_graph.collision_filter_manager().Apply(
+            #         CollisionFilterDeclaration()
+            #             .ExcludeWithin(geometries))
+
             # Operations between adjacent links
             if link_num > 0:
                 # Get bodies

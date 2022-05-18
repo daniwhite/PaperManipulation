@@ -838,7 +838,7 @@
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=3.075000in,y=3.258405in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont End effector trajectory for two links}%
+\pgftext[x=3.075000in,y=3.258405in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont End effector trajectory with open loop controller and two link-hinge}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetrectcap%
@@ -847,15 +847,15 @@
 \definecolor{currentstroke}{rgb}{0.000000,0.500000,0.000000}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
-\pgfpathmoveto{\pgfqpoint{4.177776in}{1.432892in}}%
-\pgfpathlineto{\pgfqpoint{4.455554in}{1.432892in}}%
+\pgfpathmoveto{\pgfqpoint{4.234103in}{1.432892in}}%
+\pgfpathlineto{\pgfqpoint{4.511881in}{1.432892in}}%
 \pgfusepath{stroke}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=4.566665in,y=1.384280in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Experiment}%
+\pgftext[x=4.622992in,y=1.384280in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Real robot}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetbuttcap%
@@ -864,15 +864,15 @@
 \definecolor{currentstroke}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{{5.550000pt}{2.400000pt}}{0.000000pt}%
-\pgfpathmoveto{\pgfqpoint{4.177776in}{1.239219in}}%
-\pgfpathlineto{\pgfqpoint{4.455554in}{1.239219in}}%
+\pgfpathmoveto{\pgfqpoint{4.234103in}{1.239219in}}%
+\pgfpathlineto{\pgfqpoint{4.511881in}{1.239219in}}%
 \pgfusepath{stroke}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=4.566665in,y=1.190608in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Reference}%
+\pgftext[x=4.622992in,y=1.190608in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Reference}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetrectcap%
@@ -881,15 +881,15 @@
 \definecolor{currentstroke}{rgb}{1.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
-\pgfpathmoveto{\pgfqpoint{4.177776in}{1.045546in}}%
-\pgfpathlineto{\pgfqpoint{4.455554in}{1.045546in}}%
+\pgfpathmoveto{\pgfqpoint{4.234103in}{1.045546in}}%
+\pgfpathlineto{\pgfqpoint{4.511881in}{1.045546in}}%
 \pgfusepath{stroke}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=4.566665in,y=0.996935in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Simulation}%
+\pgftext[x=4.622992in,y=0.996935in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Simulation}%
 \end{pgfscope}%
 \end{pgfpicture}%
 \makeatother%

@@ -303,6 +303,12 @@ class Simulation:
         # Pedestal
         pedestal_instance = pedestal.AddPedestal(self.plant, self.num_links, h_L=self.sim_sys_consts.h_L)
 
+        # Manipulator
+        self.manipulator_instance = manipulator.data["add_plant_function"](
+            plant=self.plant, m_M=self.sim_sys_consts.m_M,
+            r=self.sim_sys_consts.r, mu=self.sim_sys_consts.mu,
+            scene_graph=self.scene_graph)
+
         # Paper
         self.paper = Paper(self.plant, self.scene_graph,
             default_joint_angle=0,
@@ -312,12 +318,6 @@ class Simulation:
             num_links=self.num_links,
             use_true_hinge_diameter=use_true_hinge_diameter)
         self.paper.weld_paper_edge(pedestal_instance)
-
-        # Manipulator
-        self.manipulator_instance = manipulator.data["add_plant_function"](
-            plant=self.plant, m_M=self.sim_sys_consts.m_M,
-            r=self.sim_sys_consts.r, mu=self.sim_sys_consts.mu,
-            scene_graph=self.scene_graph)
 
         self.plant.Finalize()
 

@@ -496,7 +496,7 @@
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=3.224923in,y=4.592583in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont Vision and force}%
+\pgftext[x=3.224923in,y=4.592583in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont Vision and force feedback}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetbuttcap%
@@ -1138,7 +1138,7 @@
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=3.224923in,y=2.387532in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont Force only}%
+\pgftext[x=3.224923in,y=2.387532in,,base]{\color{textcolor}\rmfamily\fontsize{12.000000}{14.400000}\selectfont Force feedback only}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%

@@ -446,7 +446,7 @@
 \pgfsetrectcap%
 \pgfsetroundjoin%
 \pgfsetlinewidth{1.505625pt}%
-\definecolor{currentstroke}{rgb}{0.254902,0.411765,0.882353}%
+\definecolor{currentstroke}{rgb}{0.121569,0.466667,0.705882}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
 \pgfpathmoveto{\pgfqpoint{0.715668in}{1.701838in}}%
@@ -578,7 +578,7 @@
 \pgfsetrectcap%
 \pgfsetroundjoin%
 \pgfsetlinewidth{1.505625pt}%
-\definecolor{currentstroke}{rgb}{1.000000,0.549020,0.000000}%
+\definecolor{currentstroke}{rgb}{1.000000,0.498039,0.054902}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
 \pgfpathmoveto{\pgfqpoint{0.715668in}{2.176016in}}%
@@ -789,35 +789,35 @@
 \pgfsetrectcap%
 \pgfsetroundjoin%
 \pgfsetlinewidth{1.505625pt}%
-\definecolor{currentstroke}{rgb}{0.254902,0.411765,0.882353}%
+\definecolor{currentstroke}{rgb}{0.121569,0.466667,0.705882}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
-\pgfpathmoveto{\pgfqpoint{1.286616in}{3.165454in}}%
-\pgfpathlineto{\pgfqpoint{1.564394in}{3.165454in}}%
+\pgfpathmoveto{\pgfqpoint{1.286616in}{3.144289in}}%
+\pgfpathlineto{\pgfqpoint{1.564394in}{3.144289in}}%
 \pgfusepath{stroke}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=1.675505in,y=3.116843in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont \(\displaystyle k_\textrm{tran} = 5.01\)}%
+\pgftext[x=1.675505in,y=3.095678in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont Medium stiffness trajectory}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetrectcap%
 \pgfsetroundjoin%
 \pgfsetlinewidth{1.505625pt}%
-\definecolor{currentstroke}{rgb}{1.000000,0.549020,0.000000}%
+\definecolor{currentstroke}{rgb}{1.000000,0.498039,0.054902}%
 \pgfsetstrokecolor{currentstroke}%
 \pgfsetdash{}{0pt}%
-\pgfpathmoveto{\pgfqpoint{1.286616in}{2.961199in}}%
-\pgfpathlineto{\pgfqpoint{1.564394in}{2.961199in}}%
+\pgfpathmoveto{\pgfqpoint{1.286616in}{2.950617in}}%
+\pgfpathlineto{\pgfqpoint{1.564394in}{2.950617in}}%
 \pgfusepath{stroke}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \definecolor{textcolor}{rgb}{0.000000,0.000000,0.000000}%
 \pgfsetstrokecolor{textcolor}%
 \pgfsetfillcolor{textcolor}%
-\pgftext[x=1.675505in,y=2.912588in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont \(\displaystyle k_\textrm{tran} = 31.62\)}%
+\pgftext[x=1.675505in,y=2.902005in,left,base]{\color{textcolor}\rmfamily\fontsize{10.000000}{12.000000}\selectfont High stiffness trajectory}%
 \end{pgfscope}%
 \begin{pgfscope}%
 \pgfsetrectcap%
